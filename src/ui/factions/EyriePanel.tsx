@@ -8,7 +8,9 @@ import { useEffect, useState } from 'react';
 import type { GameState, Action, CardSuit } from '../../engine/types';
 import { getCard } from '../../engine/cards';
 import { activeFaction } from '../../engine/loop';
-import type { DecreeSlot } from '../../engine/factions/eyrie/state';
+import type { DecreeSlot, EyrieLeader } from '../../engine/factions/eyrie/state';
+
+const LEADERS: EyrieLeader[] = ['despot', 'commander', 'charismatic', 'builder'];
 
 interface Props {
   state: GameState;
@@ -68,6 +70,25 @@ export function EyriePanel({ state, isHuman, dispatch }: Props) {
         <span>Roosts: <strong>{e.roosts.length}/7</strong></span>
         <span>Leader: <strong>{e.leader}</strong></span>
       </div>
+
+      {canAdd && (
+        <div className="eyrie-leader-picker">
+          <div className="eyrie-leader-picker-label">Change leader:</div>
+          <div className="eyrie-leader-picker-row">
+            {LEADERS.filter(l => l !== e!.leader).map(l => (
+              <button
+                key={l}
+                type="button"
+                className="btn ghost small"
+                onClick={() => dispatch({ kind: 'eyrie.chooseLeader', leader: l })}
+                title={`Switch leader to ${l}`}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="decree-grid">
         {SLOT_ORDER.map(slot => {

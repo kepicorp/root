@@ -356,6 +356,12 @@ export function eyrieLegalActions(state: GameState): Action[] {
         out.push({ kind: 'eyrie.addToDecree', slot, cardId });
       }
     }
+    // Leader pick: real rules force this after a Turmoil; we expose it
+    // every birdsong so the player can also tune up-front.
+    for (const leader of ['despot', 'commander', 'charismatic', 'builder'] as const) {
+      if (leader === e.leader) continue;
+      out.push({ kind: 'eyrie.chooseLeader', leader });
+    }
     out.push({ kind: 'eyrie.endBirdsong' });
   }
   if (state.phase === 'daylight' && !e.decreeResolved) {
