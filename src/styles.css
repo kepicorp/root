@@ -40,6 +40,52 @@ body { background: var(--bg); color: var(--paper); }
   align-items: stretch;
   justify-content: stretch;
 }
+.board-wrap {
+  position: relative;
+  flex: 1;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+.zoom-controls {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  background: rgba(29, 22, 16, 0.94);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 6px;
+  z-index: 5;
+}
+.zoom-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  border: 1px solid var(--rule);
+  background: #2a1d10;
+  color: var(--paper);
+  font-family: 'Iowan Old Style', Georgia, serif;
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
+}
+.zoom-btn:hover:not(:disabled) { background: #3b2a18; color: var(--accent); }
+.zoom-btn:disabled { opacity: 0.4; cursor: default; }
+.zoom-readout {
+  font-size: 10px;
+  color: #b8a37a;
+  letter-spacing: 1px;
+  margin-top: 2px;
+}
 .app-game .right-pane {
   grid-area: right;
   overflow-y: auto;

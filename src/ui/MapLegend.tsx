@@ -83,7 +83,7 @@ export function MapLegend({ open, onToggle }: MapLegendProps) {
             <text x={22} y={10}>Wood</text>
           </g>
           <g transform="translate(0 210)">
-            <path d="M2 4 Q6 1 10 4 Q14 2 14 6 Q16 10 10 12 Q4 12 2 8 Z" fill="#d97a3c" stroke="#3b2a18" strokeWidth={1} />
+            <path d="M2 4 Q6 1 10 4 Q14 2 14 6 Q16 10 10 12 Q4 12 2 8 Z" fill="#9bbd58" stroke="#3b2a18" strokeWidth={1} />
             <text x={22} y={10}>Sympathy (Alliance)</text>
           </g>
           <g transform="translate(0 228)">

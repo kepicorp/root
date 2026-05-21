@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { AUTUMN_MAP, getAdjacent } from '../engine/map';
 import type { ClearingId, Suit, Action, Faction } from '../engine/types';
 import { useGame } from './store';
@@ -7,6 +7,10 @@ import { activeFaction } from '../engine/loop';
 import { boardArt, warriorArt, buildingArt } from '../assets';
 import { Trees } from './Trees';
 import { MapLegend } from './MapLegend';
+
+const ZOOM_MIN = 1;
+const ZOOM_MAX = 4;
+const ZOOM_STEP = 1.25;
 
 const BOARD_W = 1000;
 const BOARD_H = 800;
@@ -59,7 +63,93 @@ export function Board({ backgroundSrc }: BoardProps) {
   const [hovered, setHovered] = useState<ClearingId | null>(null);
   const [selected, setSelected] = useState<ClearingId | null>(null);
   const [legendOpen, setLegendOpen] = useState(true);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const dragRef = useRef<{ startX: number; startY: number; startPan: { x: number; y: number } } | null>(null);
   const bgSrc = backgroundSrc ?? boardArt() ?? undefined;
+
+  // viewBox: zoom shrinks the visible area, pan offsets its center.
+  const vbW = BOARD_W / zoom;
+  const vbH = BOARD_H / zoom;
+  const vbX = (BOARD_W / 2) + pan.x - vbW / 2;
+  const vbY = (BOARD_H / 2) + pan.y - vbH / 2;
+
+  const clampPan = useCallback((p: { x: number; y: number }, z: number) => {
+    const maxX = (BOARD_W - BOARD_W / z) / 2;
+    const maxY = (BOARD_H - BOARD_H / z) / 2;
+    return {
+      x: Math.max(-maxX, Math.min(maxX, p.x)),
+      y: Math.max(-maxY, Math.min(maxY, p.y)),
+    };
+  }, []);
+
+  const setZoomClamped = useCallback((next: number, anchor?: { x: number; y: number }) => {
+    const clamped = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, next));
+    setZoom(clamped);
+    setPan(p => {
+      if (anchor) {
+        // Keep `anchor` (in SVG user units) stable under cursor.
+        const dx = anchor.x - (BOARD_W / 2 + p.x);
+        const dy = anchor.y - (BOARD_H / 2 + p.y);
+        const scale = 1 - zoom / clamped;
+        return clampPan({ x: p.x + dx * scale, y: p.y + dy * scale }, clamped);
+      }
+      return clampPan(p, clamped);
+    });
+  }, [zoom, clampPan]);
+
+  const resetView = useCallback(() => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, []);
+
+  // Mouse-wheel zoom around the cursor.
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      e.preventDefault();
+      const pt = clientToSvg(el, e.clientX, e.clientY);
+      const factor = e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
+      setZoomClamped(zoom * factor, pt);
+    };
+    el.addEventListener('wheel', handler, { passive: false });
+    return () => el.removeEventListener('wheel', handler);
+  }, [zoom, setZoomClamped]);
+
+  // Keyboard: + / - / 0.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.target && (e.target as HTMLElement).tagName === 'INPUT') return;
+      if (e.key === '+' || e.key === '=') setZoomClamped(zoom * ZOOM_STEP);
+      else if (e.key === '-' || e.key === '_') setZoomClamped(zoom / ZOOM_STEP);
+      else if (e.key === '0') resetView();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [zoom, setZoomClamped, resetView]);
+
+  // Pan via right-mouse drag (left mouse stays for clearing-click selection).
+  function onPointerDown(e: React.PointerEvent<SVGSVGElement>) {
+    if (e.button !== 2 && !(e.button === 0 && e.shiftKey)) return; // right-click or shift+click
+    dragRef.current = { startX: e.clientX, startY: e.clientY, startPan: { ...pan } };
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+  }
+  function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
+    const d = dragRef.current;
+    if (!d || !svgRef.current) return;
+    const rect = svgRef.current.getBoundingClientRect();
+    const dx = (e.clientX - d.startX) * (BOARD_W / rect.width) / zoom;
+    const dy = (e.clientY - d.startY) * (BOARD_H / rect.height) / zoom;
+    setPan(clampPan({ x: d.startPan.x - dx, y: d.startPan.y - dy }, zoom));
+  }
+  function onPointerUp(e: React.PointerEvent<SVGSVGElement>) {
+    if (dragRef.current) {
+      (e.currentTarget as Element).releasePointerCapture(e.pointerId);
+      dragRef.current = null;
+    }
+  }
 
   // Reset selection when turn changes.
   useEffect(() => { setSelected(null); }, [state.activeIndex, state.phase]);
@@ -114,12 +204,19 @@ export function Board({ backgroundSrc }: BoardProps) {
   const adjacentToHovered = hovered ? new Set(getAdjacent(AUTUMN_MAP, hovered)) : null;
 
   return (
-    <svg
-      viewBox={`0 0 ${BOARD_W} ${BOARD_H}`}
-      className="board"
-      role="img"
-      aria-label="Root autumn map"
-    >
+    <div className="board-wrap">
+      <svg
+        ref={svgRef}
+        viewBox={`${vbX} ${vbY} ${vbW} ${vbH}`}
+        className="board"
+        role="img"
+        aria-label="Root autumn map"
+        onContextMenu={(e) => e.preventDefault()}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+      >
       {bgSrc ? (
         <image href={bgSrc} x={0} y={0} width={BOARD_W} height={BOARD_H} preserveAspectRatio="xMidYMid slice" />
       ) : (
@@ -366,6 +463,42 @@ export function Board({ backgroundSrc }: BoardProps) {
 
       {/* Legend (rendered last so it stays on top of trees and clearings) */}
       <MapLegend open={legendOpen} onToggle={() => setLegendOpen(o => !o)} />
-    </svg>
+      </svg>
+
+      {/* Zoom controls overlay */}
+      <div className="zoom-controls" role="group" aria-label="Map zoom">
+        <button
+          className="zoom-btn"
+          onClick={() => setZoomClamped(zoom * ZOOM_STEP)}
+          disabled={zoom >= ZOOM_MAX}
+          aria-label="Zoom in"
+          title="Zoom in (+)"
+        >＋</button>
+        <button
+          className="zoom-btn"
+          onClick={() => setZoomClamped(zoom / ZOOM_STEP)}
+          disabled={zoom <= ZOOM_MIN}
+          aria-label="Zoom out"
+          title="Zoom out (−)"
+        >−</button>
+        <button
+          className="zoom-btn"
+          onClick={resetView}
+          disabled={zoom === 1 && pan.x === 0 && pan.y === 0}
+          aria-label="Reset view"
+          title="Reset view (0)"
+        >⟲</button>
+        <div className="zoom-readout" aria-live="polite">{Math.round(zoom * 100)}%</div>
+      </div>
+    </div>
   );
+}
+
+function clientToSvg(svg: SVGSVGElement, clientX: number, clientY: number): { x: number; y: number } {
+  const rect = svg.getBoundingClientRect();
+  const vb = svg.viewBox.baseVal;
+  return {
+    x: vb.x + ((clientX - rect.left) / rect.width) * vb.width,
+    y: vb.y + ((clientY - rect.top) / rect.height) * vb.height,
+  };
 }
