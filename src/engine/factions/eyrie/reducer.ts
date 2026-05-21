@@ -4,6 +4,7 @@ import type { CardId } from '../../cards';
 import { getCard } from '../../cards';
 import { AUTUMN_MAP, getAdjacent } from '../../map';
 import { resolveCombat } from '../../combat';
+import { onEnterBirdsong } from '../../loop';
 import { ROOST_VP_TRACK, type EyrieLeader, type DecreeSlot, type EyrieState } from './state';
 import { findSlotTarget, eyrieRules, suitMatches } from './decree';
 import type { EyrieAction } from './actions';
@@ -341,6 +342,7 @@ function finishEyrieTurn(draft: GameState, _vp: number, _draws: number): void {
   if (draft.activeIndex === 0) draft.turn += 1;
   draft.phase = 'birdsong';
   draft.log.push({ turn: draft.turn, faction: 'eyrie', message: `Turn ends; next: ${draft.factionOrder[draft.activeIndex]} birdsong.` });
+  onEnterBirdsong(draft);
 }
 
 export function eyrieLegalActions(state: GameState): Action[] {

@@ -72,6 +72,22 @@ export function activeFaction(state: GameState) {
 
 /** Check victory conditions (30 VP triggers immediate end; other paths are
  *  handled by the dominance / coalition modules in later phases). */
+/** Hook fired by every faction's finishXxxTurn helper just after the
+ *  phase advances to a new faction's birdsong. Handles per-faction
+ *  start-of-turn effects (Eyrie Emergency Orders is the only one in the
+ *  base rules: if their hand is empty, draw 1 card before they have to
+ *  add to the Decree). */
+export function onEnterBirdsong(draft: GameState): void {
+  const active = draft.factionOrder[draft.activeIndex];
+  if (active === 'eyrie' && draft.factions.eyrie && draft.hands.eyrie.length === 0) {
+    const c = draft.deck.pop();
+    if (c) {
+      draft.hands.eyrie.push(c);
+      draft.log.push({ turn: draft.turn, faction: 'eyrie', message: 'Emergency Orders: drew 1 card.' });
+    }
+  }
+}
+
 export function checkVictory(state: GameState): GameState {
   if (state.winner) return state;
   for (const f of state.factionOrder) {

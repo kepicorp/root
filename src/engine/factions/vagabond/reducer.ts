@@ -3,6 +3,7 @@ import type { GameState, Action, ClearingId, Faction, ItemKind } from '../../typ
 import { getCard } from '../../cards';
 import { AUTUMN_MAP, getAdjacent, getForest, forestsAtClearing } from '../../map';
 import { applyFavor } from '../../effects';
+import { onEnterBirdsong } from '../../loop';
 import type { VagabondAction } from './actions';
 import type { Relationship } from './state';
 import { getQuest } from './quests';
@@ -322,6 +323,7 @@ function finishVagabondTurn(draft: GameState, _draws: number): void {
   if (draft.activeIndex === 0) draft.turn += 1;
   draft.phase = 'birdsong';
   draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Turn ends; next: ${draft.factionOrder[draft.activeIndex]} birdsong.` });
+  onEnterBirdsong(draft);
 }
 
 export function vagabondLegalActions(state: GameState): Action[] {

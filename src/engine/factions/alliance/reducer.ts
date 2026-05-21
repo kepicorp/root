@@ -5,6 +5,7 @@ import { AUTUMN_MAP, getAdjacent } from '../../map';
 import { resolveCombat } from '../../combat';
 import { SYMPATHY_VP_TRACK, SYMPATHY_COST } from './state';
 import { applyFavor } from '../../effects';
+import { onEnterBirdsong } from '../../loop';
 import type { AllianceAction } from './actions';
 
 function isAllianceTurn(state: GameState): boolean {
@@ -261,6 +262,7 @@ function finishAllianceTurn(draft: GameState, _draws: number): void {
   if (draft.activeIndex === 0) draft.turn += 1;
   draft.phase = 'birdsong';
   draft.log.push({ turn: draft.turn, faction: 'alliance', message: `Turn ends; next: ${draft.factionOrder[draft.activeIndex]} birdsong.` });
+  onEnterBirdsong(draft);
 }
 
 export function allianceLegalActions(state: GameState): Action[] {

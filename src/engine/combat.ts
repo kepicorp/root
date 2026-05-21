@@ -196,6 +196,28 @@ export function resolveCombat(state: GameState, params: CombatParams): GameState
     returnWarriorsToSupply(draft, params.attacker, outcome.attackerPiecesRemoved.warriors);
     returnWarriorsToSupply(draft, params.defender, outcome.defenderPiecesRemoved.warriors);
 
+    // Vagabond doesn't have warriors — incoming hits damage items instead.
+    // Face-up items flip to damaged first, then face-down items, until the
+    // hits are absorbed (or the Vagabond runs out of items).
+    if (params.defender === 'vagabond' && draft.factions.vagabond) {
+      let toDamage = outcome.attackerHits;
+      const items = draft.factions.vagabond.items;
+      for (const it of items) {
+        if (toDamage <= 0) break;
+        if (it.state === 'face-up') { it.state = 'damaged'; toDamage -= 1; }
+      }
+      for (const it of items) {
+        if (toDamage <= 0) break;
+        if (it.state === 'face-down') { it.state = 'damaged'; toDamage -= 1; }
+      }
+      if (outcome.attackerHits > toDamage) {
+        draft.log.push({
+          turn: draft.turn, faction: 'vagabond',
+          message: `Vagabond took ${outcome.attackerHits - toDamage} item damage.`,
+        });
+      }
+    }
+
     // Discard ambush cards used.
     for (const id of [params.attackerAmbush, params.defenderAmbush]) {
       if (!id) continue;

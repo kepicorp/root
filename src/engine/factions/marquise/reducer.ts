@@ -5,6 +5,7 @@ import { getCard } from '../../cards';
 import { AUTUMN_MAP, getAdjacent } from '../../map';
 import { resolveCombat } from '../../combat';
 import { applyFavor } from '../../effects';
+import { onEnterBirdsong } from '../../loop';
 import { vpForBuilding, buildCost } from './scoring';
 import type { MarquiseAction } from './actions';
 
@@ -286,6 +287,7 @@ function finishMarquiseTurn(draft: GameState, drawsLogged: number): void {
   draft.phase = 'birdsong';
   const tail = drawsLogged > 0 ? `Evening: drew ${drawsLogged}; ` : '';
   draft.log.push({ turn: draft.turn, faction: 'marquise', message: `${tail}next: ${draft.factionOrder[draft.activeIndex]} birdsong.` });
+  onEnterBirdsong(draft);
 }
 
 export function marquiseLegalActions(state: GameState): Action[] {
