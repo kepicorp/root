@@ -7,6 +7,7 @@ import { activeFaction } from '../engine/loop';
 import { boardArt, warriorArt, buildingArt } from '../assets';
 import { Trees } from './Trees';
 import { MapLegend } from './MapLegend';
+import { ClearingInfo } from './ClearingInfo';
 
 const ZOOM_MIN = 1;
 const ZOOM_MAX = 4;
@@ -62,6 +63,7 @@ export function Board({ backgroundSrc }: BoardProps) {
   const dispatch = useGame((s) => s.dispatch);
   const [hovered, setHovered] = useState<ClearingId | null>(null);
   const [selected, setSelected] = useState<ClearingId | null>(null);
+  const [infoClearing, setInfoClearing] = useState<ClearingId | null>(null);
   const [legendOpen, setLegendOpen] = useState(true);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -190,6 +192,14 @@ export function Board({ backgroundSrc }: BoardProps) {
   // Reset selection when turn changes.
   useEffect(() => { setSelected(null); }, [state.activeIndex, state.phase]);
 
+  // Esc closes the clearing info popup.
+  useEffect(() => {
+    if (infoClearing == null) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setInfoClearing(null); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [infoClearing]);
+
   const isHuman = state.phase !== 'setup' && state.phase !== 'gameOver'
     && activeFaction(state) === playerFaction;
   const legals = isHuman ? getLegalActions(state) : [];
@@ -215,6 +225,9 @@ export function Board({ backgroundSrc }: BoardProps) {
   }
 
   function handleClearingClick(id: ClearingId) {
+    // Always show / toggle the info popup for the clicked clearing.
+    setInfoClearing(prev => (prev === id ? null : id));
+
     if (!isHuman) return;
     if (selected == null) {
       if (validSources.has(id)) setSelected(id);
@@ -229,6 +242,7 @@ export function Board({ backgroundSrc }: BoardProps) {
       if (from === selected && ft.to === id) {
         dispatch(a);
         setSelected(null);
+        setInfoClearing(null);
         return;
       }
     }
@@ -503,6 +517,16 @@ export function Board({ backgroundSrc }: BoardProps) {
       {/* Legend (rendered last so it stays on top of trees and clearings) */}
       <MapLegend open={legendOpen} onToggle={() => setLegendOpen(o => !o)} />
       </svg>
+
+      {/* Clearing info popup (lower-left of board) */}
+      {infoClearing != null && (
+        <ClearingInfo
+          state={state}
+          clearingId={infoClearing}
+          isSelectedAsSource={selected === infoClearing}
+          onClose={() => setInfoClearing(null)}
+        />
+      )}
 
       {/* Zoom controls overlay */}
       <div className="zoom-controls" role="group" aria-label="Map zoom">
