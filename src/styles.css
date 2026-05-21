@@ -8,59 +8,80 @@
   color-scheme: dark;
 }
 
-* {
-  box-sizing: border-box;
-}
-
-html, body, #root {
-  margin: 0;
-  height: 100%;
-}
-
-body {
-  background: var(--bg);
-  color: var(--paper);
-}
+* { box-sizing: border-box; }
+html, body, #root { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--paper); }
 
 .app {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto auto 1fr auto 200px;
   height: 100%;
 }
 
 .app-header {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
   padding: 12px 24px;
   border-bottom: 1px solid var(--rule);
   background: #221a12;
 }
-
 .app-header h1 {
   margin: 0;
   font-size: 28px;
   letter-spacing: 2px;
   color: var(--accent);
 }
-
 .subtitle {
-  margin: 2px 0 0;
+  margin: 0;
   font-size: 13px;
   color: #b8a37a;
   font-style: italic;
+  flex: 1;
+}
+
+.scoreboard {
+  display: flex;
+  gap: 12px;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--rule);
+  background: #1f1812;
+}
+.score {
+  flex: 1;
+  border: 2px solid var(--rule);
+  border-radius: 6px;
+  padding: 8px 12px;
+  background: #221a12;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.score.active {
+  transform: translateY(-2px);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.score.absent { opacity: 0.35; }
+.score-faction {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.score-value {
+  font-size: 24px;
+  font-weight: 700;
 }
 
 .app-main {
   display: grid;
-  grid-template-columns: 1fr 280px;
+  grid-template-columns: 1fr 320px;
   gap: 16px;
   padding: 16px 24px;
   min-height: 0;
-  flex: 1;
 }
 
 .board {
   width: 100%;
   height: auto;
-  max-height: calc(100vh - 110px);
+  max-height: calc(100vh - 480px);
   background: #15110c;
   border: 2px solid var(--rule);
   border-radius: 8px;
@@ -71,25 +92,105 @@ body {
   background: #221a12;
   border: 1px solid var(--rule);
   border-radius: 8px;
-  padding: 16px;
+  padding: 12px;
+  overflow-y: auto;
+  font-size: 13px;
+}
+
+.hand-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+.hand-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.card {
+  border: 2px solid var(--rule);
+  border-radius: 4px;
+  padding: 6px 8px;
+  background: #2a1d10;
+  font-size: 12px;
+}
+.card-suit {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #2a1d10;
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  margin-bottom: 4px;
+}
+.card-name { font-weight: 600; }
+.card-cat { color: #b8a37a; font-size: 10px; font-style: italic; }
+.dim { color: #6a5640; }
+
+.faction-panels {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+.faction-panel {
+  border-left: 3px solid var(--rule);
+  padding: 6px 10px;
+  background: #1f1812;
+  border-radius: 3px;
+  font-size: 12px;
+}
+.faction-panel h3 { margin: 0 0 4px; font-size: 13px; }
+.faction-panel em { color: #8a7045; font-size: 11px; }
+.faction-panel.marquise { border-color: #d97a3c; }
+.faction-panel.eyrie    { border-color: #7da3c9; }
+.faction-panel.alliance { border-color: #9bbd58; }
+.faction-panel.vagabond { border-color: #b8a37a; }
+
+.actionbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 24px;
+  border-top: 1px solid var(--rule);
+  background: #1f1812;
   font-size: 14px;
 }
+.actionbar-label { color: var(--accent); font-weight: 600; }
+.actionbar-hint { color: #b8a37a; font-style: italic; margin-left: auto; }
 
-.sidebar h2 {
-  margin: 0 0 12px;
-  font-size: 16px;
-  color: var(--accent);
+.btn {
+  background: #2a1d10;
+  color: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.btn:hover { background: #3b2a18; }
+.btn.ghost { background: transparent; }
+
+.log {
+  border-top: 1px solid var(--rule);
+  background: #15110c;
+  padding: 8px 16px;
+  overflow-y: auto;
+  font-size: 12px;
+  font-family: 'Iowan Old Style', Georgia, serif;
+}
+.log-entry { display: flex; gap: 10px; padding: 1px 0; }
+.log-turn { color: #6a5640; min-width: 28px; }
+.log-faction {
+  min-width: 70px;
+  text-transform: uppercase;
   letter-spacing: 1px;
+  font-size: 11px;
+  font-weight: 600;
 }
-
-.sidebar ul {
-  margin: 0 0 12px;
-  padding-left: 18px;
-  line-height: 1.6;
-}
-
-.note {
-  margin: 0;
-  font-style: italic;
-  color: #b8a37a;
-}
+.log-msg { flex: 1; }
