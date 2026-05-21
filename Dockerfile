@@ -1,29 +1,37 @@
 # Multi-stage build: compile the React bundle once, then ship a slim Node
 # image that serves the bundle + the WebSocket server on a single port.
+#
+# We do all the npm work in the builder stage and copy the pruned
+# node_modules into the runtime image. BuildKit otherwise parallelizes
+# the two stages and ends up running two `npm ci` invocations at once,
+# which is enough to OOM-kill the install on small VMs.
 
 # ── Build stage ──────────────────────────────────────────────────────────────
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Install all deps (build needs dev deps for tsc / vite). Force dev deps in
-# case the host environment exports NODE_ENV=production or has
-# NPM_CONFIG_PRODUCTION baked in — either would otherwise make `npm ci`
-# silently skip devDependencies and leave tsc / vite out of node_modules.
 ENV NODE_ENV=development
-ENV NPM_CONFIG_PRODUCTION=false
+
+# Install all deps (build needs dev deps for tsc / vite). --include=dev
+# defends against hosts that export NODE_ENV=production. Bump fetch
+# timeout / retries so a slow registry doesn't kill the install.
 COPY package*.json ./
 RUN npm ci --include=dev --no-audit --no-fund \
+      --fetch-timeout=300000 --fetch-retries=5 \
  && test -x node_modules/.bin/tsc \
  && test -x node_modules/.bin/vite
 
-# Copy source.
+# Copy source and build the production bundle.
 COPY tsconfig.json vite.config.ts index.html ./
 COPY src ./src
 COPY server ./server
-
-# Vite production build → ./dist
 RUN npm run build
+
+# Prune dev deps in place and add tsx (used at runtime to run the TS server).
+RUN npm prune --omit=dev \
+ && npm install --no-save --no-audit --no-fund tsx \
+      --fetch-timeout=300000 --fetch-retries=5
 
 # ── Runtime stage ────────────────────────────────────────────────────────────
 FROM node:20-alpine
@@ -34,12 +42,9 @@ ENV NODE_ENV=production
 ENV PORT=8787
 ENV DIST_DIR=/app/dist
 
-# Install only the runtime deps we need (server uses ws + immer + tsx).
+# No fresh npm install here — pull the already-pruned tree from the builder.
 COPY package*.json ./
-RUN npm ci --omit=dev && \
-    npm install --no-save tsx
-
-# Pull in just what the server needs at runtime.
+COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/server ./server
 COPY --from=builder /app/src ./src

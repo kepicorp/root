@@ -24,7 +24,9 @@ Open <http://localhost:5173>. On the landing page click **Play solo**, then pick
 ### 2. Hosted multi-room (Docker, recommended)
 
 ```bash
-docker compose up --build
+docker compose up --build       # modern Docker (v2 plugin)
+# — or, on older installs / Linux distros with only the v1 binary:
+docker-compose up --build
 ```
 
 Builds the production bundle and starts the multi-room server. Everything is on **port 8787**:
@@ -105,11 +107,12 @@ The password is checked in constant time against the env value. The browser stor
 Pick one:
 
 ```bash
-# 1. Local .env file (loaded automatically by docker compose):
+# 1. Local .env file (loaded automatically by docker compose / docker-compose):
 echo 'ADMIN_PASSWORD=your-secret' >> .env
 
-# 2. Inline with docker compose:
-ADMIN_PASSWORD=your-secret docker compose up
+# 2. Inline with the compose CLI:
+ADMIN_PASSWORD=your-secret docker compose up      # v2 plugin
+ADMIN_PASSWORD=your-secret docker-compose up      # legacy v1 binary
 
 # 3. On a host running the server directly:
 ADMIN_PASSWORD=your-secret npm run server
@@ -236,7 +239,7 @@ CLAUDE.md           project guide for future Claude sessions
 | `npm run typecheck`    | `tsc -b --noEmit`                                             |
 | `npm run prune-stale`  | One-shot stale-room cleanup (`--days N`, `--dry-run`)         |
 
-Plus `docker compose up --build` for the containerized deployment.
+Plus `docker compose up --build` (or `docker-compose up --build` on older installs) for the containerized deployment.
 
 ## Environment variables
 
@@ -248,7 +251,7 @@ Plus `docker compose up --build` for the containerized deployment.
 | `MAX_ROOM_AGE_DAYS`  | `90`                 | Rooms idle longer than this are pruned                 |
 | `ADMIN_PASSWORD`     | _unset_              | Enables `/admin`. Empty/unset → admin disabled (503)   |
 
-A `.env.example` is included; copy to `.env` and edit. Both `npm run dev`/`host` and `docker compose` pick it up automatically.
+A `.env.example` is included; copy to `.env` and edit. Both `npm run dev`/`host` and `docker compose` (or `docker-compose`) pick it up automatically.
 
 ## Tests
 
