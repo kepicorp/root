@@ -1,12 +1,15 @@
 import type { GameState, Action, Faction } from '../engine/types';
 import { activeFaction } from '../engine/loop';
 import { getLegalActions } from '../engine/legal';
+import type { MapIntent } from './Board';
 
 interface ActionBarProps {
   state: GameState;
   playerFaction: Faction | null;
   dispatch: (action: Action) => void;
   onBegin: (f: Faction) => void;
+  mapIntent: MapIntent | null;
+  setMapIntent: (intent: MapIntent | null) => void;
 }
 
 const FACTIONS: Faction[] = ['marquise', 'eyrie', 'alliance', 'vagabond'];
@@ -14,9 +17,16 @@ const FACTIONS: Faction[] = ['marquise', 'eyrie', 'alliance', 'vagabond'];
 /** Hide actions driven by clicking the map. */
 const MAP_DRIVEN: ReadonlySet<string> = new Set([
   'marquise.march',
+  'marquise.build',  // surfaced via "Build sawmill / workshop / recruiter" buttons that arm a map intent
   'vagabond.move',
   'vagabond.slip',
 ]);
+
+const BUILDING_LABEL: Record<'sawmill' | 'workshop' | 'recruiter', string> = {
+  sawmill:   'Build Sawmill',
+  workshop:  'Build Workshop',
+  recruiter: 'Build Recruiter',
+};
 
 /** Per-action display metadata. */
 interface ActionMeta { label: string; group: string; primary?: boolean; }
@@ -73,7 +83,7 @@ function actionDetail(a: Action): string {
   return parts.join(' · ');
 }
 
-export function ActionBar({ state, playerFaction, dispatch, onBegin }: ActionBarProps) {
+export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, setMapIntent }: ActionBarProps) {
   if (state.phase === 'setup') {
     return (
       <div className="actionbar setup">
@@ -106,7 +116,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin }: ActionBar
   const isHuman = active === playerFaction;
   const allLegals = isHuman ? getLegalActions(state) : [];
   const filtered = allLegals.filter(a => !MAP_DRIVEN.has(a.kind) && a.kind !== 'system.advancePhase' && a.kind !== 'system.endTurn');
-  const hasMapMoves = isHuman && allLegals.some(a => MAP_DRIVEN.has(a.kind));
+  const hasMapMoves = isHuman && allLegals.some(a => a.kind === 'marquise.march' || a.kind === 'vagabond.move' || a.kind === 'vagabond.slip');
 
   // Group actions
   const groups: Record<string, Action[]> = { birdsong: [], main: [], bonus: [], end: [] };
@@ -114,6 +124,13 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin }: ActionBar
     const meta = ACTION_META[a.kind];
     const g = meta?.group ?? 'main';
     if (groups[g]) groups[g]!.push(a);
+  }
+
+  // Synthesize Build buttons: one per available building type, each arming
+  // a map intent instead of listing one button per legal clearing.
+  const buildable = new Set<'sawmill' | 'workshop' | 'recruiter'>();
+  for (const a of allLegals) {
+    if (a.kind === 'marquise.build') buildable.add(a.building);
   }
 
   if (!isHuman) {
@@ -133,7 +150,29 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin }: ActionBar
 
       {hasMapMoves && (
         <div className="actionbar-hint map-hint">
-          ⤵ <strong>Click the map</strong> to move warriors.
+          ⤵ <strong>Click the map</strong> to move warriors (March = 2 moves per turn).
+        </div>
+      )}
+
+      {buildable.size > 0 && (
+        <div className="action-group action-group-main">
+          <div className="action-group-label">Build</div>
+          <div className="actions-grid">
+            {(['sawmill', 'workshop', 'recruiter'] as const).filter(b => buildable.has(b)).map(b => {
+              const armed = mapIntent?.kind === 'build' && mapIntent.building === b;
+              return (
+                <button
+                  key={b}
+                  className={`btn action-btn ${armed ? 'armed' : 'primary'} faction-${active}`}
+                  onClick={() => setMapIntent(armed ? null : { kind: 'build', building: b })}
+                  title={armed ? 'Click again to cancel' : 'Then click a clearing on the map'}
+                >
+                  <span className="action-label">{BUILDING_LABEL[b]}</span>
+                  {armed && <span className="action-detail">click map · Esc to cancel</span>}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 

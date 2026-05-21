@@ -28,10 +28,17 @@ const FACTION_COLOR: Record<string, string> = {
   vagabond: '#e0d4b0',
 };
 
+/** A map-targeted intent the player has armed from the ActionBar. The Board
+ *  highlights valid targets and applies the action on click. */
+export type MapIntent =
+  | { kind: 'build'; building: 'sawmill' | 'workshop' | 'recruiter' };
+
 interface BoardProps {
   state: GameState;
   playerFaction: Faction | null;
   dispatch: (action: Action) => void;
+  mapIntent: MapIntent | null;
+  setMapIntent: (intent: MapIntent | null) => void;
   backgroundSrc?: string;
 }
 
@@ -59,10 +66,19 @@ function actionFromTo(a: Action): { from: ClearingId | null; to: ClearingId } | 
   return null;
 }
 
-export function Board({ state, playerFaction, dispatch, backgroundSrc }: BoardProps) {
+export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent, backgroundSrc }: BoardProps) {
   const [hovered, setHovered] = useState<ClearingId | null>(null);
   const [selected, setSelected] = useState<ClearingId | null>(null);
   const [infoClearing, setInfoClearing] = useState<ClearingId | null>(null);
+  // Set when the player clicks a destination on a multi-warrior move so we
+  // can ask "how many?" before dispatching the action.
+  const [pendingMove, setPendingMove] = useState<{
+    from: ClearingId;
+    to: ClearingId;
+    max: number;
+    action: Action; // the original legal action (carries the kind + max count)
+    pick: number;
+  } | null>(null);
   const [legendOpen, setLegendOpen] = useState(true);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -204,6 +220,32 @@ export function Board({ state, playerFaction, dispatch, backgroundSrc }: BoardPr
   const legals = isHuman ? getLegalActions(state) : [];
   const moveActions = getMovementActions(legals);
 
+  // When the player has armed a map-targeted action (e.g. "Build sawmill"),
+  // figure out which clearings would satisfy it. We match against legals so
+  // the engine stays the source of truth for what's allowed.
+  const intentTargets = new Set<ClearingId>();
+  const intentDispatch: Map<ClearingId, Action> = new Map();
+  if (mapIntent && isHuman) {
+    for (const a of legals) {
+      if (mapIntent.kind === 'build' && a.kind === 'marquise.build' && a.building === mapIntent.building) {
+        intentTargets.add(a.clearing);
+        if (!intentDispatch.has(a.clearing)) intentDispatch.set(a.clearing, a);
+      }
+    }
+  }
+
+  // Escape cancels any armed map intent or pending move.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return;
+      if (pendingMove) setPendingMove(null);
+      else if (mapIntent) setMapIntent(null);
+      else if (selected != null) setSelected(null);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [pendingMove, mapIntent, selected, setMapIntent]);
+
   // Compute valid sources (clearings where a move can originate) and, given selection,
   // valid targets to highlight.
   const validSources = new Set<ClearingId>();
@@ -228,6 +270,19 @@ export function Board({ state, playerFaction, dispatch, backgroundSrc }: BoardPr
     setInfoClearing(prev => (prev === id ? null : id));
 
     if (!isHuman) return;
+
+    // Map-targeted intent (e.g. Build): consume the click here.
+    if (mapIntent) {
+      const a = intentDispatch.get(id);
+      if (a) {
+        dispatch(a);
+        setMapIntent(null);
+        setInfoClearing(null);
+      }
+      // Click on a non-target clearing just shows its info; intent stays armed.
+      return;
+    }
+
     if (selected == null) {
       if (validSources.has(id)) setSelected(id);
       return;
@@ -239,6 +294,14 @@ export function Board({ state, playerFaction, dispatch, backgroundSrc }: BoardPr
       if (!ft) continue;
       const from = ft.from ?? state.factions.vagabond?.clearing ?? -1;
       if (from === selected && ft.to === id) {
+        // If the action carries a `count` (Marquise march) and there's
+        // more than one warrior available, ask the player how many to
+        // move instead of always shipping the maximum.
+        const max = a.kind === 'marquise.march' ? a.count : 1;
+        if (max > 1) {
+          setPendingMove({ from: selected, to: id, max, action: a, pick: max });
+          return;
+        }
         dispatch(a);
         setSelected(null);
         setInfoClearing(null);
@@ -321,15 +384,17 @@ export function Board({ state, playerFaction, dispatch, backgroundSrc }: BoardPr
           const isSelected = c.id === selected;
           const isValidTarget = validTargets.has(c.id);
           const isValidSource = isHuman && selected == null && validSources.has(c.id);
+          const isIntentTarget = mapIntent != null && intentTargets.has(c.id);
           const cl = state.map.clearings[c.id]!;
 
           let strokeColor = '#3b2a18';
           let strokeWidth = 3;
-          if (isSelected)         { strokeColor = '#fff';    strokeWidth = 7; }
-          else if (isValidTarget) { strokeColor = '#88e08a'; strokeWidth = 6; }
-          else if (isValidSource) { strokeColor = '#f3e3a8'; strokeWidth = 5; }
-          else if (isHovered)     { strokeColor = '#fff';    strokeWidth = 5; }
-          else if (isAdjacent)    { strokeColor = '#f3e3a8'; strokeWidth = 4; }
+          if (isSelected)          { strokeColor = '#fff';    strokeWidth = 7; }
+          else if (isIntentTarget) { strokeColor = '#f0c060'; strokeWidth = 6; }
+          else if (isValidTarget)  { strokeColor = '#88e08a'; strokeWidth = 6; }
+          else if (isValidSource)  { strokeColor = '#f3e3a8'; strokeWidth = 5; }
+          else if (isHovered)      { strokeColor = '#fff';    strokeWidth = 5; }
+          else if (isAdjacent)     { strokeColor = '#f3e3a8'; strokeWidth = 4; }
 
           return (
             <g
@@ -356,7 +421,7 @@ export function Board({ state, playerFaction, dispatch, backgroundSrc }: BoardPr
                 fill={SUIT_COLOR[c.suit]}
                 stroke={strokeColor}
                 strokeWidth={strokeWidth}
-                className={isValidTarget ? 'pulse' : ''}
+                className={isValidTarget || isIntentTarget ? 'pulse' : ''}
               />
               {/* Ruin marker (a small broken column near the top) */}
               {c.hasRuin && (
@@ -525,6 +590,74 @@ export function Board({ state, playerFaction, dispatch, backgroundSrc }: BoardPr
           isSelectedAsSource={selected === infoClearing}
           onClose={() => setInfoClearing(null)}
         />
+      )}
+
+      {/* Banner — shown when a map-targeted action is armed from the
+          ActionBar. Tells the player what they're placing and gives a
+          clear way to back out without making a choice. */}
+      {mapIntent && (
+        <div className="map-intent-banner" role="status">
+          <span>
+            {mapIntent.kind === 'build'
+              ? <>Click a clearing to place a <strong>{mapIntent.building}</strong>.</>
+              : null}
+          </span>
+          <button className="btn ghost small" onClick={() => setMapIntent(null)}>
+            Cancel (Esc)
+          </button>
+        </div>
+      )}
+
+      {/* Count picker — shown after the player clicks a destination on a
+          multi-warrior move, so they can choose how many to march. */}
+      {pendingMove && (
+        <div className="count-picker" role="dialog" aria-label="Choose how many warriors to move">
+          <div className="count-picker-title">
+            March from <strong>{pendingMove.from}</strong> → <strong>{pendingMove.to}</strong>
+          </div>
+          <div className="count-picker-row">
+            <button
+              className="btn ghost small"
+              onClick={() => setPendingMove(p => p ? { ...p, pick: Math.max(1, p.pick - 1) } : null)}
+              disabled={pendingMove.pick <= 1}
+              aria-label="One fewer"
+            >−</button>
+            <span className="count-picker-value">{pendingMove.pick}</span>
+            <span className="count-picker-max">/ {pendingMove.max}</span>
+            <button
+              className="btn ghost small"
+              onClick={() => setPendingMove(p => p ? { ...p, pick: Math.min(p.max, p.pick + 1) } : null)}
+              disabled={pendingMove.pick >= pendingMove.max}
+              aria-label="One more"
+            >+</button>
+          </div>
+          <input
+            type="range" min={1} max={pendingMove.max} value={pendingMove.pick}
+            onChange={(e) => setPendingMove(p => p ? { ...p, pick: Number(e.target.value) } : null)}
+            aria-label="How many to move"
+          />
+          <div className="count-picker-actions">
+            <button
+              className="btn ghost"
+              onClick={() => { setPendingMove(null); setSelected(null); }}
+            >Cancel</button>
+            <button
+              className="btn primary"
+              onClick={() => {
+                if (!pendingMove) return;
+                const a = pendingMove.action;
+                if (a.kind === 'marquise.march') {
+                  dispatch({ ...a, count: pendingMove.pick });
+                } else {
+                  dispatch(a);
+                }
+                setPendingMove(null);
+                setSelected(null);
+                setInfoClearing(null);
+              }}
+            >March {pendingMove.pick}</button>
+          </div>
+        </div>
       )}
 
       {/* Zoom controls overlay */}

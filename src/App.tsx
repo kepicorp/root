@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Board } from './ui/Board';
+import { Board, type MapIntent } from './ui/Board';
 import { Hand } from './ui/Hand';
 import { ActionBar } from './ui/ActionBar';
 import { Log } from './ui/Log';
@@ -24,6 +24,7 @@ export function App() {
 
   useNetBridge();
   const [offlineRequested, setOfflineRequested] = useState(false);
+  const [mapIntent, setMapIntent] = useState<MapIntent | null>(null);
 
   const localState = useGame((s) => s.state);
   const localPlayerFaction = useGame((s) => s.playerFaction);
@@ -107,7 +108,13 @@ export function App() {
       <PhaseHeader state={state} playerFaction={playerFaction} />
 
       <div className="board-pane">
-        <Board state={state} playerFaction={playerFaction} dispatch={dispatch} />
+        <Board
+          state={state}
+          playerFaction={playerFaction}
+          dispatch={dispatch}
+          mapIntent={mapIntent}
+          setMapIntent={setMapIntent}
+        />
       </div>
 
       <aside className="right-pane">
@@ -117,6 +124,8 @@ export function App() {
           playerFaction={playerFaction}
           dispatch={dispatch}
           onBegin={begin}
+          mapIntent={mapIntent}
+          setMapIntent={setMapIntent}
         />
         <Hand state={state} faction={playerFaction} />
         <div className="faction-panels">

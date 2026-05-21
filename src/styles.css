@@ -49,6 +49,58 @@ body { background: var(--bg); color: var(--paper); }
   min-width: 0;
   min-height: 0;
 }
+
+/* Count picker — pops up after click-source + click-destination for
+   multi-warrior moves (Marquise march). Lets the player pick how many to
+   move before the action ships. */
+.count-picker {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 20;
+  background: rgba(29, 22, 16, 0.97);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 240px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.6);
+}
+.count-picker-title { color: var(--paper); font-size: 13px; }
+.count-picker-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 16px;
+  color: var(--paper);
+}
+.count-picker-value { font-size: 28px; font-weight: 700; min-width: 36px; text-align: center; }
+.count-picker-max   { color: #b8a37a; font-size: 14px; }
+.count-picker-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* Map intent banner — shown across the top of the board when the player
+   has armed a map-targeted action (Build / etc.) from the ActionBar. */
+.map-intent-banner {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 15;
+  background: rgba(29, 22, 16, 0.95);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--paper);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
+.map-intent-banner strong { color: var(--accent); }
 .zoom-controls {
   position: absolute;
   top: 16px;
@@ -789,6 +841,13 @@ circle.pulse {
   font-weight: 700;
 }
 .btn.action-btn.primary:hover { background: linear-gradient(180deg, #e09a3a, #c9892f); }
+.btn.action-btn.armed {
+  background: #2a3a20;
+  color: #f0c060;
+  border-color: #f0c060;
+  font-weight: 700;
+  box-shadow: 0 0 0 2px rgba(240, 192, 96, 0.25);
+}
 .action-label { font-weight: 600; }
 .action-detail { font-size: 10px; opacity: 0.7; }
 
