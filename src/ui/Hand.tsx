@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { GameState, Faction } from '../engine/types';
 import { getCard } from '../engine/cards';
 import { cardArt, cardBackArt, factionIcon } from '../assets';
-import { CardIcon } from './CardIcon';
+import { CardIcon, CardDetails } from './CardIcon';
 
 interface HandProps {
   state: GameState;
@@ -42,26 +42,18 @@ export function Hand({ state, faction }: HandProps) {
           return (
             <div
               key={id}
-              className={`card ${art ? 'has-art' : ''}`}
+              className="card"
               style={{ borderColor: SUIT_COLOR[c.suit] }}
               title={`${c.name} · ${c.category}`}
               onMouseEnter={() => art && setZoomed(art)}
               onMouseLeave={() => setZoomed(null)}
             >
-              {art ? (
-                <>
-                  <img src={art} alt={c.name} className="card-img" />
-                  <CardIcon card={c} />
-                </>
-              ) : (
-                <>
-                  <div className="card-suit" style={{ background: SUIT_COLOR[c.suit] }}>
-                    {c.suit}
-                  </div>
-                  <div className="card-name">{c.name}</div>
-                  <CardIcon card={c} />
-                </>
-              )}
+              {art && <img src={art} alt="" className="card-art-bg" />}
+              <div className="card-body">
+                <div className="card-name">{c.name}</div>
+                <CardIcon card={c} />
+                <CardDetails card={c} />
+              </div>
             </div>
           );
         })}

@@ -335,48 +335,49 @@ body { background: var(--bg); color: var(--paper); }
   gap: 8px;
 }
 .card {
+  position: relative;
   border: 2px solid var(--rule);
-  border-radius: 4px;
-  padding: 6px 8px;
+  border-radius: 8px;
   background: #2a1d10;
   font-size: 12px;
-  min-width: 120px;
+  width: 240px;
+  overflow: hidden;
 }
-.card-suit {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: #2a1d10;
-  display: inline-block;
-  padding: 1px 6px;
-  border-radius: 3px;
-  margin-bottom: 4px;
+/* Art (when present) sits as a faded background behind the body so it
+   stays decorative without competing with the readable layout. */
+.card-art-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.18;
+  pointer-events: none;
 }
-.card-name { font-weight: 600; }
-.card-cat { color: #b8a37a; font-size: 10px; font-style: italic; }
+.card-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+.card-name {
+  font-weight: 700;
+  font-size: 15px;
+  color: #f0e2c2;
+  text-align: center;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+}
+.dim { color: #6a5640; }
 
-/* Suit + category icon row on each card. Always a dedicated full-width row
-   so the suit / category / item icons read at a glance, even at small card
-   sizes. On art-backed cards the row floats over the bottom of the art. */
+/* Suit + category icon row — the visual centerpiece of the card. */
 .card-icon-row {
   display: flex;
   align-items: center;
   justify-content: space-around;
-  gap: 6px;
-  margin-top: 6px;
+  gap: 8px;
   width: 100%;
 }
-.card.has-art .card-icon-row {
-  position: absolute;
-  bottom: 6px;
-  left: 6px;
-  right: 6px;
-  background: rgba(20, 14, 8, 0.78);
-  padding: 4px 6px;
-  border-radius: 6px;
-  margin-top: 0;
-}
-.card.has-art { position: relative; }
 .card-suit-icon, .card-item-icon {
   display: inline-block;
   vertical-align: middle;
@@ -390,25 +391,50 @@ body { background: var(--bg); color: var(--paper); }
   background: rgba(184, 163, 122, 0.22);
   color: #e8d6a8;
   line-height: 1;
+  font-weight: 700;
 }
-.card-category-glyph.cat-ambush     { background: rgba(255, 200, 60, 0.22);  color: #ffd566; }
-.card-category-glyph.cat-dominance  { background: rgba(217, 122, 60, 0.22);  color: #ffb27a; }
-.card-category-glyph.cat-item       { background: rgba(155, 189, 88, 0.22);  color: #d4ee8c; }
-.card-category-glyph.cat-persistent { background: rgba(125, 163, 201, 0.22); color: #c0deff; }
-.card-category-glyph.cat-immediate  { background: rgba(255, 255, 255, 0.18); color: #f0ecda; }
-.card-category-glyph.cat-favor      { background: rgba(217, 76, 76, 0.22);   color: #ff9c9c; }
-.dim { color: #6a5640; }
+.card-category-glyph.cat-ambush     { background: rgba(255, 200, 60, 0.28);  color: #ffd566; }
+.card-category-glyph.cat-dominance  { background: rgba(217, 122, 60, 0.28);  color: #ffb27a; }
+.card-category-glyph.cat-item       { background: rgba(155, 189, 88, 0.28);  color: #d4ee8c; }
+.card-category-glyph.cat-persistent { background: rgba(125, 163, 201, 0.28); color: #c0deff; }
+.card-category-glyph.cat-immediate  { background: rgba(255, 255, 255, 0.22); color: #f0ecda; }
+.card-category-glyph.cat-favor      { background: rgba(217, 76, 76, 0.28);   color: #ff9c9c; }
 
-/* Card art rendering */
-.card.has-art {
-  padding: 0;
-  border-radius: 6px;
-  overflow: hidden;
-  aspect-ratio: 5 / 7;
-  width: 130px;
-  display: block;
+/* Body text — short description + craft cost row. */
+.card-details { display: flex; flex-direction: column; gap: 6px; }
+.card-description {
+  font-size: 12px;
+  line-height: 1.35;
+  color: #e8d6a8;
+  text-shadow: 0 1px 1px rgba(0,0,0,0.7);
 }
-.card-img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.card-cost {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #b8a37a;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.card-cost-label { margin-right: 2px; }
+.card-cost-group { display: inline-flex; gap: 2px; }
+.card-cost-pip {
+  display: inline-block;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(0,0,0,0.6);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.5);
+}
+.card-cost-vp {
+  margin-left: 4px;
+  padding: 1px 6px;
+  background: rgba(232, 214, 168, 0.18);
+  border-radius: 8px;
+  color: #e8d6a8;
+  font-weight: 600;
+  text-transform: none;
+}
 
 .card-zoom {
   position: fixed;
