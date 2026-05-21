@@ -14,6 +14,10 @@ export interface EyrieState {
   birdsongDone: boolean;
   decreeResolved: boolean;
   eveningDone: boolean;
+  // How many cards the Eyrie has added to the Decree during the current
+  // birdsong. Resets each evening. The bot uses this to add at most one
+  // card per turn; the human UI ignores it.
+  cardsAddedThisBirdsong: number;
 }
 
 export const INITIAL_EYRIE_STATE: EyrieState = {
@@ -26,6 +30,7 @@ export const INITIAL_EYRIE_STATE: EyrieState = {
   birdsongDone: false,
   decreeResolved: false,
   eveningDone: false,
+  cardsAddedThisBirdsong: 0,
 };
 
 export const ROOST_VP_TRACK = [0, 0, 1, 2, 3, 4, 4, 5] as const;

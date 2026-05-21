@@ -18,3 +18,10 @@ npm-debug.log*
 src/assets/raw/*
 !src/assets/raw/.gitkeep
 !src/assets/raw/README.md
+
+# Secrets and runtime state
+.env
+.env.*
+!.env.example
+data/
+*.tsbuildinfo

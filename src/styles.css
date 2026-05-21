@@ -353,6 +353,47 @@ body { background: var(--bg); color: var(--paper); }
 }
 .card-name { font-weight: 600; }
 .card-cat { color: #b8a37a; font-size: 10px; font-style: italic; }
+
+/* Suit + category icon row on each card. Positions over the card art when
+   present, sits below the name for art-less cards. */
+.card-icon-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+.card.has-art .card-icon-row {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  background: rgba(20, 14, 8, 0.78);
+  padding: 2px 5px;
+  border-radius: 4px;
+}
+.card.has-art { position: relative; }
+.card-suit-icon, .card-item-icon {
+  display: inline-block;
+  vertical-align: middle;
+  filter: drop-shadow(0 0 1px rgba(0,0,0,0.6));
+}
+.card-category-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(184, 163, 122, 0.18);
+  color: #e8d6a8;
+  font-size: 11px;
+  line-height: 1;
+}
+.card-category-glyph.cat-ambush     { background: rgba(255, 200, 60, 0.22);  color: #ffd566; }
+.card-category-glyph.cat-dominance  { background: rgba(217, 122, 60, 0.22);  color: #ffb27a; }
+.card-category-glyph.cat-item       { background: rgba(155, 189, 88, 0.22);  color: #d4ee8c; }
+.card-category-glyph.cat-persistent { background: rgba(125, 163, 201, 0.22); color: #c0deff; }
+.card-category-glyph.cat-immediate  { background: rgba(255, 255, 255, 0.18); color: #f0ecda; }
+.card-category-glyph.cat-favor      { background: rgba(217, 76, 76, 0.22);   color: #ff9c9c; }
 .dim { color: #6a5640; }
 
 /* Card art rendering */

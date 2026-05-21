@@ -4,6 +4,7 @@ import { getCard } from '../../cards';
 import { AUTUMN_MAP, getAdjacent } from '../../map';
 import type { VagabondAction } from './actions';
 import type { Relationship } from './state';
+import { getQuest } from './quests';
 
 function isVagabondTurn(state: GameState): boolean {
   return state.factionOrder[state.activeIndex] === 'vagabond';
@@ -156,6 +157,55 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
         damaged.state = 'face-up';
       });
 
+    case 'vagabond.completeQuest':
+      return produce(state, draft => {
+        if (draft.phase !== 'daylight') return;
+        const v = draft.factions.vagabond!;
+        if (v.daylightActionsLeft <= 0) return;
+        if (!v.questDisplay.includes(a.questId)) return;
+        const quest = getQuest(a.questId);
+        const meta = AUTUMN_MAP.clearings.find(c => c.id === v.clearing)!;
+        if (meta.suit !== quest.suit) return;
+        if (!exhaustItem(v.items, quest.item1)) return;
+        if (!exhaustItem(v.items, quest.item2)) {
+          // Roll back the first exhaust on failure to keep the state coherent.
+          const it1 = v.items.find(i => i.kind === quest.item1 && i.state === 'face-up' && i.exhausted);
+          if (it1) it1.exhausted = false;
+          return;
+        }
+        // Remove from display, draw a replacement if available, bank the VP.
+        v.questDisplay = v.questDisplay.filter(id => id !== a.questId);
+        if (v.questDeck.length > 0) v.questDisplay.push(v.questDeck.shift()!);
+        v.completedQuests.push(a.questId);
+        const alreadyCompletedOfType = v.completedQuests.filter(id => id !== a.questId && getQuest(id).suit === quest.suit).length;
+        // Real Root grants +1 VP per existing completion of the same quest;
+        // we use the same per-suit bump for similar pressure.
+        const vp = quest.baseVp + alreadyCompletedOfType;
+        draft.scores.vagabond += vp;
+        v.daylightActionsLeft -= 1;
+        draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Completed quest ${a.questId} for ${vp} VP.` });
+      });
+
+    case 'vagabond.formCoalition':
+      return produce(state, draft => {
+        if (draft.phase !== 'daylight' && draft.phase !== 'evening') return;
+        const v = draft.factions.vagabond!;
+        if (v.coalitionPartner) return; // already allied
+        const myScore = draft.scores.vagabond;
+        const targetScore = draft.scores[a.faction];
+        // Coalition is only legal with a faction in last place — i.e. strictly
+        // worse than every other non-vagabond faction (and not above the Vagabond
+        // either). Mirrors the spirit of the real rule.
+        const others = (['marquise', 'eyrie', 'alliance'] as const).filter(f => f !== a.faction && draft.factions[f]);
+        const isLastPlace = others.every(f => draft.scores[f] > targetScore);
+        if (!isLastPlace) return;
+        if (targetScore >= myScore) return;
+        v.coalitionPartner = a.faction;
+        // Vagabond becomes 'allied' with the partner (no longer attacks them).
+        v.relationships[a.faction] = 'allied';
+        draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Formed coalition with ${a.faction}.` });
+      });
+
     case 'vagabond.endDaylight':
       return produce(state, draft => {
         if (draft.phase !== 'daylight') return;
@@ -236,6 +286,29 @@ export function vagabondLegalActions(state: GameState): Action[] {
     if (findItem(v.items, 'hammer') && v.items.some(i => i.state === 'damaged')) {
       const damaged = v.items.find(i => i.state === 'damaged')!;
       out.push({ kind: 'vagabond.repair', itemKind: damaged.kind });
+    }
+    // Complete quest
+    const here = AUTUMN_MAP.clearings.find(c => c.id === v.clearing)!;
+    for (const questId of v.questDisplay) {
+      const q = getQuest(questId);
+      if (q.suit !== here.suit) continue;
+      if (!findItem(v.items, q.item1)) continue;
+      if (q.item1 !== q.item2 && !findItem(v.items, q.item2)) continue;
+      if (q.item1 === q.item2) {
+        const count = v.items.filter(i => i.kind === q.item1 && i.state === 'face-up' && !i.exhausted).length;
+        if (count < 2) continue;
+      }
+      out.push({ kind: 'vagabond.completeQuest', questId });
+    }
+    // Form coalition — only with a strictly-last-place faction.
+    if (!v.coalitionPartner) {
+      const candidates = (['marquise', 'eyrie', 'alliance'] as const).filter(f => state.factions[f]);
+      for (const f of candidates) {
+        const others = candidates.filter(o => o !== f);
+        if (others.every(o => state.scores[o] > state.scores[f]) && state.scores[f] < state.scores.vagabond) {
+          out.push({ kind: 'vagabond.formCoalition', faction: f });
+        }
+      }
     }
   }
   if (state.phase === 'daylight') out.push({ kind: 'vagabond.endDaylight' });

@@ -17,6 +17,21 @@ export interface NetState {
   lastError: string | null;
 }
 
+// Per-room rejoin token storage. The server issues an opaque token when a
+// seat is claimed; persisting it locally lets a page reload reclaim the same
+// seat instead of dropping back to a spectator.
+const REJOIN_KEY_PREFIX = 'root-rejoin-v1:';
+function rejoinKey(roomId: string): string { return REJOIN_KEY_PREFIX + roomId; }
+function loadRejoinToken(roomId: string | null): string | undefined {
+  if (!roomId || typeof localStorage === 'undefined') return undefined;
+  return localStorage.getItem(rejoinKey(roomId)) ?? undefined;
+}
+function saveRejoinToken(roomId: string | null, token: string | null): void {
+  if (!roomId || typeof localStorage === 'undefined') return;
+  if (token) localStorage.setItem(rejoinKey(roomId), token);
+  else localStorage.removeItem(rejoinKey(roomId));
+}
+
 type Listener = (s: NetState) => void;
 
 class NetClient {
@@ -57,7 +72,8 @@ class NetClient {
     try { this.ws = new WebSocket(endpoint); }
     catch (e) { this.patch({ mode: 'disconnected', lastError: String(e) }); return; }
     this.ws.addEventListener('open', () => {
-      this.send({ kind: 'hello', displayName: this.displayName });
+      const rejoinToken = loadRejoinToken(this.state.roomId);
+      this.send({ kind: 'hello', displayName: this.displayName, ...(rejoinToken ? { rejoinToken } : {}) });
       this.patch({ mode: 'lobby' });
     });
     this.ws.addEventListener('message', (ev) => {
@@ -81,6 +97,11 @@ class NetClient {
     switch (msg.kind) {
       case 'welcome':
         this.patch({ clientId: msg.clientId });
+        break;
+      case 'session':
+        // Persist the per-room rejoin token. Null clears the entry, e.g.
+        // after releaseSeat or when the server didn't recognize our token.
+        saveRejoinToken(this.state.roomId, msg.rejoinToken);
         break;
       case 'lobby':
         this.patch({

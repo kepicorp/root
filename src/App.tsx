@@ -107,7 +107,7 @@ export function App() {
       <PhaseHeader state={state} playerFaction={playerFaction} />
 
       <div className="board-pane">
-        <Board />
+        <Board state={state} playerFaction={playerFaction} dispatch={dispatch} />
       </div>
 
       <aside className="right-pane">

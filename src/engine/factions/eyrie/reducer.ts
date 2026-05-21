@@ -1,65 +1,15 @@
 import { produce } from 'immer';
-import type { GameState, Action, ClearingId } from '../../types';
+import type { GameState, Action } from '../../types';
 import type { CardId } from '../../cards';
 import { getCard } from '../../cards';
 import { AUTUMN_MAP, getAdjacent } from '../../map';
 import { resolveCombat } from '../../combat';
 import { ROOST_VP_TRACK, type EyrieLeader, type DecreeSlot } from './state';
+import { findSlotTarget } from './decree';
 import type { EyrieAction } from './actions';
 
 function isEyrieTurn(state: GameState): boolean {
   return state.factionOrder[state.activeIndex] === 'eyrie';
-}
-
-function rules(state: GameState, clearing: ClearingId): boolean {
-  const cl = state.map.clearings[clearing];
-  if (!cl) return false;
-  const counts: Record<string, number> = {};
-  for (const [f, w] of Object.entries(cl.warriors)) counts[f] = (counts[f] ?? 0) + (w ?? 0);
-  for (const b of cl.buildings) counts[b.faction] = (counts[b.faction] ?? 0) + 1;
-  for (const t of cl.tokens) counts[t.faction] = (counts[t.faction] ?? 0) + 1;
-  const mine = counts.eyrie ?? 0;
-  let topOther = 0;
-  for (const [f, n] of Object.entries(counts)) {
-    if (f !== 'eyrie' && n > topOther) topOther = n;
-  }
-  return mine > 0 && mine > topOther;
-}
-
-function suitMatches(cardSuit: string, clearingSuit: string): boolean {
-  return cardSuit === 'bird' || cardSuit === clearingSuit;
-}
-
-/** Find a clearing where the Eyrie can perform an action for a slot card. */
-function findSlotTarget(state: GameState, slot: DecreeSlot, cardId: CardId): ClearingId | null {
-  const cardSuit = getCard(cardId).suit;
-  for (const c of AUTUMN_MAP.clearings) {
-    if (!suitMatches(cardSuit, c.suit)) continue;
-    const cl = state.map.clearings[c.id]!;
-    if (slot === 'recruit') {
-      const hasRoost = cl.buildings.some(b => b.faction === 'eyrie' && b.kind === 'roost');
-      if (hasRoost && (state.factions.eyrie?.warriorSupply ?? 0) > 0) return c.id;
-    } else if (slot === 'move') {
-      if ((cl.warriors.eyrie ?? 0) > 0) {
-        for (const nb of getAdjacent(AUTUMN_MAP, c.id)) {
-          if (rules(state, c.id) || rules(state, nb)) return c.id;
-        }
-      }
-    } else if (slot === 'battle') {
-      if ((cl.warriors.eyrie ?? 0) > 0) {
-        for (const f of ['marquise', 'alliance', 'vagabond'] as const) {
-          if ((cl.warriors[f] ?? 0) > 0 || cl.buildings.some(b => b.faction === f) || cl.tokens.some(t => t.faction === f)) {
-            return c.id;
-          }
-        }
-      }
-    } else if (slot === 'build') {
-      if (!rules(state, c.id)) continue;
-      const usedSlots = cl.buildings.length + cl.tokens.filter(t => t.kind === 'keep').length;
-      if (usedSlots < c.buildingSlots && (state.factions.eyrie?.roosts.length ?? 0) < 7) return c.id;
-    }
-  }
-  return null;
 }
 
 const NEXT_LEADER: Record<EyrieLeader, EyrieLeader> = {
@@ -87,6 +37,7 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
         if (idx < 0) return;
         draft.hands.eyrie.splice(idx, 1);
         e.decree[a.slot].push(a.cardId);
+        e.cardsAddedThisBirdsong += 1;
       });
 
     case 'eyrie.endBirdsong':
@@ -114,12 +65,28 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
               cl.warriors.eyrie = (cl.warriors.eyrie ?? 0) + 1;
               ee.warriorSupply -= 1;
             } else if (slot === 'move') {
+              // Pick the adjacent clearing that best sets up the rest of the
+              // Decree: prefer one with enemy warriors/buildings (lets the
+              // battle slot fire), otherwise an enemy-free clearing where
+              // we can still rule (lets future build/recruit fire). Falling
+              // back to adj[0] keeps the original deterministic behavior
+              // when all candidates score equally.
               const adj = getAdjacent(AUTUMN_MAP, target);
-              const dest = adj[0]!;
+              let bestDest = adj[0]!;
+              let bestScore = -1;
+              for (const d of adj) {
+                const dc = draft.map.clearings[d]!;
+                const enemyWarriors =
+                  (dc.warriors.marquise ?? 0) + (dc.warriors.alliance ?? 0) + (dc.warriors.vagabond ?? 0);
+                const enemyPieces = dc.buildings.filter(b => b.faction !== 'eyrie').length
+                  + dc.tokens.filter(t => t.faction !== 'eyrie').length;
+                const score = enemyWarriors * 2 + enemyPieces;
+                if (score > bestScore) { bestScore = score; bestDest = d; }
+              }
               const moving = Math.min(cl.warriors.eyrie ?? 0, 1);
               cl.warriors.eyrie = (cl.warriors.eyrie ?? 0) - moving;
-              draft.map.clearings[dest]!.warriors.eyrie =
-                (draft.map.clearings[dest]!.warriors.eyrie ?? 0) + moving;
+              draft.map.clearings[bestDest]!.warriors.eyrie =
+                (draft.map.clearings[bestDest]!.warriors.eyrie ?? 0) + moving;
             } else if (slot === 'build') {
               cl.buildings.push({ faction: 'eyrie', kind: 'roost' });
               ee.roosts.push(target);
@@ -196,6 +163,7 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
         e.birdsongDone = false;
         e.decreeResolved = false;
         e.eveningDone = true;
+        e.cardsAddedThisBirdsong = 0;
         // Advance.
         draft.activeIndex = (draft.activeIndex + 1) % draft.factionOrder.length;
         if (draft.activeIndex === 0) draft.turn += 1;

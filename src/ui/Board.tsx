@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { AUTUMN_MAP, getAdjacent } from '../engine/map';
-import type { ClearingId, Suit, Action, Faction } from '../engine/types';
-import { useGame } from './store';
+import type { ClearingId, Suit, Action, Faction, GameState } from '../engine/types';
 import { getLegalActions } from '../engine/legal';
 import { activeFaction } from '../engine/loop';
 import { boardArt, warriorArt, buildingArt } from '../assets';
@@ -30,6 +29,9 @@ const FACTION_COLOR: Record<string, string> = {
 };
 
 interface BoardProps {
+  state: GameState;
+  playerFaction: Faction | null;
+  dispatch: (action: Action) => void;
   backgroundSrc?: string;
 }
 
@@ -57,10 +59,7 @@ function actionFromTo(a: Action): { from: ClearingId | null; to: ClearingId } | 
   return null;
 }
 
-export function Board({ backgroundSrc }: BoardProps) {
-  const state = useGame((s) => s.state);
-  const playerFaction = useGame((s) => s.playerFaction);
-  const dispatch = useGame((s) => s.dispatch);
+export function Board({ state, playerFaction, dispatch, backgroundSrc }: BoardProps) {
   const [hovered, setHovered] = useState<ClearingId | null>(null);
   const [selected, setSelected] = useState<ClearingId | null>(null);
   const [infoClearing, setInfoClearing] = useState<ClearingId | null>(null);

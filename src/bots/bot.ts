@@ -4,6 +4,7 @@
 
 import type { GameState, Action, Faction } from '../engine/types';
 import { getLegalActions } from '../engine/legal';
+import { pickEyrieAction } from './eyrie';
 
 /** Heuristic priorities — higher first. */
 const PRIORITY: Record<string, number> = {
@@ -45,6 +46,13 @@ const PRIORITY: Record<string, number> = {
 export function pickAction(state: GameState): Action | null {
   const legals = getLegalActions(state);
   if (legals.length === 0) return null;
+  // Faction-specific picker overrides the priority table where the priority
+  // table is too coarse — Eyrie Decree composition is the obvious one.
+  const active = state.factionOrder[state.activeIndex];
+  if (active === 'eyrie') {
+    const eyriePick = pickEyrieAction(state, legals);
+    if (eyriePick) return eyriePick;
+  }
   // Sort by priority desc; tie-break random-ish by stable order.
   const sorted = legals.slice().sort((a, b) => (PRIORITY[b.kind] ?? 0) - (PRIORITY[a.kind] ?? 0));
   return sorted[0] ?? null;

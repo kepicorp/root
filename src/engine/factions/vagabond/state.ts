@@ -16,8 +16,10 @@ export interface VagabondState {
   clearing: ClearingId;
   items: CarriedItem[];
   relationships: Record<Exclude<Faction, 'vagabond'>, Relationship>;
-  quests: CardId[];          // unused for now
-  completedQuests: CardId[]; // unused
+  quests: CardId[];          // legacy: shared-deck cards (unused)
+  completedQuests: string[]; // ids of completed quest cards (from QUEST_DECK)
+  questDeck: string[];       // face-down draw pile of QuestCard.ids
+  questDisplay: string[];    // face-up available quests
   ruinsExplored: number;
   coalitionPartner?: Exclude<Faction, 'vagabond'>;
   slipped: boolean;
@@ -31,6 +33,8 @@ export const INITIAL_VAGABOND_STATE: VagabondState = {
   relationships: { marquise: 'indifferent', eyrie: 'indifferent', alliance: 'indifferent' },
   quests: [],
   completedQuests: [],
+  questDeck: [],
+  questDisplay: [],
   ruinsExplored: 0,
   slipped: false,
   daylightActionsLeft: 0,

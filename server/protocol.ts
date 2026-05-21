@@ -26,7 +26,7 @@ export interface LobbyState {
 // ─── Client → Server ────────────────────────────────────────────────────────
 
 export type ClientMessage =
-  | { kind: 'hello'; displayName: string }
+  | { kind: 'hello'; displayName: string; rejoinToken?: string }
   | { kind: 'claimSeat'; faction: Faction; vagabondCharacter?: VagabondCharacter }
   | { kind: 'releaseSeat' }
   | { kind: 'chooseVagabondCharacter'; character: VagabondCharacter }
@@ -39,6 +39,9 @@ export type ClientMessage =
 
 export type ServerMessage =
   | { kind: 'welcome'; clientId: ClientId }
+  // Private, per-client. Carries the rejoin token (if any) and current seat
+  // so the client can persist them to localStorage and rebind after a reload.
+  | { kind: 'session'; rejoinToken: string | null; faction: Faction | null }
   | { kind: 'lobby'; lobby: LobbyState }
   | { kind: 'gameState'; state: GameState; yourFaction: Faction | null }
   | { kind: 'error'; message: string }

@@ -105,6 +105,9 @@ function attachToRoom(ws: WebSocket, room: Room): void {
   const subscriber = {
     send: () => {
       const snap = room.snapshotFor(clientId);
+      // Echo session (token + seat) on every broadcast — cheap, idempotent,
+      // and keeps the client's localStorage in sync after any state change.
+      send(ws, { kind: 'session', rejoinToken: snap.rejoinToken, faction: snap.yourFaction });
       send(ws, { kind: 'lobby', lobby: snap.lobby });
       if (snap.started) {
         send(ws, { kind: 'gameState', state: snap.state, yourFaction: snap.yourFaction });
@@ -120,7 +123,7 @@ function attachToRoom(ws: WebSocket, room: Room): void {
     switch (msg.kind) {
       case 'hello':
         displayName = msg.displayName || clientId;
-        room.connect(clientId, displayName, subscriber);
+        room.connect(clientId, displayName, subscriber, msg.rejoinToken);
         break;
       case 'claimSeat': {
         const err = room.claimSeat(clientId, msg.faction, msg.vagabondCharacter);

@@ -11,7 +11,9 @@ import type { VagabondCharacter } from '../src/engine/factions/vagabond/state';
 import { STARTING_ITEMS } from '../src/engine/factions/vagabond/state';
 import { pickAction } from '../src/bots/bot';
 import { produce } from 'immer';
-import type { ClientId, LobbyState, PlayerInfo } from './protocol';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
+import type { ClientId, LobbyState } from './protocol';
+import { filterStateForRecipient } from './viewFilter';
 
 const BOT_TICK_MS = 400;
 
@@ -19,15 +21,41 @@ interface Subscriber {
   send: () => void;
 }
 
+/** Internal player record. The token is private (never broadcast); only
+ *  echoed back to the owning client via the per-client `session` message. */
+interface PlayerRecord {
+  clientId: ClientId;
+  displayName: string;
+  faction: Faction | null;
+  token: string | null;
+  online: boolean;
+}
+
+/** What we persist per seat: enough to let a token holder reclaim the seat
+ *  across a server restart. ClientIds are ephemeral and intentionally not
+ *  persisted. */
+export interface SeatPersistence {
+  token: string;
+  displayName: string;
+}
+
 /** Serializable snapshot of a room — used for disk persistence. */
 export interface RoomSnapshot {
   id: string;
   createdAt: number;
   lastActivityAt: number;
-  seats: Record<Faction, ClientId | null>;
+  // Persisted as {token, displayName} per seat. Old snapshots used
+  // `ClientId | null` and were reset to all-null on load — those still load
+  // fine, they just won't restore identity.
+  seats: Record<Faction, SeatPersistence | null>;
   vagabondCharacter: VagabondCharacter;
   state: GameState;
   started: boolean;
+}
+
+function tokensEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
 }
 
 export class Room {
@@ -35,7 +63,7 @@ export class Room {
   readonly createdAt: number;
   lastActivityAt: number;
 
-  private players = new Map<ClientId, PlayerInfo>();
+  private players = new Map<ClientId, PlayerRecord>();
   private seats: Record<Faction, ClientId | null> = {
     marquise: null, eyrie: null, alliance: null, vagabond: null,
   };
@@ -45,6 +73,7 @@ export class Room {
   private subscribers = new Map<ClientId, Subscriber>();
   private aiTimer: ReturnType<typeof setTimeout> | null = null;
   private onChange: ((room: Room) => void) | null = null;
+  private syntheticIdCounter = 0;
 
   constructor(id: string, opts: { createdAt?: number; state?: GameState; started?: boolean } = {}) {
     this.id = id;
@@ -67,34 +96,98 @@ export class Room {
   static fromSnapshot(snap: RoomSnapshot): Room {
     const r = new Room(snap.id, { createdAt: snap.createdAt, state: snap.state, started: snap.started });
     r.lastActivityAt = snap.lastActivityAt;
-    // Seats reset on hydration — humans reconnect and re-claim. Persistent
-    // identity / rejoin tokens are a follow-up.
-    r.seats = { marquise: null, eyrie: null, alliance: null, vagabond: null };
     r.vagabondCharacter = snap.vagabondCharacter;
+    // Rehydrate offline player records from persisted seat tokens. They sit
+    // in the players map under synthetic clientIds until someone reconnects
+    // with the matching token and is rebound to a live clientId.
+    for (const f of ALL_FACTIONS) {
+      const persisted = snap.seats?.[f];
+      if (!persisted || typeof persisted !== 'object' || !persisted.token) continue;
+      const offlineId = r.synthClientId();
+      r.players.set(offlineId, {
+        clientId: offlineId,
+        displayName: persisted.displayName || 'Player',
+        faction: f,
+        token: persisted.token,
+        online: false,
+      });
+      r.seats[f] = offlineId;
+    }
     if (r.started && !r.state.winner) r.scheduleAITurn();
     return r;
   }
 
   toSnapshot(): RoomSnapshot {
+    const persistedSeats: Record<Faction, SeatPersistence | null> = {
+      marquise: null, eyrie: null, alliance: null, vagabond: null,
+    };
+    for (const f of ALL_FACTIONS) {
+      const seatClientId = this.seats[f];
+      if (!seatClientId) continue;
+      const p = this.players.get(seatClientId);
+      if (p?.token) persistedSeats[f] = { token: p.token, displayName: p.displayName };
+    }
     return {
       id: this.id,
       createdAt: this.createdAt,
       lastActivityAt: this.lastActivityAt,
-      seats: { ...this.seats },
+      seats: persistedSeats,
       vagabondCharacter: this.vagabondCharacter,
       state: this.state,
       started: this.started,
     };
   }
 
+  private synthClientId(): string { return `offline-${++this.syntheticIdCounter}`; }
+
+  private newToken(): string { return randomBytes(16).toString('hex'); }
+
+  private findPlayerByToken(token: string): PlayerRecord | null {
+    for (const p of this.players.values()) {
+      if (p.token && tokensEqual(p.token, token)) return p;
+    }
+    return null;
+  }
+
   // ─── Connection lifecycle ────────────────────────────────────────────────
 
-  connect(clientId: ClientId, displayName: string, sub: Subscriber): void {
+  /** Bind a fresh WS connection to this room. If `rejoinToken` matches an
+   *  existing player record (typically offline from a prior disconnect or
+   *  hydration), the record is rebound to the new clientId — preserving the
+   *  seat. Otherwise a fresh player record is created. */
+  connect(clientId: ClientId, displayName: string, sub: Subscriber, rejoinToken?: string): void {
+    if (rejoinToken) {
+      const existing = this.findPlayerByToken(rejoinToken);
+      if (existing) {
+        const oldId = existing.clientId;
+        // Move the record under the new live clientId.
+        if (oldId !== clientId) {
+          this.players.delete(oldId);
+          // If another tab was holding this record live, drop its subscriber
+          // so we stop broadcasting to it. The old WS will see no further
+          // updates and any messages it sends will be rejected.
+          this.subscribers.delete(oldId);
+          if (existing.faction && this.seats[existing.faction] === oldId) {
+            this.seats[existing.faction] = clientId;
+          }
+        }
+        existing.clientId = clientId;
+        existing.displayName = displayName;
+        existing.online = true;
+        this.players.set(clientId, existing);
+        this.subscribers.set(clientId, sub);
+        this.broadcastLobby();
+        if (this.started) this.sendStateTo(clientId);
+        this.touched();
+        return;
+      }
+    }
     if (!this.players.has(clientId)) {
-      this.players.set(clientId, { clientId, displayName, faction: null });
+      this.players.set(clientId, { clientId, displayName, faction: null, token: null, online: true });
     } else {
       const p = this.players.get(clientId)!;
       p.displayName = displayName;
+      p.online = true;
     }
     this.subscribers.set(clientId, sub);
     this.broadcastLobby();
@@ -102,15 +195,21 @@ export class Room {
     this.touched();
   }
 
+  /** A WS closed. In lobby, this is symmetric with the old behavior: the
+   *  player record is removed and any held seat is freed. Once the game has
+   *  started, seat holders stick around as offline records so they can
+   *  reclaim their seat via the rejoin token. The bot covers their seat
+   *  while they're away. */
   disconnect(clientId: ClientId): void {
     this.subscribers.delete(clientId);
-    const seat = this.players.get(clientId)?.faction ?? null;
-    if (seat) {
-      this.seats[seat] = null;
-      const p = this.players.get(clientId);
-      if (p) p.faction = null;
+    const player = this.players.get(clientId);
+    if (!player) { this.touched(); return; }
+    if (this.started && player.faction) {
+      player.online = false;
+    } else {
+      if (player.faction) this.seats[player.faction] = null;
+      this.players.delete(clientId);
     }
-    this.players.delete(clientId);
     this.broadcastLobby();
     if (this.started) this.scheduleAITurn();
     this.touched();
@@ -130,6 +229,9 @@ export class Room {
     }
     this.seats[faction] = clientId;
     player.faction = faction;
+    // Issue a token at claim time so a tab close between claim and game start
+    // (or right after start) can still reclaim the seat via reload.
+    if (!player.token) player.token = this.newToken();
     if (faction === 'vagabond' && character) this.vagabondCharacter = character;
     this.broadcastLobby();
     this.touched();
@@ -141,6 +243,9 @@ export class Room {
     if (!player || !player.faction) return;
     this.seats[player.faction] = null;
     player.faction = null;
+    // Releasing the seat invalidates the token — the user is no longer
+    // associated with this room. A future claim re-issues a fresh token.
+    player.token = null;
     this.broadcastLobby();
     this.touched();
   }
@@ -215,7 +320,13 @@ export class Room {
     if (!this.started || this.state.winner) return;
     if (this.state.phase === 'setup' || this.state.phase === 'gameOver') return;
     const active = this.state.factionOrder[this.state.activeIndex];
-    if (this.seats[active!]) return;
+    const seatClientId = this.seats[active!];
+    if (seatClientId) {
+      const holder = this.players.get(seatClientId);
+      // Only block the bot if a *live* human is seated. An offline holder
+      // gets covered by the bot until they reconnect with their token.
+      if (holder?.online) return;
+    }
     const action = pickAction(this.state);
     if (!action) return;
     let next = this.reduceFull(this.state, action);
@@ -237,7 +348,12 @@ export class Room {
 
   private lobbySnapshot(): LobbyState {
     return {
-      players: Array.from(this.players.values()),
+      // Hide offline ghosts from the broadcast so other clients see them
+      // "leave" on disconnect; they'll reappear when their owner reconnects.
+      // Tokens are stripped here — they're per-client and never broadcast.
+      players: Array.from(this.players.values())
+        .filter(p => p.online)
+        .map(({ clientId, displayName, faction }) => ({ clientId, displayName, faction })),
       seats: { ...this.seats },
       vagabondCharacter: this.vagabondCharacter,
       started: this.started,
@@ -261,12 +377,18 @@ export class Room {
     lobby: LobbyState;
     state: GameState;
     yourFaction: Faction | null;
+    rejoinToken: string | null;
     started: boolean;
   } {
+    const player = this.players.get(clientId);
+    const faction = player?.faction ?? null;
     return {
       lobby: this.lobbySnapshot(),
-      state: this.state,
-      yourFaction: this.players.get(clientId)?.faction ?? null,
+      // Strip hidden info (other players' hands, deck order, supporters,
+      // quests) before this state goes out over the wire.
+      state: filterStateForRecipient(this.state, faction),
+      yourFaction: faction,
+      rejoinToken: player?.token ?? null,
       started: this.started,
     };
   }
