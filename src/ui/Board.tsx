@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
 import { AUTUMN_MAP, getAdjacent } from '../engine/map';
 import type { ClearingId, Suit, Action, Faction, GameState } from '../engine/types';
 import { getLegalActions } from '../engine/legal';
@@ -31,7 +31,23 @@ const FACTION_COLOR: Record<string, string> = {
 /** A map-targeted intent the player has armed from the ActionBar. The Board
  *  highlights valid targets and applies the action on click. */
 export type MapIntent =
-  | { kind: 'build'; building: 'sawmill' | 'workshop' | 'recruiter' };
+  | { kind: 'build'; building: 'sawmill' | 'workshop' | 'recruiter' }
+  | { kind: 'marquise.battle'; defender: Faction }
+  | { kind: 'alliance.spreadSympathy' }
+  | { kind: 'alliance.revolt' }
+  | { kind: 'alliance.organize' }
+  | { kind: 'alliance.battle'; defender: Faction }
+  | { kind: 'vagabond.strike'; defender: Faction };
+
+export const MAP_INTENT_LABELS: Record<MapIntent['kind'], string> = {
+  'build':                  'building',
+  'marquise.battle':        'attack',
+  'alliance.spreadSympathy':'spread sympathy',
+  'alliance.revolt':        'revolt',
+  'alliance.organize':      'organize',
+  'alliance.battle':        'attack',
+  'vagabond.strike':        'strike',
+};
 
 interface BoardProps {
   state: GameState;
@@ -220,17 +236,17 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
   const legals = isHuman ? getLegalActions(state) : [];
   const moveActions = getMovementActions(legals);
 
-  // When the player has armed a map-targeted action (e.g. "Build sawmill"),
-  // figure out which clearings would satisfy it. We match against legals so
-  // the engine stays the source of truth for what's allowed.
+  // When the player has armed a map-targeted action, figure out which
+  // clearings would satisfy it. We match against legals so the engine
+  // stays the source of truth for what's allowed.
   const intentTargets = new Set<ClearingId>();
   const intentDispatch: Map<ClearingId, Action> = new Map();
   if (mapIntent && isHuman) {
     for (const a of legals) {
-      if (mapIntent.kind === 'build' && a.kind === 'marquise.build' && a.building === mapIntent.building) {
-        intentTargets.add(a.clearing);
-        if (!intentDispatch.has(a.clearing)) intentDispatch.set(a.clearing, a);
-      }
+      const target = matchIntent(mapIntent, a);
+      if (target == null) continue;
+      intentTargets.add(target);
+      if (!intentDispatch.has(target)) intentDispatch.set(target, a);
     }
   }
 
@@ -597,11 +613,7 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
           clear way to back out without making a choice. */}
       {mapIntent && (
         <div className="map-intent-banner" role="status">
-          <span>
-            {mapIntent.kind === 'build'
-              ? <>Click a clearing to place a <strong>{mapIntent.building}</strong>.</>
-              : null}
-          </span>
+          <span>{intentBannerText(mapIntent, intentTargets.size)}</span>
           <button className="btn ghost small" onClick={() => setMapIntent(null)}>
             Cancel (Esc)
           </button>
@@ -687,6 +699,40 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
       </div>
     </div>
   );
+}
+
+/** Human-readable banner copy for an armed intent. */
+function intentBannerText(intent: MapIntent, targets: number): ReactNode {
+  const tail = targets === 0 ? ' — no legal targets' : '';
+  switch (intent.kind) {
+    case 'build':                    return <>Click a clearing to place a <strong>{intent.building}</strong>{tail}.</>;
+    case 'marquise.battle':          return <>Click a clearing to attack the <strong>{intent.defender}</strong>{tail}.</>;
+    case 'alliance.spreadSympathy':  return <>Click a clearing to <strong>spread sympathy</strong>{tail}.</>;
+    case 'alliance.revolt':          return <>Click a clearing to <strong>revolt</strong>{tail}.</>;
+    case 'alliance.organize':        return <>Click a clearing to <strong>organize</strong>{tail}.</>;
+    case 'alliance.battle':          return <>Click a clearing to attack the <strong>{intent.defender}</strong>{tail}.</>;
+    case 'vagabond.strike':          return <>Click your clearing to <strong>strike</strong> the <strong>{intent.defender}</strong>{tail}.</>;
+  }
+}
+
+/** Returns the target clearing if `action` satisfies `intent`, otherwise null. */
+function matchIntent(intent: MapIntent, action: Action): ClearingId | null {
+  switch (intent.kind) {
+    case 'build':
+      return action.kind === 'marquise.build' && action.building === intent.building ? action.clearing : null;
+    case 'marquise.battle':
+      return action.kind === 'marquise.battle' && action.defender === intent.defender ? action.clearing : null;
+    case 'alliance.spreadSympathy':
+      return action.kind === 'alliance.spreadSympathy' ? action.clearing : null;
+    case 'alliance.revolt':
+      return action.kind === 'alliance.revolt' ? action.clearing : null;
+    case 'alliance.organize':
+      return action.kind === 'alliance.organize' ? action.clearing : null;
+    case 'alliance.battle':
+      return action.kind === 'alliance.battle' && action.defender === intent.defender ? action.clearing : null;
+    case 'vagabond.strike':
+      return action.kind === 'vagabond.strike' && action.faction === intent.defender ? action.clearing : null;
+  }
 }
 
 function clientToSvg(svg: SVGSVGElement, clientX: number, clientY: number): { x: number; y: number } {
