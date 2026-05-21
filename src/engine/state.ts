@@ -2,7 +2,7 @@
 
 import { produce } from 'immer';
 import { AUTUMN_MAP } from './map';
-import { SHARED_DECK, type CardId } from './cards';
+import { SHARED_DECK, DOMINANCE_CARDS, getCard, type CardId } from './cards';
 import { mulberry32, shuffle } from './rng';
 import type {
   GameState, Faction, ClearingState, ItemKind, Action, ALL_FACTIONS as _F,
@@ -73,6 +73,7 @@ export function newGame(opts: NewGameOptions = {}): GameState {
     itemSupply,
     scores: { marquise: 0, eyrie: 0, alliance: 0, vagabond: 0 },
     pendingPrompts: [],
+    dominanceAvailable: DOMINANCE_CARDS.map(c => c.id),
     log: [{ turn: 1, faction: 'system', message: `New game (seed ${seed})` }],
   };
 
@@ -96,6 +97,20 @@ export function reduce(state: GameState, action: Action): GameState {
       return advancePhase(state);
     case 'system.endTurn':
       return endTurn(state);
+    case 'system.playDominance':
+      return produce(state, draft => {
+        if (draft.dominance) return; // already claimed
+        if ((draft.scores[action.faction] ?? 0) < 10) return;
+        const idx = draft.dominanceAvailable.indexOf(action.cardId);
+        if (idx < 0) return;
+        const card = getCard(action.cardId);
+        if (card.category !== 'dominance') return;
+        draft.dominanceAvailable.splice(idx, 1);
+        draft.dominance = { faction: action.faction, suit: card.suit };
+        // The faction abandons their VP track when chasing dominance.
+        draft.scores[action.faction] = 0;
+        draft.log.push({ turn: draft.turn, faction: action.faction, message: `Played ${card.name} — chasing dominance.` });
+      });
     case 'combat.declare':
       return resolveCombat(state, {
         clearing: action.clearing,

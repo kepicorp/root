@@ -126,6 +126,11 @@ export interface GameState {
   itemSupply: ItemKind[];
   scores: Record<Faction, number>;
   pendingPrompts: PendingPrompt[];
+  /** Dominance cards still in the supply (any player ≥ 10 VP may play one). */
+  dominanceAvailable: CardId[];
+  /** Set when a faction has played a Dominance card and is chasing the
+   *  non-VP win condition. Their VP track is abandoned. */
+  dominance?: { faction: Faction; suit: CardSuit };
   winner?: WinResult;
   log: LogEntry[];
 }
@@ -136,7 +141,8 @@ export type ItemKind = 'sword' | 'hammer' | 'crossbow' | 'boots' | 'bag' | 'tea'
 
 export type SystemAction =
   | { kind: 'system.advancePhase' }
-  | { kind: 'system.endTurn' };
+  | { kind: 'system.endTurn' }
+  | { kind: 'system.playDominance'; faction: Faction; cardId: CardId };
 
 export type CombatAction =
   | { kind: 'combat.declare'; clearing: ClearingId; attacker: Faction; defender: Faction }

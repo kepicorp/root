@@ -129,6 +129,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
   const [aidPicking, setAidPicking] = useState(false);
   const [repairPicking, setRepairPicking] = useState(false);
   const [trainPicking, setTrainPicking] = useState(false);
+  const [dominancePicking, setDominancePicking] = useState(false);
   function closeAllPickers(): void {
     setOverworkPicking(false);
     setMobilizePicking(false);
@@ -137,6 +138,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
     setAidPicking(false);
     setRepairPicking(false);
     setTrainPicking(false);
+    setDominancePicking(false);
   }
   useEffect(() => {
     function onKey(ev: KeyboardEvent) {
@@ -338,9 +340,19 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
         const showAid = g === 'main' && aidLegals.length > 0;
         const showRepair = g === 'main' && repairItems.size > 0;
         const showTrain = g === 'main' && trainOfficerCards.size > 0;
+        // Dominance card may be played during the player's birdsong once
+        // they're at 10+ VP and a card is still in the supply.
+        const dominanceEligible = isHuman
+          && state.phase === 'birdsong'
+          && active != null && active !== 'vagabond'
+          && (state.scores[active] ?? 0) >= 10
+          && state.dominance == null
+          && state.dominanceAvailable.length > 0;
+        const showDominance = g === 'birdsong' && dominanceEligible;
         if (list.length === 0 && ibs.length === 0
             && !showOverwork && !showMobilize && !showCraft
-            && !showSpendBird && !showAid && !showRepair && !showTrain) return null;
+            && !showSpendBird && !showAid && !showRepair && !showTrain
+            && !showDominance) return null;
         const overworkArmed = mapIntent?.kind === 'marquise.overwork';
         return (
           <div key={g} className={`action-group action-group-${g}`}>
@@ -419,6 +431,16 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                 >
                   <span className="action-label">Train officer</span>
                   {trainPicking && <span className="action-detail">pick a bird supporter below</span>}
+                </button>
+              )}
+              {showDominance && (
+                <button
+                  className={`btn action-btn ${dominancePicking ? 'armed' : ''} faction-${active}`}
+                  onClick={() => setDominancePicking(p => !p)}
+                  title="Abandon your VP track and chase the dominance win condition"
+                >
+                  <span className="action-label">Play Dominance</span>
+                  {dominancePicking && <span className="action-detail">pick a card below</span>}
                 </button>
               )}
               {list.slice(0, 20).map((a, i) => {
@@ -614,6 +636,33 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                         onClick={() => {
                           dispatch({ kind: 'alliance.trainOfficer', cardId: id });
                           setTrainPicking(false);
+                        }}
+                      >
+                        <span className="action-card-pick-suit" style={{ background: SUIT_COLOR[c.suit] }} />
+                        <span className="action-card-pick-name">{c.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {showDominance && dominancePicking && (
+              <div className="action-card-picker">
+                <div className="action-card-picker-title">
+                  Play Dominance — pick a card
+                  <button className="btn ghost small" onClick={() => setDominancePicking(false)} aria-label="Cancel">×</button>
+                </div>
+                <div className="action-card-picker-list">
+                  {state.dominanceAvailable.map(id => {
+                    const c = getCard(id);
+                    return (
+                      <button
+                        key={id}
+                        className="action-card-pick"
+                        style={{ borderColor: SUIT_COLOR[c.suit] }}
+                        onClick={() => {
+                          dispatch({ kind: 'system.playDominance', faction: active!, cardId: id });
+                          setDominancePicking(false);
                         }}
                       >
                         <span className="action-card-pick-suit" style={{ background: SUIT_COLOR[c.suit] }} />

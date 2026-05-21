@@ -5,7 +5,8 @@
 // the global turn counter increments.
 
 import { produce } from 'immer';
-import type { GameState, Phase } from './types';
+import type { GameState, Phase, Faction, CardSuit } from './types';
+import { AUTUMN_MAP } from './map';
 
 const PHASE_SEQUENCE: readonly Phase[] = ['birdsong', 'daylight', 'evening'];
 
@@ -90,6 +91,22 @@ export function onEnterBirdsong(draft: GameState): void {
 
 export function checkVictory(state: GameState): GameState {
   if (state.winner) return state;
+  // Dominance win — only checked at the start of the dominance-faction's
+  // birdsong.
+  if (state.dominance && state.phase === 'birdsong'
+      && state.factionOrder[state.activeIndex] === state.dominance.faction) {
+    if (factionMeetsDominance(state, state.dominance.faction, state.dominance.suit)) {
+      return produce(state, draft => {
+        draft.winner = { faction: draft.dominance!.faction, via: 'dominance' };
+        draft.phase = 'gameOver';
+        draft.log.push({
+          turn: draft.turn,
+          faction: 'system',
+          message: `${draft.dominance!.faction} achieved dominance — victory!`,
+        });
+      });
+    }
+  }
   for (const f of state.factionOrder) {
     if (state.scores[f] >= 30) {
       return produce(state, draft => {
@@ -104,4 +121,36 @@ export function checkVictory(state: GameState): GameState {
     }
   }
   return state;
+}
+
+/** Whether `faction` rules enough matching-suit clearings to win dominance. */
+function factionMeetsDominance(state: GameState, faction: Faction, suit: CardSuit): boolean {
+  const ruled = new Set<number>();
+  for (const cl of Object.entries(state.map.clearings)) {
+    const id = Number(cl[0]);
+    if (factionRules(state, faction, id)) ruled.add(id);
+  }
+  if (suit === 'bird') {
+    return (ruled.has(1) && ruled.has(12)) || (ruled.has(4) && ruled.has(9));
+  }
+  const matching = AUTUMN_MAP.clearings.filter(c => c.suit === suit).map(c => c.id);
+  return matching.filter(id => ruled.has(id)).length >= 3;
+}
+
+/** Generic "X rules clearing C" — warriors + buildings + tokens of X must
+ *  beat every other faction's total there. */
+function factionRules(state: GameState, faction: Faction, clearing: number): boolean {
+  const cl = state.map.clearings[clearing];
+  if (!cl) return false;
+  const score = (f: string) =>
+    ((cl.warriors as Record<string, number | undefined>)[f] ?? 0)
+    + cl.buildings.filter(b => b.faction === f).length
+    + cl.tokens.filter(t => t.faction === f).length;
+  const mine = score(faction);
+  if (mine <= 0) return false;
+  for (const other of ['marquise', 'eyrie', 'alliance', 'vagabond'] as const) {
+    if (other === faction) continue;
+    if (score(other) >= mine) return false;
+  }
+  return true;
 }
