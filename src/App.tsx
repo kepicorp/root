@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Board, type MapIntent } from './ui/Board';
 import { Hand } from './ui/Hand';
+import { DiscardPicker } from './ui/DiscardPicker';
 import { ActionBar } from './ui/ActionBar';
 import { Log } from './ui/Log';
 import { Scoreboard } from './ui/Scoreboard';
@@ -154,6 +155,8 @@ export function App() {
           <Hand state={state} faction={playerFaction} />
         </div>
       </div>
+
+      <DiscardPicker state={state} playerFaction={playerFaction} dispatch={dispatch} />
     </div>
   );
 }

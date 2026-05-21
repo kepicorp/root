@@ -274,7 +274,11 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
 
       {hasMapMoves && (
         <div className="actionbar-hint map-hint">
-          ⤵ <strong>Click the map</strong> to move warriors (March = 2 moves per turn).
+          ⤵ <strong>Click the map</strong> to {active === 'marquise'
+            ? <>move warriors (<em>March</em> = 2 moves per turn)</>
+            : active === 'vagabond'
+              ? <>move the Vagabond</>
+              : <>resolve a Decree move</>}.
         </div>
       )}
 

@@ -24,6 +24,7 @@ export interface VagabondState {
   coalitionPartner?: Exclude<Faction, 'vagabond'>;
   slipped: boolean;
   daylightActionsLeft: number;
+  pendingDiscard: number;
 }
 
 export const INITIAL_VAGABOND_STATE: VagabondState = {
@@ -38,6 +39,7 @@ export const INITIAL_VAGABOND_STATE: VagabondState = {
   ruinsExplored: 0,
   slipped: false,
   daylightActionsLeft: 0,
+  pendingDiscard: 0,
 };
 
 export const STARTING_ITEMS: Record<VagabondCharacter, ItemKind[]> = {

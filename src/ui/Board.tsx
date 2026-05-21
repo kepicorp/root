@@ -593,9 +593,12 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
         })}
       </g>
 
-      {/* Legend (rendered last so it stays on top of trees and clearings) */}
-      <MapLegend open={legendOpen} onToggle={() => setLegendOpen(o => !o)} />
       </svg>
+
+      {/* Legend overlay — pinned to the top-left of the board pane in
+          screen space (HTML, not inside the SVG) so panning/zooming the
+          map doesn't shove it around. */}
+      <MapLegend open={legendOpen} onToggle={() => setLegendOpen(o => !o)} />
 
       {/* Clearing info popup (lower-left of board) */}
       {infoClearing != null && (

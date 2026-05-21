@@ -23,6 +23,7 @@ export interface EyrieState {
   // resolution action fires) to the current Decree slot counts. The
   // player drains each in slot order; auto-resolve finishes the rest.
   resolutionLeft?: { recruit: number; move: number; battle: number; build: number };
+  pendingDiscard: number;
 }
 
 export const INITIAL_EYRIE_STATE: EyrieState = {
@@ -36,6 +37,7 @@ export const INITIAL_EYRIE_STATE: EyrieState = {
   decreeResolved: false,
   eveningDone: false,
   cardsAddedThisBirdsong: 0,
+  pendingDiscard: 0,
 };
 
 export const ROOST_VP_TRACK = [0, 0, 1, 2, 3, 4, 4, 5] as const;

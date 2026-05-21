@@ -9,6 +9,7 @@ export interface AllianceState {
   sympathy: ClearingId[];
   daylightActionsLeft: number;
   birdsongDone: boolean;
+  pendingDiscard: number;
 }
 
 export const INITIAL_ALLIANCE_STATE: AllianceState = {
@@ -19,6 +20,7 @@ export const INITIAL_ALLIANCE_STATE: AllianceState = {
   sympathy: [],
   daylightActionsLeft: 0,
   birdsongDone: false,
+  pendingDiscard: 0,
 };
 
 export const SYMPATHY_VP_TRACK = [1, 1, 1, 2, 2, 3, 3, 4, 4, 5] as const;

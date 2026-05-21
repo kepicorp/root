@@ -217,6 +217,7 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
       return produce(state, draft => {
         if (draft.phase !== 'evening') return;
         const v = draft.factions.vagabond!;
+        if (v.pendingDiscard > 0) return;
         const coinCount = v.items.filter(i => i.kind === 'coin' && i.state === 'face-up').length;
         const draws = 1 + coinCount;
         for (let i = 0; i < draws; i++) {
@@ -225,21 +226,42 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
           draft.hands.vagabond.push(c);
         }
         const bagCount = v.items.filter(i => i.kind === 'bag' && i.state === 'face-up').length;
-        while (draft.hands.vagabond.length > 5 + bagCount) {
-          const c = draft.hands.vagabond.shift()!;
-          draft.discard.push(c);
+        const limit = 5 + bagCount;
+        const excess = draft.hands.vagabond.length - limit;
+        if (excess > 0) {
+          v.pendingDiscard = excess;
+          draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Evening: drew ${draws}, must discard ${excess} (limit ${limit}).` });
+          return;
         }
-        v.slipped = false;
-        v.daylightActionsLeft = 6;
-        draft.activeIndex = (draft.activeIndex + 1) % draft.factionOrder.length;
-        if (draft.activeIndex === 0) draft.turn += 1;
-        draft.phase = 'birdsong';
-        draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Evening: drew ${draws}.` });
+        finishVagabondTurn(draft, draws);
+      });
+
+    case 'vagabond.discardCard':
+      return produce(state, draft => {
+        const v = draft.factions.vagabond!;
+        if (v.pendingDiscard <= 0) return;
+        const idx = draft.hands.vagabond.indexOf(a.cardId);
+        if (idx < 0) return;
+        draft.hands.vagabond.splice(idx, 1);
+        draft.discard.push(a.cardId);
+        v.pendingDiscard -= 1;
+        if (v.pendingDiscard === 0) finishVagabondTurn(draft, 0);
       });
 
     default:
       return state;
   }
+}
+
+function finishVagabondTurn(draft: GameState, _draws: number): void {
+  const v = draft.factions.vagabond!;
+  v.slipped = false;
+  v.daylightActionsLeft = 6;
+  v.pendingDiscard = 0;
+  draft.activeIndex = (draft.activeIndex + 1) % draft.factionOrder.length;
+  if (draft.activeIndex === 0) draft.turn += 1;
+  draft.phase = 'birdsong';
+  draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Turn ends; next: ${draft.factionOrder[draft.activeIndex]} birdsong.` });
 }
 
 export function vagabondLegalActions(state: GameState): Action[] {
@@ -312,7 +334,15 @@ export function vagabondLegalActions(state: GameState): Action[] {
     }
   }
   if (state.phase === 'daylight') out.push({ kind: 'vagabond.endDaylight' });
-  if (state.phase === 'evening') out.push({ kind: 'vagabond.evening' });
+  if (state.phase === 'evening') {
+    if (v.pendingDiscard > 0) {
+      for (const cardId of state.hands.vagabond) {
+        out.push({ kind: 'vagabond.discardCard', cardId });
+      }
+    } else {
+      out.push({ kind: 'vagabond.evening' });
+    }
+  }
   return out;
 }
 

@@ -240,34 +240,52 @@ export function marquiseReducer(state: GameState, action: Action): GameState {
       return produce(state, draft => {
         if (draft.phase !== 'evening') return;
         const m = draft.factions.marquise!;
-        // Draw 1 + 1 per 3 workshops.
+        if (m.pendingDiscard > 0) return; // wait for player to finish discarding
         const draws = 1 + Math.floor(m.buildings.workshop / 3);
         for (let i = 0; i < draws; i++) {
           const c = draft.deck.pop();
           if (!c) break;
           draft.hands.marquise.push(c);
         }
-        // Discard down to 5.
-        while (draft.hands.marquise.length > 5) {
-          const c = draft.hands.marquise.shift()!;
-          draft.discard.push(c);
+        const excess = draft.hands.marquise.length - 5;
+        if (excess > 0) {
+          m.pendingDiscard = excess;
+          draft.log.push({ turn: draft.turn, faction: 'marquise', message: `Evening: drew ${draws}, must discard ${excess}.` });
+          return;
         }
-        // Reset turn flags.
-        m.birdsongDone = false;
-        m.recruitedThisTurn = false;
-        m.daylightActionsLeft = 3;
-        m.bonusActionUsed = false;
-        m.craftedThisTurn = [];
-        // Advance to next faction.
-        draft.activeIndex = (draft.activeIndex + 1) % draft.factionOrder.length;
-        if (draft.activeIndex === 0) draft.turn += 1;
-        draft.phase = 'birdsong';
-        draft.log.push({ turn: draft.turn, faction: 'marquise', message: `Evening: drew ${draws}; next: ${draft.factionOrder[draft.activeIndex]} birdsong.` });
+        finishMarquiseTurn(draft, draws);
+      });
+
+    case 'marquise.discardCard':
+      return produce(state, draft => {
+        const m = draft.factions.marquise!;
+        if (m.pendingDiscard <= 0) return;
+        const idx = draft.hands.marquise.indexOf(a.cardId);
+        if (idx < 0) return;
+        draft.hands.marquise.splice(idx, 1);
+        draft.discard.push(a.cardId);
+        m.pendingDiscard -= 1;
+        if (m.pendingDiscard === 0) finishMarquiseTurn(draft, 0);
       });
 
     default:
       return state;
   }
+}
+
+function finishMarquiseTurn(draft: GameState, drawsLogged: number): void {
+  const m = draft.factions.marquise!;
+  m.birdsongDone = false;
+  m.recruitedThisTurn = false;
+  m.daylightActionsLeft = 3;
+  m.bonusActionUsed = false;
+  m.craftedThisTurn = [];
+  m.pendingDiscard = 0;
+  draft.activeIndex = (draft.activeIndex + 1) % draft.factionOrder.length;
+  if (draft.activeIndex === 0) draft.turn += 1;
+  draft.phase = 'birdsong';
+  const tail = drawsLogged > 0 ? `Evening: drew ${drawsLogged}; ` : '';
+  draft.log.push({ turn: draft.turn, faction: 'marquise', message: `${tail}next: ${draft.factionOrder[draft.activeIndex]} birdsong.` });
 }
 
 export function marquiseLegalActions(state: GameState): Action[] {
@@ -342,7 +360,13 @@ export function marquiseLegalActions(state: GameState): Action[] {
     out.push({ kind: 'marquise.endDaylight' });
   }
   if (state.phase === 'evening') {
-    out.push({ kind: 'marquise.evening' });
+    if (m.pendingDiscard > 0) {
+      for (const cardId of state.hands.marquise) {
+        out.push({ kind: 'marquise.discardCard', cardId });
+      }
+    } else {
+      out.push({ kind: 'marquise.evening' });
+    }
   }
   return out;
 }

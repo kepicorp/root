@@ -138,27 +138,48 @@ export function allianceReducer(state: GameState, action: Action): GameState {
       return produce(state, draft => {
         if (draft.phase !== 'evening') return;
         const al = draft.factions.alliance!;
+        if (al.pendingDiscard > 0) return;
         const draws = 1 + Object.keys(al.bases).length;
         for (let i = 0; i < draws; i++) {
           const c = draft.deck.pop();
           if (!c) break;
           draft.hands.alliance.push(c);
         }
-        while (draft.hands.alliance.length > 5) {
-          const c = draft.hands.alliance.shift()!;
-          draft.discard.push(c);
+        const excess = draft.hands.alliance.length - 5;
+        if (excess > 0) {
+          al.pendingDiscard = excess;
+          draft.log.push({ turn: draft.turn, faction: 'alliance', message: `Evening: drew ${draws}, must discard ${excess}.` });
+          return;
         }
-        al.birdsongDone = false;
-        al.daylightActionsLeft = 2 + al.officers;
-        draft.activeIndex = (draft.activeIndex + 1) % draft.factionOrder.length;
-        if (draft.activeIndex === 0) draft.turn += 1;
-        draft.phase = 'birdsong';
-        draft.log.push({ turn: draft.turn, faction: 'alliance', message: `Evening: drew ${draws}.` });
+        finishAllianceTurn(draft, draws);
+      });
+
+    case 'alliance.discardCard':
+      return produce(state, draft => {
+        const al = draft.factions.alliance!;
+        if (al.pendingDiscard <= 0) return;
+        const idx = draft.hands.alliance.indexOf(a.cardId);
+        if (idx < 0) return;
+        draft.hands.alliance.splice(idx, 1);
+        draft.discard.push(a.cardId);
+        al.pendingDiscard -= 1;
+        if (al.pendingDiscard === 0) finishAllianceTurn(draft, 0);
       });
 
     default:
       return state;
   }
+}
+
+function finishAllianceTurn(draft: GameState, _draws: number): void {
+  const al = draft.factions.alliance!;
+  al.birdsongDone = false;
+  al.daylightActionsLeft = 2 + al.officers;
+  al.pendingDiscard = 0;
+  draft.activeIndex = (draft.activeIndex + 1) % draft.factionOrder.length;
+  if (draft.activeIndex === 0) draft.turn += 1;
+  draft.phase = 'birdsong';
+  draft.log.push({ turn: draft.turn, faction: 'alliance', message: `Turn ends; next: ${draft.factionOrder[draft.activeIndex]} birdsong.` });
 }
 
 export function allianceLegalActions(state: GameState): Action[] {
@@ -204,6 +225,14 @@ export function allianceLegalActions(state: GameState): Action[] {
     }
   }
   if (state.phase === 'daylight') out.push({ kind: 'alliance.endDaylight' });
-  if (state.phase === 'evening') out.push({ kind: 'alliance.evening' });
+  if (state.phase === 'evening') {
+    if (al.pendingDiscard > 0) {
+      for (const cardId of state.hands.alliance) {
+        out.push({ kind: 'alliance.discardCard', cardId });
+      }
+    } else {
+      out.push({ kind: 'alliance.evening' });
+    }
+  }
   return out;
 }

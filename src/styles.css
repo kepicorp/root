@@ -62,6 +62,47 @@ body { background: var(--bg); color: var(--paper); }
   min-height: 0;
 }
 
+/* Discard picker — full-viewport overlay shown when a human player must
+   discard cards down to the hand-size limit at end of evening. */
+.discard-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+.discard-picker {
+  background: #1d1610;
+  border: 2px solid var(--accent);
+  border-radius: 10px;
+  padding: 18px 20px;
+  max-width: 90vw;
+  max-height: 90vh;
+  overflow: auto;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+}
+.discard-picker-title { font-size: 14px; color: #f0e2c2; margin-bottom: 12px; text-align: center; }
+.discard-picker-title strong { color: var(--accent); }
+.discard-picker-cards {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.discard-pick-card {
+  cursor: pointer;
+  padding: 0;
+  margin: 0;
+  font-family: inherit;
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+.discard-pick-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.5);
+}
+
 /* Count picker — pops up after click-source + click-destination for
    multi-warrior moves (Marquise march). Lets the player pick how many to
    move before the action ships. */
@@ -113,6 +154,50 @@ body { background: var(--bg); color: var(--paper); }
   box-shadow: 0 4px 16px rgba(0,0,0,0.5);
 }
 .map-intent-banner strong { color: var(--accent); }
+/* Map legend — pinned to the top-left of the board pane, in screen space
+   so panning/zooming the map doesn't shove it around. */
+.map-legend {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 5;
+  background: rgba(29, 22, 16, 0.94);
+  border: 2px solid #c9892f;
+  border-radius: 8px;
+  color: #f5e9d0;
+  font-size: 11px;
+  min-width: 110px;
+  max-width: 220px;
+}
+.map-legend-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 6px 12px;
+  background: #2a1d10;
+  color: #c9892f;
+  border: 0;
+  border-radius: 6px 6px 0 0;
+  font-family: inherit;
+  font-weight: 700;
+  letter-spacing: 2px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.map-legend.closed .map-legend-toggle { border-radius: 6px; }
+.map-legend-toggle-icon { font-weight: 700; }
+.map-legend-body { padding: 8px 12px 10px; display: flex; flex-direction: column; gap: 8px; max-height: calc(100vh - 360px); overflow-y: auto; }
+.map-legend-section { display: flex; flex-direction: column; gap: 3px; }
+.map-legend-section-title { font-size: 10px; font-weight: 700; letter-spacing: 1px; color: #c9892f; margin-bottom: 2px; }
+.map-legend-row { display: flex; align-items: center; gap: 8px; }
+.map-legend-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid #3b2a18; }
+.map-legend-dot.sympathy { background: #9bbd58; border-radius: 50%; }
+.map-legend-dot.keep     { background: #d97a3c; border-radius: 2px; }
+.map-legend-dot.ruin     { background: #cdc3a8; border-radius: 2px; }
+.map-legend-dot.target   { background: #88e08a; box-shadow: 0 0 0 2px rgba(136, 224, 138, 0.4); }
+.map-legend-icon { width: 16px; height: 16px; }
+
 .zoom-controls {
   position: absolute;
   top: 16px;

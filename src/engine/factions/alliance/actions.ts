@@ -8,4 +8,5 @@ export type AllianceAction =
   | { kind: 'alliance.revolt'; clearing: ClearingId; supporterCards: CardId[] }
   | { kind: 'alliance.battle'; clearing: ClearingId; defender: Faction }
   | { kind: 'alliance.endDaylight' }
-  | { kind: 'alliance.evening' };
+  | { kind: 'alliance.evening' }
+  | { kind: 'alliance.discardCard'; cardId: CardId };

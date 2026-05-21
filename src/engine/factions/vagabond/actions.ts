@@ -12,4 +12,5 @@ export type VagabondAction =
   | { kind: 'vagabond.formCoalition'; faction: Exclude<Faction, 'vagabond'> }
   | { kind: 'vagabond.refresh' }
   | { kind: 'vagabond.endDaylight' }
-  | { kind: 'vagabond.evening' };
+  | { kind: 'vagabond.evening' }
+  | { kind: 'vagabond.discardCard'; cardId: CardId };

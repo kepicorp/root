@@ -294,36 +294,53 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
       return produce(state, draft => {
         if (draft.phase !== 'evening') return;
         const e = draft.factions.eyrie!;
-        // Score VP per roost count.
+        if (e.pendingDiscard > 0) return;
         const vp = ROOST_VP_TRACK[Math.min(e.roosts.length, ROOST_VP_TRACK.length - 1)] ?? 0;
         draft.scores.eyrie += vp;
-        // Draw 1 + bonus per 3 roosts
         const draws = 1 + Math.floor(e.roosts.length / 3);
         for (let i = 0; i < draws; i++) {
           const c = draft.deck.pop();
           if (!c) break;
           draft.hands.eyrie.push(c);
         }
-        while (draft.hands.eyrie.length > 5) {
-          const c = draft.hands.eyrie.shift()!;
-          draft.discard.push(c);
+        const excess = draft.hands.eyrie.length - 5;
+        if (excess > 0) {
+          e.pendingDiscard = excess;
+          draft.log.push({ turn: draft.turn, faction: 'eyrie', message: `Evening: scored ${vp} VP, drew ${draws}, must discard ${excess}.` });
+          return;
         }
-        // Reset turn flags.
-        e.birdsongDone = false;
-        e.decreeResolved = false;
-        e.eveningDone = true;
-        e.cardsAddedThisBirdsong = 0;
-        e.resolutionLeft = undefined;
-        // Advance.
-        draft.activeIndex = (draft.activeIndex + 1) % draft.factionOrder.length;
-        if (draft.activeIndex === 0) draft.turn += 1;
-        draft.phase = 'birdsong';
-        draft.log.push({ turn: draft.turn, faction: 'eyrie', message: `Evening: scored ${vp} VP, drew ${draws}.` });
+        finishEyrieTurn(draft, vp, draws);
+      });
+
+    case 'eyrie.discardCard':
+      return produce(state, draft => {
+        const e = draft.factions.eyrie!;
+        if (e.pendingDiscard <= 0) return;
+        const idx = draft.hands.eyrie.indexOf(a.cardId);
+        if (idx < 0) return;
+        draft.hands.eyrie.splice(idx, 1);
+        draft.discard.push(a.cardId);
+        e.pendingDiscard -= 1;
+        if (e.pendingDiscard === 0) finishEyrieTurn(draft, 0, 0);
       });
 
     default:
       return state;
   }
+}
+
+function finishEyrieTurn(draft: GameState, _vp: number, _draws: number): void {
+  const e = draft.factions.eyrie!;
+  e.birdsongDone = false;
+  e.decreeResolved = false;
+  e.eveningDone = true;
+  e.cardsAddedThisBirdsong = 0;
+  e.resolutionLeft = undefined;
+  e.pendingDiscard = 0;
+  draft.activeIndex = (draft.activeIndex + 1) % draft.factionOrder.length;
+  if (draft.activeIndex === 0) draft.turn += 1;
+  draft.phase = 'birdsong';
+  draft.log.push({ turn: draft.turn, faction: 'eyrie', message: `Turn ends; next: ${draft.factionOrder[draft.activeIndex]} birdsong.` });
 }
 
 export function eyrieLegalActions(state: GameState): Action[] {
@@ -382,7 +399,13 @@ export function eyrieLegalActions(state: GameState): Action[] {
     }
   }
   if (state.phase === 'evening') {
-    out.push({ kind: 'eyrie.evening' });
+    if (e.pendingDiscard > 0) {
+      for (const cardId of state.hands.eyrie) {
+        out.push({ kind: 'eyrie.discardCard', cardId });
+      }
+    } else {
+      out.push({ kind: 'eyrie.evening' });
+    }
   }
   return out;
 }

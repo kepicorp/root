@@ -15,6 +15,7 @@ export interface MarquiseState {
   birdsongDone: boolean;
   craftedThisTurn: string[];   // card ids used to craft this turn (for de-dup)
   bonusActionUsed: boolean;    // bird-card extra action consumed
+  pendingDiscard: number;      // cards to discard before evening completes
 }
 
 export const INITIAL_MARQUISE_STATE: MarquiseState = {
@@ -26,4 +27,5 @@ export const INITIAL_MARQUISE_STATE: MarquiseState = {
   birdsongDone: false,
   craftedThisTurn: [],
   bonusActionUsed: false,
+  pendingDiscard: 0,
 };

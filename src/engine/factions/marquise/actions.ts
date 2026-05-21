@@ -11,4 +11,5 @@ export type MarquiseAction =
   | { kind: 'marquise.craft'; cardId: CardId }
   | { kind: 'marquise.spendBirdForExtra'; cardId: CardId }
   | { kind: 'marquise.endDaylight' }
-  | { kind: 'marquise.evening' };
+  | { kind: 'marquise.evening' }
+  | { kind: 'marquise.discardCard'; cardId: CardId };
