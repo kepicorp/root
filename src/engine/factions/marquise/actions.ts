@@ -1,14 +1,14 @@
-// Marquise action union. Phase 2 fills this in.
-// Phase 1 ships with a tiny stub so the central Action type compiles.
-
-import type { ClearingId } from '../../types';
+import type { ClearingId, Faction } from '../../types';
+import type { CardId } from '../../cards';
 
 export type MarquiseAction =
-  | { kind: 'marquise.placeWood' }                            // birdsong
+  | { kind: 'marquise.placeWood' }
   | { kind: 'marquise.build'; clearing: ClearingId; building: 'sawmill' | 'workshop' | 'recruiter' }
   | { kind: 'marquise.recruit' }
-  | { kind: 'marquise.overwork'; clearing: ClearingId; cardId: string }
+  | { kind: 'marquise.overwork'; clearing: ClearingId; cardId: CardId }
   | { kind: 'marquise.march'; from: ClearingId; to: ClearingId; count: number }
-  | { kind: 'marquise.battle'; clearing: ClearingId; defender: import('../../types').Faction }
-  | { kind: 'marquise.craft'; cardId: string }
-  | { kind: 'marquise.endDaylight' };
+  | { kind: 'marquise.battle'; clearing: ClearingId; defender: Faction }
+  | { kind: 'marquise.craft'; cardId: CardId }
+  | { kind: 'marquise.spendBirdForExtra'; cardId: CardId }
+  | { kind: 'marquise.endDaylight' }
+  | { kind: 'marquise.evening' };
