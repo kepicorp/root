@@ -7,11 +7,15 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Install all deps (build needs dev deps for tsc / vite). Force dev deps in
-# case the host environment exports NODE_ENV=production (which would
-# otherwise make `npm ci` silently skip devDependencies).
+# case the host environment exports NODE_ENV=production or has
+# NPM_CONFIG_PRODUCTION baked in — either would otherwise make `npm ci`
+# silently skip devDependencies and leave tsc / vite out of node_modules.
 ENV NODE_ENV=development
+ENV NPM_CONFIG_PRODUCTION=false
 COPY package*.json ./
-RUN npm ci --include=dev
+RUN npm ci --include=dev --no-audit --no-fund \
+ && test -x node_modules/.bin/tsc \
+ && test -x node_modules/.bin/vite
 
 # Copy source.
 COPY tsconfig.json vite.config.ts index.html ./
