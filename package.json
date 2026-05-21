@@ -9,20 +9,26 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -b --noEmit"
+    "typecheck": "tsc -b --noEmit",
+    "server": "tsx server/index.ts",
+    "host": "concurrently -k -n vite,server -c green,cyan \"vite --host\" \"tsx server/index.ts\""
   },
   "dependencies": {
+    "concurrently": "^9.2.1",
     "immer": "^10.1.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "ws": "^8.20.1",
     "zustand": "^4.5.5"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^4.3.3",
     "fast-check": "^3.23.1",
     "jsdom": "^25.0.1",
+    "tsx": "^4.22.3",
     "typescript": "^5.6.3",
     "vite": "^5.4.10",
     "vitest": "^2.1.4"
