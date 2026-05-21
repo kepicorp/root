@@ -8,7 +8,8 @@ import { dominanceArt, itemArt } from '../assets';
 
 interface Props {
   card: Card;
-  /** Render the inline-suit icon larger (default 14px). */
+  /** Icon edge length in px. Default 28 — fills a full row at the bottom
+   *  of the card. */
   size?: number;
 }
 
@@ -30,18 +31,22 @@ const CATEGORY_GLYPH: Record<Card['category'], string> = {
   favor:      '♥',
 };
 
-export function CardIcon({ card, size = 14 }: Props) {
+export function CardIcon({ card, size = 28 }: Props) {
   const suitArt = card.suit === 'bird' || card.suit === 'fox' || card.suit === 'mouse' || card.suit === 'rabbit'
     ? dominanceArt(card.suit)
     : null;
   const item = card.category === 'item' && card.item ? itemArt(card.item) : null;
   return (
-    <span className="card-icon-row" title={`${card.name} · ${CATEGORY_LABEL[card.category]}`}>
+    <div className="card-icon-row" title={`${card.name} · ${CATEGORY_LABEL[card.category]}`}>
       {suitArt && <img src={suitArt} alt={card.suit} className="card-suit-icon" style={{ width: size, height: size }} />}
-      <span className={`card-category-glyph cat-${card.category}`} aria-label={CATEGORY_LABEL[card.category]}>
+      <span
+        className={`card-category-glyph cat-${card.category}`}
+        aria-label={CATEGORY_LABEL[card.category]}
+        style={{ width: size, height: size, fontSize: Math.round(size * 0.65) }}
+      >
         {CATEGORY_GLYPH[card.category]}
       </span>
       {item && <img src={item} alt={card.item} className="card-item-icon" style={{ width: size, height: size }} />}
-    </span>
+    </div>
   );
 }

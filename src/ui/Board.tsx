@@ -409,7 +409,7 @@ export function Board({ state, playerFaction, dispatch, backgroundSrc }: BoardPr
               {(() => {
                 const present = (['marquise', 'eyrie', 'alliance', 'vagabond'] as const)
                   .filter(f => (cl.warriors[f] ?? 0) > 0);
-                const size = 30;
+                const size = 38;
                 const gap = 4;
                 const total = present.length * size + Math.max(0, present.length - 1) * gap;
                 const startX = -total / 2 + size / 2;
@@ -441,13 +441,13 @@ export function Board({ state, playerFaction, dispatch, backgroundSrc }: BoardPr
 
               {/* Buildings + tokens row */}
               {(() => {
-                const size = 22;
+                const size = 28;
                 const gap = 2;
                 const bldgs = cl.buildings;
                 const total = bldgs.length * size + Math.max(0, bldgs.length - 1) * gap;
                 const startX = -total / 2 + size / 2;
                 return (
-                  <g transform="translate(0, 36)">
+                  <g transform="translate(0, 42)">
                     {bldgs.map((b, idx) => {
                       const art = buildingArt(b.faction, b.kind);
                       const cx = startX + idx * (size + gap);
@@ -471,14 +471,14 @@ export function Board({ state, playerFaction, dispatch, backgroundSrc }: BoardPr
                 {cl.tokens.filter(t => t.kind === 'wood').slice(0, 5).map((_, idx) => (
                   <circle
                     key={`w${idx}`}
-                    cx={36} cy={-12 + idx * 7} r={4.5}
+                    cx={42} cy={-14 + idx * 9} r={6}
                     fill="#7c5c2e" stroke="#3b2a18" strokeWidth={1.2}
                   />
                 ))}
                 {cl.tokens.filter(t => t.kind === 'sympathy').map((_, idx) => {
                   const art = buildingArt('alliance', 'sympathy');
                   return art ? (
-                    <image key={`s${idx}`} href={art} x={-46} y={-12 + idx * 18} width={18} height={18} />
+                    <image key={`s${idx}`} href={art} x={-52} y={-14 + idx * 24} width={24} height={24} />
                   ) : (
                     <polygon
                       key={`s${idx}`}
@@ -490,7 +490,7 @@ export function Board({ state, playerFaction, dispatch, backgroundSrc }: BoardPr
                 {cl.tokens.filter(t => t.kind === 'keep').length > 0 && (() => {
                   const art = buildingArt('marquise', 'keep');
                   return art ? (
-                    <image href={art} x={28} y={-44} width={22} height={22} />
+                    <image href={art} x={30} y={-50} width={28} height={28} />
                   ) : (
                     <text x={36} y={-30} textAnchor="middle" fontSize={11} fill="#3b2a18" fontWeight={800}>
                       K
@@ -503,9 +503,9 @@ export function Board({ state, playerFaction, dispatch, backgroundSrc }: BoardPr
               {cl.vagabondHere && (() => {
                 const art = warriorArt('vagabond');
                 return art ? (
-                  <image href={art} x={-44} y={20} width={28} height={28} />
+                  <image href={art} x={-52} y={20} width={36} height={36} />
                 ) : (
-                  <circle cx={-30} cy={34} r={10} fill={FACTION_COLOR.vagabond} stroke="#3b2a18" strokeWidth={2} />
+                  <circle cx={-34} cy={38} r={13} fill={FACTION_COLOR.vagabond} stroke="#3b2a18" strokeWidth={2} />
                 );
               })()}
             </g>
