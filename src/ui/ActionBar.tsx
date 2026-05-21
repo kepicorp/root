@@ -35,7 +35,11 @@ const MAP_DRIVEN: ReadonlySet<string> = new Set([
   'vagabond.move',
   'vagabond.slip',
   'vagabond.strike',
-  'eyrie.addToDecree', // surfaced via the Decree slots in EyriePanel
+  'eyrie.addToDecree',      // surfaced via the Decree slots in EyriePanel
+  'eyrie.executeRecruit',
+  'eyrie.executeMove',
+  'eyrie.executeBattle',
+  'eyrie.executeBuild',
 ]);
 
 const BUILDING_LABEL: Record<'sawmill' | 'workshop' | 'recruiter', string> = {
@@ -152,7 +156,12 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
   const isHuman = active === playerFaction;
   const allLegals = isHuman ? getLegalActions(state) : [];
   const filtered = allLegals.filter(a => !MAP_DRIVEN.has(a.kind) && a.kind !== 'system.advancePhase' && a.kind !== 'system.endTurn');
-  const hasMapMoves = isHuman && allLegals.some(a => a.kind === 'marquise.march' || a.kind === 'vagabond.move' || a.kind === 'vagabond.slip');
+  const hasMapMoves = isHuman && allLegals.some(a =>
+    a.kind === 'marquise.march'
+    || a.kind === 'vagabond.move'
+    || a.kind === 'vagabond.slip'
+    || a.kind === 'eyrie.executeMove'
+  );
 
   // Group actions
   const groups: Record<string, Action[]> = { birdsong: [], main: [], bonus: [], end: [] };
@@ -174,6 +183,10 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
   let canSpreadSympathy = false;
   let canRevolt = false;
   let canOrganize = false;
+  let canEyrieRecruit = false;
+  const eyrieBattleDefenders = new Set<Faction>();
+  let canEyrieBuild = false;
+  let canEyrieMove = false;
   for (const a of allLegals) {
     if (a.kind === 'marquise.build')           buildable.add(a.building);
     else if (a.kind === 'marquise.battle')     marquiseBattleDefenders.add(a.defender);
@@ -183,7 +196,14 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
     else if (a.kind === 'alliance.spreadSympathy') canSpreadSympathy = true;
     else if (a.kind === 'alliance.revolt')         canRevolt = true;
     else if (a.kind === 'alliance.organize')       canOrganize = true;
+    else if (a.kind === 'eyrie.executeRecruit')    canEyrieRecruit = true;
+    else if (a.kind === 'eyrie.executeMove')       canEyrieMove = true;
+    else if (a.kind === 'eyrie.executeBattle')     eyrieBattleDefenders.add(a.defender);
+    else if (a.kind === 'eyrie.executeBuild')      canEyrieBuild = true;
   }
+  // canEyrieMove drives only the map hint; movement is map-driven via the
+  // existing source→destination click flow, not an explicit button.
+  void canEyrieMove;
   type IntentButton = { label: string; intent: MapIntent; group: 'birdsong' | 'main' };
   const intentButtons: IntentButton[] = [];
   for (const b of ['sawmill', 'workshop', 'recruiter'] as const) {
@@ -201,6 +221,15 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
   for (const d of vagabondStrikeDefenders) {
     intentButtons.push({ label: `Strike ${FACTION_LABEL[d]}`, intent: { kind: 'vagabond.strike', defender: d }, group: 'main' });
   }
+  if (canEyrieRecruit) {
+    intentButtons.push({ label: 'Recruit (Decree)', intent: { kind: 'eyrie.executeRecruit' }, group: 'main' });
+  }
+  for (const d of eyrieBattleDefenders) {
+    intentButtons.push({ label: `Battle ${FACTION_LABEL[d]} (Decree)`, intent: { kind: 'eyrie.executeBattle', defender: d }, group: 'main' });
+  }
+  if (canEyrieBuild) {
+    intentButtons.push({ label: 'Build Roost (Decree)', intent: { kind: 'eyrie.executeBuild' }, group: 'main' });
+  }
   const intentButtonsByGroup: Record<'birdsong' | 'main', IntentButton[]> = { birdsong: [], main: [] };
   for (const b of intentButtons) intentButtonsByGroup[b.group].push(b);
 
@@ -210,6 +239,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
     if (a.kind === 'marquise.battle' && b.kind === 'marquise.battle')   return a.defender === b.defender;
     if (a.kind === 'alliance.battle' && b.kind === 'alliance.battle')   return a.defender === b.defender;
     if (a.kind === 'vagabond.strike' && b.kind === 'vagabond.strike')   return a.defender === b.defender;
+    if (a.kind === 'eyrie.executeBattle' && b.kind === 'eyrie.executeBattle') return a.defender === b.defender;
     return true;
   }
   function renderIntentButton(b: IntentButton) {

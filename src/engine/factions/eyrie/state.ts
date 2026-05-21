@@ -18,6 +18,11 @@ export interface EyrieState {
   // birdsong. Resets each evening. The bot uses this to add at most one
   // card per turn; the human UI ignores it.
   cardsAddedThisBirdsong: number;
+  // Per-step resolution counters used by the manual-resolution flow.
+  // Lazily initialized when daylight starts (or when the first manual
+  // resolution action fires) to the current Decree slot counts. The
+  // player drains each in slot order; auto-resolve finishes the rest.
+  resolutionLeft?: { recruit: number; move: number; battle: number; build: number };
 }
 
 export const INITIAL_EYRIE_STATE: EyrieState = {

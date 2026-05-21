@@ -672,6 +672,33 @@ body { background: var(--bg); color: var(--paper); }
 .faction-panel.alliance { border-color: #9bbd58; }
 .faction-panel.vagabond { border-color: #b8a37a; }
 
+/* Alliance supporters — shown only to the Alliance player. */
+.alliance-supporters-line { margin-top: 4px; font-size: 11px; color: #cfc2a8; }
+.alliance-supporters-line strong { color: #f0e2c2; }
+.supporter-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+.supporter-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  background: #1a140d;
+  border-left: 2px solid var(--rule);
+  border-radius: 3px;
+  font-size: 11px;
+}
+.supporter-pip { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+.supporter-name { flex: 1; color: #e8d6a8; }
+.supporter-suit { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+
 /* Eyrie Decree slots — 2x2 grid of clickable cards, each showing the slot
    icon, name, total card count, and a suit-pip breakdown. */
 .eyrie-stats { display: flex; gap: 12px; font-size: 11px; color: #cfc2a8; flex-wrap: wrap; margin-bottom: 8px; }
@@ -756,6 +783,18 @@ body { background: var(--bg); color: var(--paper); }
 .decree-pick-suit { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
 .decree-pick-name { flex: 1; }
 .eyrie-progress { margin-top: 6px; font-size: 11px; }
+.eyrie-resolution {
+  margin-top: 8px;
+  padding: 6px 8px;
+  background: rgba(125, 163, 201, 0.10);
+  border: 1px solid rgba(125, 163, 201, 0.45);
+  border-radius: 4px;
+}
+.eyrie-resolution-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #c0deff; margin-bottom: 4px; }
+.eyrie-resolution-row { display: flex; flex-wrap: wrap; gap: 8px; font-size: 11px; color: #e8d6a8; }
+.eyrie-res-step { display: inline-flex; align-items: center; gap: 4px; }
+.eyrie-res-step.done { opacity: 0.45; }
+.eyrie-res-step-glyph { font-size: 13px; }
 
 /* Setup wizard */
 .app.setup-only { grid-template-rows: auto 1fr; }

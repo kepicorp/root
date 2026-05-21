@@ -1,12 +1,18 @@
-// Alliance faction panel. Phase 4 fills this in.
+// Alliance faction panel. Shows public stats for everyone; the supporter
+// pile (face-down to opponents) is fully revealed to the Alliance player.
 
-import type { GameState, Action } from '../../engine/types';
+import type { GameState, Action, CardSuit } from '../../engine/types';
+import { getCard } from '../../engine/cards';
 
 interface Props {
   state: GameState;
   isHuman: boolean;
   dispatch: (a: Action) => void;
 }
+
+const SUIT_COLOR: Record<CardSuit, string> = {
+  fox: '#d97a3c', mouse: '#e6c34a', rabbit: '#9bbd58', bird: '#7da3c9',
+};
 
 export function AlliancePanel({ state, isHuman }: Props) {
   const a = state.factions.alliance;
@@ -15,12 +21,24 @@ export function AlliancePanel({ state, isHuman }: Props) {
     <div className="faction-panel alliance">
       <h3>Woodland Alliance</h3>
       <div>Warriors: {a.warriorSupply} · Officers: {a.officers} · Sympathy: {a.sympathy.length}/10</div>
-      {isHuman ? (
-        <div>Supporters: {a.supporters.length} (hidden from others)</div>
-      ) : (
-        <div>Supporters: {a.supporters.length}</div>
+      <div className="alliance-supporters-line">
+        Supporters: <strong>{a.supporters.length}</strong>
+        {isHuman ? ' (visible only to you)' : ' (face-down to you)'}
+      </div>
+      {isHuman && a.supporters.length > 0 && (
+        <ul className="supporter-list" aria-label="Your face-down supporter cards">
+          {a.supporters.map((id, i) => {
+            const c = getCard(id);
+            return (
+              <li key={i} className="supporter-row" style={{ borderColor: SUIT_COLOR[c.suit] }}>
+                <span className="supporter-pip" style={{ background: SUIT_COLOR[c.suit] }} />
+                <span className="supporter-name">{c.name}</span>
+                <span className="supporter-suit dim">{c.suit}</span>
+              </li>
+            );
+          })}
+        </ul>
       )}
-      <em>Mechanics arrive in Phase 4.</em>
     </div>
   );
 }

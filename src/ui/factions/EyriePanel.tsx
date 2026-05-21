@@ -136,6 +136,20 @@ export function EyriePanel({ state, isHuman, dispatch }: Props) {
           Added {e.cardsAddedThisBirdsong} card{e.cardsAddedThisBirdsong === 1 ? '' : 's'} this birdsong.
         </div>
       )}
+
+      {isHuman && active === 'eyrie' && state.phase === 'daylight' && e.resolutionLeft && (
+        <div className="eyrie-resolution">
+          <div className="eyrie-resolution-title">Resolving Decree</div>
+          <div className="eyrie-resolution-row">
+            {SLOT_ORDER.map(s => (
+              <span key={s} className={`eyrie-res-step ${e.resolutionLeft![s] > 0 ? 'todo' : 'done'}`}>
+                <span className="eyrie-res-step-glyph">{SLOT_GLYPH[s]}</span>
+                {SLOT_LABEL[s]}: <strong>{e.decree[s].length - e.resolutionLeft![s]}/{e.decree[s].length}</strong>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

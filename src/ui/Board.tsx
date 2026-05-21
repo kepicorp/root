@@ -38,7 +38,10 @@ export type MapIntent =
   | { kind: 'alliance.revolt' }
   | { kind: 'alliance.organize' }
   | { kind: 'alliance.battle'; defender: Faction }
-  | { kind: 'vagabond.strike'; defender: Faction };
+  | { kind: 'vagabond.strike'; defender: Faction }
+  | { kind: 'eyrie.executeRecruit' }
+  | { kind: 'eyrie.executeBattle'; defender: Faction }
+  | { kind: 'eyrie.executeBuild' };
 
 interface BoardProps {
   state: GameState;
@@ -62,14 +65,16 @@ function getMovementActions(actions: Action[]): Action[] {
   return actions.filter(a =>
     a.kind === 'marquise.march' ||
     a.kind === 'vagabond.move' ||
-    a.kind === 'vagabond.slip'
+    a.kind === 'vagabond.slip' ||
+    a.kind === 'eyrie.executeMove'
   );
 }
 
 function actionFromTo(a: Action): { from: ClearingId | null; to: ClearingId } | null {
-  if (a.kind === 'marquise.march') return { from: a.from, to: a.to };
-  if (a.kind === 'vagabond.move')  return { from: null, to: a.to };
-  if (a.kind === 'vagabond.slip')  return { from: null, to: a.to };
+  if (a.kind === 'marquise.march')     return { from: a.from, to: a.to };
+  if (a.kind === 'eyrie.executeMove')  return { from: a.from, to: a.to };
+  if (a.kind === 'vagabond.move')      return { from: null, to: a.to };
+  if (a.kind === 'vagabond.slip')      return { from: null, to: a.to };
   return null;
 }
 
@@ -707,6 +712,9 @@ function intentBannerText(intent: MapIntent, targets: number): ReactNode {
     case 'alliance.organize':        return <>Click a clearing to <strong>organize</strong>{tail}.</>;
     case 'alliance.battle':          return <>Click a clearing to attack the <strong>{intent.defender}</strong>{tail}.</>;
     case 'vagabond.strike':          return <>Click your clearing to <strong>strike</strong> the <strong>{intent.defender}</strong>{tail}.</>;
+    case 'eyrie.executeRecruit':     return <>Click a matching-suit roost to <strong>recruit</strong>{tail}.</>;
+    case 'eyrie.executeBattle':      return <>Click a clearing to attack the <strong>{intent.defender}</strong>{tail}.</>;
+    case 'eyrie.executeBuild':       return <>Click a ruled clearing to <strong>build a roost</strong>{tail}.</>;
   }
 }
 
@@ -729,6 +737,12 @@ function matchIntent(intent: MapIntent, action: Action): ClearingId | null {
       return action.kind === 'alliance.battle' && action.defender === intent.defender ? action.clearing : null;
     case 'vagabond.strike':
       return action.kind === 'vagabond.strike' && action.faction === intent.defender ? action.clearing : null;
+    case 'eyrie.executeRecruit':
+      return action.kind === 'eyrie.executeRecruit' ? action.clearing : null;
+    case 'eyrie.executeBattle':
+      return action.kind === 'eyrie.executeBattle' && action.defender === intent.defender ? action.clearing : null;
+    case 'eyrie.executeBuild':
+      return action.kind === 'eyrie.executeBuild' ? action.clearing : null;
   }
 }
 
