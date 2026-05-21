@@ -11,6 +11,13 @@ interface ActionBarProps {
 
 const FACTIONS: Faction[] = ['marquise', 'eyrie', 'alliance', 'vagabond'];
 
+/** Hide actions driven by clicking the map. */
+const MAP_DRIVEN: ReadonlySet<string> = new Set([
+  'marquise.march',
+  'vagabond.move',
+  'vagabond.slip',
+]);
+
 function actionLabel(a: Action): string {
   const k = a.kind.replace(/^[a-z]+\./, '');
   let extras = '';
@@ -50,21 +57,34 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin }: ActionBar
 
   const active = activeFaction(state);
   const isHuman = active === playerFaction;
-  const legals = isHuman ? getLegalActions(state).slice(0, 20) : [];
+  const allLegals = isHuman ? getLegalActions(state) : [];
+  const buttonLegals = allLegals.filter(a => !MAP_DRIVEN.has(a.kind)).slice(0, 20);
+  const hasMoveActions = isHuman && allLegals.some(a => MAP_DRIVEN.has(a.kind));
+
   return (
     <div className="actionbar">
       <span className="actionbar-label">
         Turn {state.turn} · {active} · {state.phase}
       </span>
       {isHuman ? (
-        <div className="actions-list">
-          {legals.length === 0 && <em>no actions</em>}
-          {legals.map((a, i) => (
-            <button key={i} className="btn action-btn" onClick={() => dispatch(a)} title={a.kind}>
-              {actionLabel(a)}
-            </button>
-          ))}
-        </div>
+        <>
+          <div className="actions-list">
+            {buttonLegals.length === 0 && <em>no actions</em>}
+            {buttonLegals.map((a, i) => (
+              <button
+                key={i}
+                className="btn action-btn"
+                onClick={() => dispatch(a)}
+                title={a.kind}
+              >
+                {actionLabel(a)}
+              </button>
+            ))}
+          </div>
+          {hasMoveActions && (
+            <span className="actionbar-hint">click the map to move</span>
+          )}
+        </>
       ) : (
         <em>AI turn ({active})…</em>
       )}

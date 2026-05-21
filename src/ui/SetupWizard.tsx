@@ -10,22 +10,32 @@ const DESC: Record<Faction, string> = {
   marquise: 'Industrial cats. Build a sprawling workshop network across the woods.',
   eyrie:    'Imperial birds. Bind your hand into a brittle Decree of unbreakable orders.',
   alliance: 'Rebel critters. Spread sympathy, foment revolt, and outrage your oppressors.',
-  vagabond: 'Lone scoundrel. Collect items, run errands, play factions against each other.',
+  vagabond: "Lone scoundrel. Collect items, run errands, play factions against each other.",
 };
 
 const CHAR_DESC: Record<VagabondCharacter, string> = {
-  thief:  'Starts with torch, boots, tea, sword. Steal one of your enemy\'s cards each turn.',
+  thief:  "Starts with torch, boots, tea, sword. Steal one of your enemy's cards each turn.",
   tinker: 'Starts with torch, boots, bag, hammer. Pull cards from the discard pile.',
   ranger: 'Starts with torch, boots, sword, crossbow. Hide in forests to repair items.',
 };
 
 export function SetupWizard() {
   const begin = useGame((s) => s.begin);
+  const loadSaved = useGame((s) => s.loadSaved);
+  const hasSaved = useGame((s) => s.hasSavedGame());
   const [picked, setPicked] = useState<Faction | null>(null);
   const [character, setCharacter] = useState<VagabondCharacter>('thief');
 
   return (
     <div className="setup-wizard">
+      {hasSaved && (
+        <div className="saved-game-banner">
+          <span>You have a saved game.</span>
+          <button className="btn primary" onClick={() => loadSaved()}>
+            Resume
+          </button>
+        </div>
+      )}
       <h2>Choose your faction</h2>
       <div className="faction-grid">
         {FACTIONS.map((f) => (
@@ -33,6 +43,7 @@ export function SetupWizard() {
             key={f}
             className={`faction-card faction-${f} ${picked === f ? 'selected' : ''}`}
             onClick={() => setPicked(f)}
+            aria-pressed={picked === f}
           >
             <div className="faction-card-name">{f}</div>
             <div className="faction-card-desc">{DESC[f]}</div>
@@ -47,6 +58,7 @@ export function SetupWizard() {
               key={c}
               className={`btn ${character === c ? 'selected' : ''}`}
               onClick={() => setCharacter(c)}
+              aria-pressed={character === c}
             >
               <strong>{c}</strong> — {CHAR_DESC[c]}
             </button>
