@@ -2,12 +2,20 @@ import type { GameState, Faction } from '../engine/types';
 import { ALL_FACTIONS } from '../engine/types';
 import { activeFaction } from '../engine/loop';
 import { useGame } from './store';
+import { factionIcon } from '../assets';
 
 const FACTION_COLOR: Record<string, string> = {
   marquise: '#d97a3c',
   eyrie:    '#7da3c9',
   alliance: '#9bbd58',
   vagabond: '#b8a37a',
+};
+
+const ICON: Record<Faction, string | null> = {
+  marquise: factionIcon('marquise'),
+  eyrie:    factionIcon('eyrie'),
+  alliance: factionIcon('alliance'),
+  vagabond: factionIcon('vagabond'),
 };
 
 export function Scoreboard({ state }: { state: GameState }) {
@@ -22,6 +30,7 @@ export function Scoreboard({ state }: { state: GameState }) {
         const present = state.factions[f] !== undefined;
         const score = state.scores[f];
         const targetReached = score >= 30;
+        const icon = ICON[f];
         return (
           <div
             key={f}
@@ -29,10 +38,11 @@ export function Scoreboard({ state }: { state: GameState }) {
             style={{ borderColor: FACTION_COLOR[f] }}
             aria-label={`${f}: ${score} victory points${isActive ? ', active turn' : ''}`}
           >
-            <div className="score-faction" style={{ color: FACTION_COLOR[f] }}>{f}</div>
-            <div className="score-value" key={scoreTick[f]}>
-              {score}
+            <div className="score-faction" style={{ color: FACTION_COLOR[f] }}>
+              {icon && <img src={icon} alt="" className="score-icon" />}
+              {f}
             </div>
+            <div className="score-value" key={scoreTick[f]}>{score}</div>
           </div>
         );
       })}

@@ -130,6 +130,92 @@ body { background: var(--bg); color: var(--paper); }
 .card-cat { color: #b8a37a; font-size: 10px; font-style: italic; }
 .dim { color: #6a5640; }
 
+/* Card art rendering */
+.card.has-art {
+  padding: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  aspect-ratio: 5 / 7;
+  width: 110px;
+  display: block;
+}
+.card-img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+.card-zoom {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10;
+  pointer-events: none;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+  border: 2px solid var(--accent);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #1a1410;
+}
+.card-zoom img {
+  display: block;
+  width: 360px;
+  height: auto;
+}
+
+/* Opponent hands (face-down) */
+.opponent-hands {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.opp-hand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.opp-hand-label {
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--accent);
+  min-width: 70px;
+  font-size: 11px;
+}
+.opp-hand-stack {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+.card-back-mini {
+  width: 14px;
+  height: 20px;
+  border-radius: 2px;
+  border: 1px solid var(--rule);
+  background: #2a1d10;
+}
+.card-back-mini.placeholder { background: linear-gradient(135deg, #3b2a18, #2a1d10); }
+.opp-hand-count { font-size: 11px; color: #b8a37a; margin-left: 4px; }
+
+/* Faction icon in score chip / hand label */
+.score-icon { width: 14px; height: 14px; vertical-align: middle; margin-right: 4px; }
+.score-faction { display: flex; align-items: center; }
+.faction-icon { width: 14px; height: 14px; vertical-align: middle; margin-right: 6px; }
+.hand-label { display: flex; align-items: center; }
+
+/* Asset status pill */
+.asset-status {
+  background: transparent;
+  border: 1px solid var(--rule);
+  color: #b8a37a;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 1px;
+  cursor: pointer;
+}
+.asset-status.ok { color: #9bbd58; border-color: #9bbd58; }
+.asset-status.none { color: #b8a37a; font-style: italic; }
+
 .faction-panels {
   display: flex;
   flex-direction: column;

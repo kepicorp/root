@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { AUTUMN_MAP, getAdjacent } from '../engine/map';
-import type { ClearingId, Suit, Action } from '../engine/types';
+import type { ClearingId, Suit, Action, Faction } from '../engine/types';
 import { useGame } from './store';
 import { getLegalActions } from '../engine/legal';
 import { activeFaction } from '../engine/loop';
+import { boardArt, warriorArt, buildingArt } from '../assets';
 
 const BOARD_W = 1000;
 const BOARD_H = 800;
@@ -24,6 +25,14 @@ const FACTION_COLOR: Record<string, string> = {
 interface BoardProps {
   backgroundSrc?: string;
 }
+
+// Pre-resolved per-faction warrior art (null if file missing).
+const WARRIOR_ART: Record<Faction, string | null> = {
+  marquise: warriorArt('marquise'),
+  eyrie:    warriorArt('eyrie'),
+  alliance: warriorArt('alliance'),
+  vagabond: warriorArt('vagabond'),
+};
 
 /** Movement-like actions that should be driven by clicking the map. */
 function getMovementActions(actions: Action[]): Action[] {
@@ -47,6 +56,7 @@ export function Board({ backgroundSrc }: BoardProps) {
   const dispatch = useGame((s) => s.dispatch);
   const [hovered, setHovered] = useState<ClearingId | null>(null);
   const [selected, setSelected] = useState<ClearingId | null>(null);
+  const bgSrc = backgroundSrc ?? boardArt() ?? undefined;
 
   // Reset selection when turn changes.
   useEffect(() => { setSelected(null); }, [state.activeIndex, state.phase]);
@@ -107,8 +117,8 @@ export function Board({ backgroundSrc }: BoardProps) {
       role="img"
       aria-label="Root autumn map"
     >
-      {backgroundSrc ? (
-        <image href={backgroundSrc} x={0} y={0} width={BOARD_W} height={BOARD_H} />
+      {bgSrc ? (
+        <image href={bgSrc} x={0} y={0} width={BOARD_W} height={BOARD_H} preserveAspectRatio="xMidYMid slice" />
       ) : (
         <rect x={0} y={0} width={BOARD_W} height={BOARD_H} fill="#2f4a2a" />
       )}
@@ -179,15 +189,22 @@ export function Board({ backgroundSrc }: BoardProps) {
                 {c.id}
               </text>
 
-              {/* Warrior stacks per faction */}
+              {/* Warrior stacks per faction (art when available, colored circle otherwise) */}
               <g transform="translate(0, 5)">
                 {(['marquise', 'eyrie', 'alliance', 'vagabond'] as const).map((f, i) => {
                   const count = cl.warriors[f] ?? 0;
                   if (count <= 0) return null;
+                  const art = WARRIOR_ART[f];
                   return (
                     <g key={f} transform={`translate(${-30 + i * 20}, 0)`}>
-                      <circle r={8} fill={FACTION_COLOR[f]} stroke="#3b2a18" strokeWidth={1.5} />
-                      <text y={3} textAnchor="middle" fontSize={10} fontWeight={700} fill="#3b2a18">
+                      {art ? (
+                        <image href={art} x={-9} y={-9} width={18} height={18} />
+                      ) : (
+                        <circle r={8} fill={FACTION_COLOR[f]} stroke="#3b2a18" strokeWidth={1.5} />
+                      )}
+                      <text y={4} textAnchor="middle" fontSize={10} fontWeight={700}
+                            fill={art ? '#fff' : '#3b2a18'}
+                            stroke={art ? '#000' : 'none'} strokeWidth={art ? 0.5 : 0}>
                         {count}
                       </text>
                     </g>
@@ -195,16 +212,21 @@ export function Board({ backgroundSrc }: BoardProps) {
                 })}
               </g>
 
-              {/* Building stack (squares) + tokens */}
+              {/* Building stack + tokens (art when available) */}
               <g transform="translate(0, 23)">
-                {cl.buildings.map((b, idx) => (
-                  <rect
-                    key={idx}
-                    x={-30 + idx * 13} y={-6} width={11} height={11}
-                    fill={FACTION_COLOR[b.faction]}
-                    stroke="#3b2a18" strokeWidth={1.5}
-                  />
-                ))}
+                {cl.buildings.map((b, idx) => {
+                  const art = buildingArt(b.faction, b.kind);
+                  return art ? (
+                    <image key={idx} href={art} x={-30 + idx * 13 - 1} y={-7} width={13} height={13} />
+                  ) : (
+                    <rect
+                      key={idx}
+                      x={-30 + idx * 13} y={-6} width={11} height={11}
+                      fill={FACTION_COLOR[b.faction]}
+                      stroke="#3b2a18" strokeWidth={1.5}
+                    />
+                  );
+                })}
                 {cl.tokens.filter(t => t.kind === 'wood').slice(0, 4).map((_, idx) => (
                   <circle
                     key={`w${idx}`}
@@ -212,28 +234,38 @@ export function Board({ backgroundSrc }: BoardProps) {
                     fill="#7c5c2e" stroke="#3b2a18" strokeWidth={1}
                   />
                 ))}
-                {cl.tokens.filter(t => t.kind === 'sympathy').map((_, idx) => (
-                  <polygon
-                    key={`s${idx}`}
-                    points={`-20,${-12 - idx*8} -14,${-2 - idx*8} -26,${-2 - idx*8}`}
-                    fill="#9bbd58" stroke="#3b2a18" strokeWidth={1}
-                  />
-                ))}
-                {cl.tokens.filter(t => t.kind === 'keep').length > 0 && (
-                  <text x={32} y={2} textAnchor="middle" fontSize={9} fill="#3b2a18" fontWeight={700}>
-                    K
-                  </text>
-                )}
+                {cl.tokens.filter(t => t.kind === 'sympathy').map((_, idx) => {
+                  const art = buildingArt('alliance', 'sympathy');
+                  if (art) return <image key={`s${idx}`} href={art} x={-26} y={-12 - idx * 8} width={12} height={12} />;
+                  return (
+                    <polygon
+                      key={`s${idx}`}
+                      points={`-20,${-12 - idx*8} -14,${-2 - idx*8} -26,${-2 - idx*8}`}
+                      fill="#9bbd58" stroke="#3b2a18" strokeWidth={1}
+                    />
+                  );
+                })}
+                {cl.tokens.filter(t => t.kind === 'keep').length > 0 && (() => {
+                  const art = buildingArt('marquise', 'keep');
+                  return art ? (
+                    <image href={art} x={26} y={-6} width={12} height={12} />
+                  ) : (
+                    <text x={32} y={2} textAnchor="middle" fontSize={9} fill="#3b2a18" fontWeight={700}>
+                      K
+                    </text>
+                  );
+                })()}
               </g>
 
               {/* Vagabond pawn */}
-              {cl.vagabondHere && (
-                <circle
-                  cx={0} cy={36} r={6}
-                  fill={FACTION_COLOR.vagabond}
-                  stroke="#3b2a18" strokeWidth={1.5}
-                />
-              )}
+              {cl.vagabondHere && (() => {
+                const art = warriorArt('vagabond');
+                return art ? (
+                  <image href={art} x={-8} y={28} width={16} height={16} />
+                ) : (
+                  <circle cx={0} cy={36} r={6} fill={FACTION_COLOR.vagabond} stroke="#3b2a18" strokeWidth={1.5} />
+                );
+              })()}
             </g>
           );
         })}

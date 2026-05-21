@@ -4,6 +4,7 @@ import { ActionBar } from './ui/ActionBar';
 import { Log } from './ui/Log';
 import { Scoreboard } from './ui/Scoreboard';
 import { SetupWizard } from './ui/SetupWizard';
+import { AssetStatus } from './ui/AssetStatus';
 import { useGame } from './ui/store';
 import { FactionPanels } from './ui/factions';
 import { ALL_FACTIONS } from './engine/types';
@@ -36,6 +37,7 @@ export function App() {
             ? <strong>Game over — {state.winner?.faction} wins via {state.winner?.via}.</strong>
             : <>playing as <strong>{playerFaction}</strong></>}
         </p>
+        <AssetStatus />
         <button className="btn ghost" onClick={() => reset(Math.floor(Math.random() * 1e9))}>
           new game
         </button>

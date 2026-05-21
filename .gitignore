@@ -15,4 +15,6 @@ dist-ssr
 npm-debug.log*
 
 # Raw board game assets (copyright Leder Games — not redistributable)
-src/assets/raw/
+src/assets/raw/*
+!src/assets/raw/.gitkeep
+!src/assets/raw/README.md
