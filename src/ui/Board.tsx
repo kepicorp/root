@@ -6,6 +6,7 @@ import { getLegalActions } from '../engine/legal';
 import { activeFaction } from '../engine/loop';
 import { boardArt, warriorArt, buildingArt } from '../assets';
 import { Trees } from './Trees';
+import { MapLegend } from './MapLegend';
 
 const BOARD_W = 1000;
 const BOARD_H = 800;
@@ -57,6 +58,7 @@ export function Board({ backgroundSrc }: BoardProps) {
   const dispatch = useGame((s) => s.dispatch);
   const [hovered, setHovered] = useState<ClearingId | null>(null);
   const [selected, setSelected] = useState<ClearingId | null>(null);
+  const [legendOpen, setLegendOpen] = useState(true);
   const bgSrc = backgroundSrc ?? boardArt() ?? undefined;
 
   // Reset selection when turn changes.
@@ -163,7 +165,7 @@ export function Board({ backgroundSrc }: BoardProps) {
       </g>
 
       {/* Clearings */}
-      <g className="clearings">
+      <g className="clearings" style={{ pointerEvents: 'auto' }}>
         {AUTUMN_MAP.clearings.map(c => {
           const isHovered = c.id === hovered;
           const isAdjacent = adjacentToHovered?.has(c.id) ?? false;
@@ -361,6 +363,9 @@ export function Board({ backgroundSrc }: BoardProps) {
           );
         })}
       </g>
+
+      {/* Legend (rendered last so it stays on top of trees and clearings) */}
+      <MapLegend open={legendOpen} onToggle={() => setLegendOpen(o => !o)} />
     </svg>
   );
 }
