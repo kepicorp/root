@@ -9,6 +9,7 @@ import { AssetStatus } from './ui/AssetStatus';
 import { PhaseHeader } from './ui/PhaseHeader';
 import { Lobby } from './ui/Lobby';
 import { Home } from './ui/Home';
+import { Admin } from './ui/Admin';
 import { useGame } from './ui/store';
 import { useNetGame, useNetBridge } from './ui/networkStore';
 import { netClient } from './ui/network';
@@ -16,6 +17,11 @@ import { FactionPanels } from './ui/factions';
 import { ALL_FACTIONS } from './engine/types';
 
 export function App() {
+  // Admin page lives outside the game state machine entirely.
+  if (typeof window !== 'undefined' && window.location.pathname === '/admin') {
+    return <Admin />;
+  }
+
   useNetBridge();
   const [offlineRequested, setOfflineRequested] = useState(false);
 

@@ -18,6 +18,7 @@ import { resolve } from 'node:path';
 import { RoomManager, NINETY_DAYS_MS } from './rooms';
 import type { Room } from './room';
 import { makeStaticHandler } from './static';
+import { handleAdmin, ADMIN_FEATURE_ENABLED } from './admin';
 import type { ClientMessage, ServerMessage } from './protocol';
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -36,12 +37,22 @@ function sendJson(res: http.ServerResponse, status: number, body: unknown): void
 }
 
 const httpServer = http.createServer((req, res) => {
+  // We `void` the async admin handler so the http callback stays sync from
+  // Node's perspective; it writes the response itself.
+  void handleRequest(req, res);
+});
+
+async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
   const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
   const path = url.pathname;
 
   if (path === '/healthz') { res.writeHead(200); res.end('ok'); return; }
 
-  // POST /api/rooms — create
+  // Admin endpoints (password-protected). Tried first so they win over the
+  // SPA fallback.
+  if (await handleAdmin(req, res, path, manager)) return;
+
+  // POST /api/rooms — create a new room
   if (req.method === 'POST' && path === '/api/rooms') {
     const room = manager.create();
     sendJson(res, 201, { id: room.id });
@@ -54,20 +65,12 @@ const httpServer = http.createServer((req, res) => {
     sendJson(res, 200, { id, exists });
     return;
   }
-  // GET /api/admin/stats — basic counts
-  if (req.method === 'GET' && path === '/api/admin/stats') {
-    sendJson(res, 200, {
-      rooms: manager.list().length,
-      active: manager.list().filter((r) => r.hasActiveSubscribers()).length,
-    });
-    return;
-  }
 
   // Static SPA
   if (staticHandler(req, res)) return;
   res.writeHead(503);
   res.end('UI bundle not found at ' + DIST_DIR + ' — run `npm run build`.');
-});
+}
 
 const wss = new WebSocketServer({ noServer: true });
 
@@ -194,7 +197,8 @@ httpServer.listen(PORT, () => {
     `  Local:    http://localhost:${PORT}/\n` +
     `  LAN/web:  http://${host}:${PORT}/\n` +
     `  Data dir: ${DATA_DIR}\n` +
-    `  Stale rooms older than ${MAX_ROOM_AGE_DAYS} days are pruned every 6h.\n`,
+    `  Stale rooms older than ${MAX_ROOM_AGE_DAYS} days are pruned every 6h.\n` +
+    `  Admin:    ${ADMIN_FEATURE_ENABLED ? `enabled — visit http://${host}:${PORT}/admin` : 'disabled (set ADMIN_PASSWORD to enable)'}\n`,
   );
 });
 

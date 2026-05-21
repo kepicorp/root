@@ -6,9 +6,24 @@ services:
     restart: unless-stopped
     ports:
       - "8787:8787"
+    volumes:
+      - root-data:/app/data/rooms
     environment:
       PORT: 8787
-    # Use the host network stack so the server's printed LAN IP matches
-    # what other devices on the network can reach (commented out by default
-    # because port mapping above already works on most setups).
-    # network_mode: host
+      DATA_DIR: /app/data/rooms
+      MAX_ROOM_AGE_DAYS: 90
+      # Admin password. Leave unset/empty to disable /admin.
+      # You can either:
+      #   1. Uncomment + set it inline (NOT recommended for committed files).
+      #   2. Define it in a local .env (docker compose loads it automatically).
+      #   3. Pass it on the command line:
+      #        ADMIN_PASSWORD=secret docker compose up
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-}"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8787/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  root-data:

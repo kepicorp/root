@@ -88,6 +88,46 @@ DATA_DIR=/var/lib/root/rooms node scripts/prune-stale.mjs
 
 The script operates directly on the JSON files in `DATA_DIR`, so it's safe to run while the server is running (it just won't see in-memory state that hasn't yet been flushed to disk — debounced at 500 ms).
 
+## Admin page
+
+Set `ADMIN_PASSWORD` on the server (env var or `.env`) to enable the `/admin` page. Without it, the admin routes return `503 Service Unavailable` so a misconfigured server can't accidentally accept any token.
+
+Once enabled, visit `http://<host>:8787/admin`, sign in with the configured password, and you get:
+
+- A live list of every room — ID, created/last-activity timestamps, lobby vs in-game state, whether anyone's currently connected, and which factions are claimed.
+- A **Delete** button per row.
+- A **Prune stale rooms** form with a day cutoff and a dry-run toggle.
+
+The password is checked in constant time against the env value. The browser stores the token in `localStorage` so refreshing keeps you signed in; **Sign out** clears it.
+
+### Setting the password
+
+Pick one:
+
+```bash
+# 1. Local .env file (loaded automatically by docker compose):
+echo 'ADMIN_PASSWORD=your-secret' >> .env
+
+# 2. Inline with docker compose:
+ADMIN_PASSWORD=your-secret docker compose up
+
+# 3. On a host running the server directly:
+ADMIN_PASSWORD=your-secret npm run server
+```
+
+`.env` is gitignored. Keep the password out of committed files.
+
+### Admin REST endpoints
+
+All require `Authorization: Bearer <password>`.
+
+| Method   | Path                       | Body                            | Response                                 |
+| -------- | -------------------------- | ------------------------------- | ---------------------------------------- |
+| `POST`   | `/api/admin/check`         | —                               | `{ ok: true }`                            |
+| `GET`    | `/api/admin/rooms`         | —                               | `{ rooms: RoomInfo[] }`                   |
+| `DELETE` | `/api/admin/rooms/:id`     | —                               | `{ id, removed: boolean }`               |
+| `POST`   | `/api/admin/prune`         | `{ days?: number, dryRun?: bool }` | `{ dryRun, removed?/wouldRemove?, kept }` |
+
 ## Adding your own art
 
 The app ships with original stylized SVG art so the board, faction icons, items, and dominance cards are visible out of the box. To use your own scans, drop files into `src/assets/raw/` and the loader will prefer them over the built-ins on a per-file basis.
@@ -206,6 +246,9 @@ Plus `docker compose up --build` for the containerized deployment.
 | `DIST_DIR`           | `./dist`             | Where to serve the React bundle from                   |
 | `DATA_DIR`           | `./data/rooms`       | Where to write per-room JSON files                     |
 | `MAX_ROOM_AGE_DAYS`  | `90`                 | Rooms idle longer than this are pruned                 |
+| `ADMIN_PASSWORD`     | _unset_              | Enables `/admin`. Empty/unset → admin disabled (503)   |
+
+A `.env.example` is included; copy to `.env` and edit. Both `npm run dev`/`host` and `docker compose` pick it up automatically.
 
 ## Tests
 
