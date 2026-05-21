@@ -91,4 +91,9 @@ wss.on('connection', (ws) => {
 });
 
 const host = ifaceIp();
-console.log(`\n  Root LAN server running.\n  WS endpoint: ws://${host}:${PORT}\n  Players on the same network should open: http://${host}:5173/?room=ws://${host}:${PORT}\n`);
+console.log(
+  `\n  Root LAN server running.\n` +
+  `  WS endpoint: ws://${host}:${PORT}\n` +
+  `  Players on the same network should open:\n` +
+  `    http://${host}:5173/?host=ws://${host}:${PORT}&name=YourName\n`,
+);
