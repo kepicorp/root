@@ -1,0 +1,18 @@
+node_modules
+dist
+dist-ssr
+.vite
+*.local
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+
+# Raw board game assets (copyright Leder Games — not redistributable)
+src/assets/raw/
