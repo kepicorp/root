@@ -1,6 +1,12 @@
 services:
   root:
-    build: .
+    build:
+      context: .
+      # Use the host's network during build so `npm ci` can reach the
+      # registry through firewalled or NAT'd Docker bridge networks. This
+      # only affects build time — the running container still uses Docker's
+      # default bridge.
+      network: host
     image: root-game:latest
     container_name: root-game
     restart: unless-stopped
