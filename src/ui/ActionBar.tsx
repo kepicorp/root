@@ -28,16 +28,20 @@ const MAP_DRIVEN: ReadonlySet<string> = new Set([
   'marquise.build',
   'marquise.battle',
   'marquise.overwork',
+  'marquise.craft',                // single button + card picker
+  'marquise.spendBirdForExtra',    // single button + card picker
   'alliance.spreadSympathy',
   'alliance.revolt',
   'alliance.organize',
   'alliance.battle',
-  'alliance.mobilize', // collapsed into one button + card picker
+  'alliance.mobilize',
   'alliance.move',
   'vagabond.move',
   'vagabond.slip',
   'vagabond.strike',
-  'eyrie.addToDecree',      // surfaced via the Decree slots in EyriePanel
+  'vagabond.aid',                  // collapsed into one button + (card × faction) picker
+  'vagabond.repair',
+  'eyrie.addToDecree',             // surfaced via the Decree slots in EyriePanel
   'eyrie.executeRecruit',
   'eyrie.executeMove',
   'eyrie.executeBattle',
@@ -113,13 +117,25 @@ function actionDetail(a: Action): string {
 }
 
 export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, setMapIntent }: ActionBarProps) {
-  // Two-step intents like Overwork / Mobilize ("pick a card, then go") use
-  // tiny local picker states. Esc dismisses any open picker.
+  // Two-step intents like Overwork / Mobilize / Craft ("pick a card, then
+  // go") use tiny local picker states. Esc dismisses any open picker.
   const [overworkPicking, setOverworkPicking] = useState(false);
   const [mobilizePicking, setMobilizePicking] = useState(false);
+  const [craftPicking, setCraftPicking] = useState(false);
+  const [spendBirdPicking, setSpendBirdPicking] = useState(false);
+  const [aidPicking, setAidPicking] = useState(false);
+  const [repairPicking, setRepairPicking] = useState(false);
+  function closeAllPickers(): void {
+    setOverworkPicking(false);
+    setMobilizePicking(false);
+    setCraftPicking(false);
+    setSpendBirdPicking(false);
+    setAidPicking(false);
+    setRepairPicking(false);
+  }
   useEffect(() => {
     function onKey(ev: KeyboardEvent) {
-      if (ev.key === 'Escape') { setOverworkPicking(false); setMobilizePicking(false); }
+      if (ev.key === 'Escape') closeAllPickers();
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -185,6 +201,14 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
   const overworkCards = new Set<string>();
   // Cards the Alliance can Mobilize.
   const mobilizeCards = new Set<string>();
+  // Marquise can craft item-cards.
+  const craftCards = new Set<string>();
+  // Marquise can spend a bird card for an extra daylight action.
+  const spendBirdCards = new Set<string>();
+  // Vagabond can aid: (card × faction with warriors here in matching suit).
+  const aidLegals: Array<{ cardId: string; faction: Exclude<Faction, 'vagabond'> }> = [];
+  // Vagabond can repair (per damaged item kind).
+  const repairItems = new Set<string>();
   let canSpreadSympathy = false;
   let canRevolt = false;
   let canOrganize = false;
@@ -206,6 +230,10 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
     else if (a.kind === 'eyrie.executeMove')       canEyrieMove = true;
     else if (a.kind === 'eyrie.executeBattle')     eyrieBattleDefenders.add(a.defender);
     else if (a.kind === 'eyrie.executeBuild')      canEyrieBuild = true;
+    else if (a.kind === 'marquise.craft')             craftCards.add(a.cardId);
+    else if (a.kind === 'marquise.spendBirdForExtra') spendBirdCards.add(a.cardId);
+    else if (a.kind === 'vagabond.aid')               aidLegals.push({ cardId: a.cardId, faction: a.faction });
+    else if (a.kind === 'vagabond.repair')            repairItems.add(a.itemKind);
   }
   // canEyrieMove drives only the map hint; movement is map-driven via the
   // existing source→destination click flow, not an explicit button.
@@ -295,7 +323,13 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                   : [];
         const showOverwork = g === 'main' && overworkCards.size > 0;
         const showMobilize = g === 'main' && mobilizeCards.size > 0;
-        if (list.length === 0 && ibs.length === 0 && !showOverwork && !showMobilize) return null;
+        const showCraft = g === 'main' && craftCards.size > 0;
+        const showSpendBird = g === 'bonus' && spendBirdCards.size > 0;
+        const showAid = g === 'main' && aidLegals.length > 0;
+        const showRepair = g === 'main' && repairItems.size > 0;
+        if (list.length === 0 && ibs.length === 0
+            && !showOverwork && !showMobilize && !showCraft
+            && !showSpendBird && !showAid && !showRepair) return null;
         const overworkArmed = mapIntent?.kind === 'marquise.overwork';
         return (
           <div key={g} className={`action-group action-group-${g}`}>
@@ -324,6 +358,46 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                 >
                   <span className="action-label">Mobilize</span>
                   {mobilizePicking && <span className="action-detail">pick a card below</span>}
+                </button>
+              )}
+              {showCraft && (
+                <button
+                  className={`btn action-btn ${craftPicking ? 'armed' : ''} faction-${active}`}
+                  onClick={() => setCraftPicking(p => !p)}
+                  title="Craft an item card from your hand"
+                >
+                  <span className="action-label">Craft</span>
+                  {craftPicking && <span className="action-detail">pick a card below</span>}
+                </button>
+              )}
+              {showSpendBird && (
+                <button
+                  className={`btn action-btn ${spendBirdPicking ? 'armed' : ''} faction-${active}`}
+                  onClick={() => setSpendBirdPicking(p => !p)}
+                  title="Discard a bird-suit card to take an extra daylight action"
+                >
+                  <span className="action-label">Bird → extra action</span>
+                  {spendBirdPicking && <span className="action-detail">pick a bird card below</span>}
+                </button>
+              )}
+              {showAid && (
+                <button
+                  className={`btn action-btn ${aidPicking ? 'armed' : ''} faction-${active}`}
+                  onClick={() => setAidPicking(p => !p)}
+                  title="Give a card to a faction with warriors here"
+                >
+                  <span className="action-label">Aid faction</span>
+                  {aidPicking && <span className="action-detail">pick a card + recipient below</span>}
+                </button>
+              )}
+              {showRepair && (
+                <button
+                  className={`btn action-btn ${repairPicking ? 'armed' : ''} faction-${active}`}
+                  onClick={() => setRepairPicking(p => !p)}
+                  title="Exhaust your hammer to repair a damaged item"
+                >
+                  <span className="action-label">Repair</span>
+                  {repairPicking && <span className="action-detail">pick an item below</span>}
                 </button>
               )}
               {list.slice(0, 20).map((a, i) => {
@@ -394,6 +468,109 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                       </button>
                     );
                   })}
+                </div>
+              </div>
+            )}
+            {showCraft && craftPicking && (
+              <div className="action-card-picker">
+                <div className="action-card-picker-title">
+                  Craft — pick a card to craft
+                  <button className="btn ghost small" onClick={() => setCraftPicking(false)} aria-label="Cancel">×</button>
+                </div>
+                <div className="action-card-picker-list">
+                  {Array.from(craftCards).map(id => {
+                    const c = getCard(id);
+                    return (
+                      <button
+                        key={id}
+                        className="action-card-pick"
+                        style={{ borderColor: SUIT_COLOR[c.suit] }}
+                        onClick={() => {
+                          dispatch({ kind: 'marquise.craft', cardId: id });
+                          setCraftPicking(false);
+                        }}
+                      >
+                        <span className="action-card-pick-suit" style={{ background: SUIT_COLOR[c.suit] }} />
+                        <span className="action-card-pick-name">{c.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {showSpendBird && spendBirdPicking && (
+              <div className="action-card-picker">
+                <div className="action-card-picker-title">
+                  Spend bird — pick a card to discard
+                  <button className="btn ghost small" onClick={() => setSpendBirdPicking(false)} aria-label="Cancel">×</button>
+                </div>
+                <div className="action-card-picker-list">
+                  {Array.from(spendBirdCards).map(id => {
+                    const c = getCard(id);
+                    return (
+                      <button
+                        key={id}
+                        className="action-card-pick"
+                        style={{ borderColor: SUIT_COLOR[c.suit] }}
+                        onClick={() => {
+                          dispatch({ kind: 'marquise.spendBirdForExtra', cardId: id });
+                          setSpendBirdPicking(false);
+                        }}
+                      >
+                        <span className="action-card-pick-suit" style={{ background: SUIT_COLOR[c.suit] }} />
+                        <span className="action-card-pick-name">{c.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {showAid && aidPicking && (
+              <div className="action-card-picker">
+                <div className="action-card-picker-title">
+                  Aid — pick a card + recipient
+                  <button className="btn ghost small" onClick={() => setAidPicking(false)} aria-label="Cancel">×</button>
+                </div>
+                <div className="action-card-picker-list">
+                  {aidLegals.map(({ cardId, faction }, i) => {
+                    const c = getCard(cardId);
+                    return (
+                      <button
+                        key={`${cardId}-${faction}-${i}`}
+                        className="action-card-pick"
+                        style={{ borderColor: SUIT_COLOR[c.suit] }}
+                        onClick={() => {
+                          dispatch({ kind: 'vagabond.aid', cardId, faction });
+                          setAidPicking(false);
+                        }}
+                      >
+                        <span className="action-card-pick-suit" style={{ background: SUIT_COLOR[c.suit] }} />
+                        <span className="action-card-pick-name">{c.name} → <strong>{faction}</strong></span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {showRepair && repairPicking && (
+              <div className="action-card-picker">
+                <div className="action-card-picker-title">
+                  Repair — pick a damaged item
+                  <button className="btn ghost small" onClick={() => setRepairPicking(false)} aria-label="Cancel">×</button>
+                </div>
+                <div className="action-card-picker-list">
+                  {Array.from(repairItems).map(item => (
+                    <button
+                      key={item}
+                      className="action-card-pick"
+                      onClick={() => {
+                        dispatch({ kind: 'vagabond.repair', itemKind: item as never });
+                        setRepairPicking(false);
+                      }}
+                    >
+                      <span className="action-card-pick-name">{item}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
