@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc -b --noEmit",
     "server": "tsx server/index.ts",
-    "host": "concurrently -k -n vite,server -c green,cyan \"vite --host\" \"tsx server/index.ts\""
+    "host": "concurrently -k -n vite,server -c green,cyan \"vite --host\" \"tsx server/index.ts\"",
+    "prune-stale": "node scripts/prune-stale.mjs"
   },
   "dependencies": {
     "concurrently": "^9.2.1",

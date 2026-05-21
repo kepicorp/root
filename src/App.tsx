@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Board } from './ui/Board';
 import { Hand } from './ui/Hand';
 import { ActionBar } from './ui/ActionBar';
@@ -7,7 +8,7 @@ import { SetupWizard } from './ui/SetupWizard';
 import { AssetStatus } from './ui/AssetStatus';
 import { PhaseHeader } from './ui/PhaseHeader';
 import { Lobby } from './ui/Lobby';
-import { HostBanner } from './ui/HostBanner';
+import { Home } from './ui/Home';
 import { useGame } from './ui/store';
 import { useNetGame, useNetBridge } from './ui/networkStore';
 import { netClient } from './ui/network';
@@ -16,6 +17,8 @@ import { ALL_FACTIONS } from './engine/types';
 
 export function App() {
   useNetBridge();
+  const [offlineRequested, setOfflineRequested] = useState(false);
+
   const localState = useGame((s) => s.state);
   const localPlayerFaction = useGame((s) => s.playerFaction);
   const localDispatch = useGame((s) => s.dispatch);
@@ -28,13 +31,24 @@ export function App() {
 
   const online = net.mode !== 'off' && net.mode !== 'disconnected';
 
-  // Lobby screen when connected but the server hasn't started a game yet.
+  // Landing page: shown when offline and the user hasn't chosen to play solo yet.
+  if (!online && !offlineRequested && localState.phase === 'setup') {
+    return (
+      <div className="app setup-only">
+        <Home onStartOffline={() => setOfflineRequested(true)} />
+      </div>
+    );
+  }
+
+  // Lobby (connected but game not started).
   if (online && net.mode !== 'in-game') {
     return (
       <div className="app setup-only">
         <header className="app-header">
           <h1>Root</h1>
-          <p className="subtitle">LAN multiplayer · {net.mode}</p>
+          <p className="subtitle">
+            Room <code className="room-code">{net.roomId}</code> · {net.mode}
+          </p>
         </header>
         <Lobby />
       </div>
@@ -50,9 +64,9 @@ export function App() {
       <div className="app setup-only">
         <header className="app-header">
           <h1>Root</h1>
-          <p className="subtitle">A woodland faction war, against three AI opponents</p>
+          <p className="subtitle">Solo against AI opponents</p>
+          <button className="btn ghost small" onClick={() => setOfflineRequested(false)}>← back</button>
         </header>
-        <HostBanner />
         <SetupWizard />
       </div>
     );
@@ -77,7 +91,11 @@ export function App() {
         >
           new game
         </button>
-        {online && <span className="online-pill" title="LAN multiplayer">● LAN</span>}
+        {online && (
+          <span className="online-pill" title={`Room ${net.roomId}`}>
+            ● {net.roomId}
+          </span>
+        )}
       </header>
 
       <PhaseHeader state={state} playerFaction={playerFaction} />

@@ -1,5 +1,5 @@
-// Client-side WebSocket bridge for LAN multiplayer. Manages a single
-// connection and surfaces it to the store via a tiny event interface.
+// Client-side WebSocket bridge. Manages a single connection and surfaces it
+// to the store via a small subscription interface.
 
 import type { ClientMessage, ServerMessage, LobbyState } from '../../server/protocol';
 import type { GameState, Action, Faction } from '../engine/types';
@@ -9,6 +9,7 @@ export type NetMode = 'off' | 'connecting' | 'lobby' | 'in-game' | 'disconnected
 export interface NetState {
   mode: NetMode;
   endpoint: string | null;
+  roomId: string | null;
   clientId: string | null;
   lobby: LobbyState | null;
   state: GameState | null;
@@ -23,6 +24,7 @@ class NetClient {
   private state: NetState = {
     mode: 'off',
     endpoint: null,
+    roomId: null,
     clientId: null,
     lobby: null,
     state: null,
@@ -38,37 +40,31 @@ class NetClient {
     return () => this.listeners.delete(fn);
   }
 
-  private emit(): void {
-    for (const l of this.listeners) l(this.state);
-  }
+  private emit(): void { for (const l of this.listeners) l(this.state); }
 
-  private patch(partial: Partial<NetState>): void {
-    this.state = { ...this.state, ...partial };
+  private patch(p: Partial<NetState>): void {
+    this.state = { ...this.state, ...p };
     this.emit();
   }
 
-  connect(endpoint: string, displayName = 'Player'): void {
+  /** Open a WS connection to `endpoint`. If `roomId` is provided, the
+   *  endpoint should already include the `?room=` query (we just remember
+   *  it for UI display). */
+  connect(endpoint: string, displayName = 'Player', roomId: string | null = null): void {
     if (this.ws) this.ws.close();
     this.displayName = displayName;
-    this.patch({ mode: 'connecting', endpoint, lastError: null });
-    try {
-      this.ws = new WebSocket(endpoint);
-    } catch (e) {
-      this.patch({ mode: 'disconnected', lastError: String(e) });
-      return;
-    }
+    this.patch({ mode: 'connecting', endpoint, roomId, lastError: null });
+    try { this.ws = new WebSocket(endpoint); }
+    catch (e) { this.patch({ mode: 'disconnected', lastError: String(e) }); return; }
     this.ws.addEventListener('open', () => {
       this.send({ kind: 'hello', displayName: this.displayName });
       this.patch({ mode: 'lobby' });
     });
     this.ws.addEventListener('message', (ev) => {
-      try {
-        const msg = JSON.parse(ev.data) as ServerMessage;
-        this.handle(msg);
-      } catch { /* drop */ }
+      try { this.handle(JSON.parse(ev.data) as ServerMessage); } catch { /* drop */ }
     });
     this.ws.addEventListener('close', () => {
-      this.patch({ mode: 'disconnected', ws: null } as any);
+      this.patch({ mode: 'disconnected' });
     });
     this.ws.addEventListener('error', () => {
       this.patch({ lastError: 'connection error' });
@@ -78,7 +74,7 @@ class NetClient {
   disconnect(): void {
     if (this.ws) this.ws.close();
     this.ws = null;
-    this.patch({ mode: 'off', state: null, lobby: null, yourFaction: null, clientId: null });
+    this.patch({ mode: 'off', state: null, lobby: null, yourFaction: null, clientId: null, roomId: null });
   }
 
   private handle(msg: ServerMessage): void {
@@ -91,7 +87,7 @@ class NetClient {
           lobby: msg.lobby,
           mode: msg.lobby.started ? 'in-game' : 'lobby',
           yourFaction: this.state.clientId
-            ? (Object.entries(msg.lobby.seats).find(([_, c]) => c === this.state.clientId)?.[0] as Faction | undefined) ?? null
+            ? (Object.entries(msg.lobby.seats).find(([, c]) => c === this.state.clientId)?.[0] as Faction | undefined) ?? null
             : null,
         });
         break;
@@ -102,7 +98,6 @@ class NetClient {
         this.patch({ lastError: msg.message });
         break;
       case 'pong':
-        // ignore
         break;
     }
   }
@@ -112,7 +107,6 @@ class NetClient {
     this.ws.send(JSON.stringify(msg));
   }
 
-  // Convenience wrappers for the UI.
   claimSeat(faction: Faction, vagabondCharacter?: 'thief' | 'tinker' | 'ranger'): void {
     this.send({ kind: 'claimSeat', faction, vagabondCharacter });
   }
@@ -129,37 +123,58 @@ class NetClient {
 
 export const netClient = new NetClient();
 
+/** Same-origin WebSocket URL with `?room=<id>` appended. */
+export function wsUrlForRoom(roomId: string): string {
+  if (typeof window === 'undefined') return `ws://localhost:8787/ws?room=${roomId}`;
+  const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  return `${proto}://${window.location.host}/ws?room=${encodeURIComponent(roomId)}`;
+}
+
+/** Parse `/r/<roomId>` out of the current URL. */
+export function roomIdFromPath(): string | null {
+  if (typeof window === 'undefined') return null;
+  const m = window.location.pathname.match(/^\/r\/([a-z0-9]+)\/?$/i);
+  return m ? m[1]! : null;
+}
+
 /** Auto-connect rules, in priority order:
- *   1. `?host=ws://...` URL param → use that explicit endpoint
- *   2. The page is served by the LAN server itself (i.e., there's a /ws
- *      endpoint at the same origin → connect to ws://<same-origin>/ws)
- *   3. Otherwise, stay offline (single-player mode).
- *
- * #2 makes the Docker deployment work with no manual URL editing.
+ *   1. /r/<id>      → same-origin /ws?room=<id>
+ *   2. ?host=ws://… → use the explicit endpoint (LAN dev mode)
+ *   3. Otherwise stay offline (single-player mode).
  */
 export function autoConnectFromUrl(): void {
   if (typeof window === 'undefined') return;
-  const url = new URL(window.location.href);
-  const explicit = url.searchParams.get('host');
-  const name = url.searchParams.get('name') ?? 'Player';
-  if (explicit) {
-    netClient.connect(explicit, name);
+  const name = new URL(window.location.href).searchParams.get('name') ?? 'Player';
+  const roomId = roomIdFromPath();
+  if (roomId) {
+    netClient.connect(wsUrlForRoom(roomId), name, roomId);
     return;
   }
-  // Heuristic: when not running on Vite dev port (5173), assume the host
-  // bundle is being served by our LAN server, which exposes /ws at the
-  // same origin.
-  const port = window.location.port;
-  if (port && port !== '5173' && port !== '3000') {
-    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const sameOrigin = `${proto}://${window.location.host}/ws`;
-    netClient.connect(sameOrigin, name);
+  const explicit = new URL(window.location.href).searchParams.get('host');
+  if (explicit) {
+    netClient.connect(explicit, name);
   }
 }
 
-/** URL of the same-origin WS endpoint (used by the host banner). */
-export function sameOriginWsUrl(): string {
-  if (typeof window === 'undefined') return 'ws://localhost:8787/ws';
-  const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  return `${proto}://${window.location.host}/ws`;
+// ─── REST helpers ───────────────────────────────────────────────────────────
+
+export async function createRoom(): Promise<string> {
+  const res = await fetch('/api/rooms', { method: 'POST' });
+  if (!res.ok) throw new Error(`Failed to create room (HTTP ${res.status})`);
+  const body = await res.json() as { id: string };
+  return body.id;
+}
+
+export async function checkRoomExists(id: string): Promise<boolean> {
+  const res = await fetch(`/api/rooms/${encodeURIComponent(id)}`);
+  if (!res.ok) return false;
+  const body = await res.json() as { exists: boolean };
+  return body.exists;
+}
+
+/** Navigate the browser to /r/<id> so refresh works and links can be shared. */
+export function navigateToRoom(id: string): void {
+  if (typeof window === 'undefined') return;
+  window.history.pushState({}, '', `/r/${id}`);
+  autoConnectFromUrl();
 }

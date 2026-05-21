@@ -863,6 +863,81 @@ circle.pulse {
   padding: 2px 8px;
   border-radius: 12px;
   border: 1px solid #5a7d44;
+  font-family: 'SF Mono', Menlo, monospace;
+}
+.room-code {
+  background: #2a1d10;
+  border: 1px solid var(--rule);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: 'SF Mono', Menlo, monospace;
+  color: var(--accent);
+}
+
+/* Landing / home page */
+.home {
+  max-width: 900px;
+  margin: 40px auto;
+  padding: 0 24px;
+  text-align: center;
+}
+.home-title {
+  font-size: 56px;
+  letter-spacing: 8px;
+  color: var(--accent);
+  margin: 0 0 8px;
+}
+.home-tagline {
+  color: #b8a37a;
+  font-style: italic;
+  margin: 0 0 32px;
+}
+.home-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+  text-align: left;
+}
+.home-card {
+  background: #221a12;
+  border: 2px solid var(--rule);
+  border-radius: 8px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.home-card.primary { border-color: var(--accent); box-shadow: 0 0 20px rgba(201, 137, 47, 0.15); }
+.home-card.secondary { opacity: 0.85; }
+.home-card h2 { margin: 0; color: var(--accent); font-size: 18px; letter-spacing: 1px; }
+.home-card p { margin: 0; color: #b8a37a; font-size: 13px; line-height: 1.4; flex: 1; }
+.home-input {
+  background: #15110c;
+  border: 1px solid var(--rule);
+  color: var(--paper);
+  padding: 8px 10px;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 14px;
+  font-family: 'SF Mono', Menlo, monospace;
+}
+.home-error {
+  margin-top: 16px;
+  padding: 8px 12px;
+  background: #5a1f1a;
+  border-left: 3px solid #e6796b;
+  border-radius: 4px;
+  font-size: 13px;
+  text-align: left;
+}
+.home-footer {
+  margin-top: 40px;
+  color: #6a5640;
+  font-size: 11px;
+  font-style: italic;
+}
+@media (max-width: 800px) {
+  .home-cards { grid-template-columns: 1fr; }
 }
 
 /* Host banner */

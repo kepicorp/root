@@ -1,15 +1,16 @@
 # Root
 
-A web implementation of the asymmetric woodland board game *Root* (Leder Games), played solo against AI opponents or with friends on the same Wi-Fi.
+A web implementation of the asymmetric woodland board game *Root*, played solo against AI opponents or with friends through a hosted website that anyone can create or join games on.
 
 - **Engine**: pure TypeScript, `(state, action) → state`, Immer-immutable, deterministic given a seed.
 - **UI**: React + Vite + SVG. Click-to-move, hover-to-inspect, faction panels, animated score chips, save/load.
-- **Multiplayer**: optional LAN mode — one machine hosts a WebSocket server, others join from any browser on the network.
+- **Multiplayer**: hosted website. Anyone visits, creates a room, and shares the link — 1–4 humans plus AI fillers.
 - **AI**: a priority-based bot drives every faction not played by a human.
+- **Persistence**: every room is a JSON file on disk; survives server restarts. Stale rooms (idle > 90 days) are auto-pruned.
 
 ## Quick start
 
-Three ways to run it, pick whichever fits.
+Pick whichever fits.
 
 ### 1. Solo, single-player
 
@@ -18,29 +19,31 @@ npm install
 npm run dev
 ```
 
-Open <http://localhost:5173>. Pick a faction in the setup wizard; AI plays the other three.
+Open <http://localhost:5173>. On the landing page click **Play solo**, then pick a faction.
 
-### 2. LAN multiplayer (development)
-
-```bash
-npm run host
-```
-
-Starts Vite on `:5173` and the WebSocket server on `:8787` side-by-side. The terminal prints a URL like
-
-```
-http://192.168.x.x:5173/?host=ws://192.168.x.x:8787&name=YourName
-```
-
-Send that link to anyone on the same Wi-Fi. They land in the lobby, claim a faction seat, and the host clicks **Start game**. Any unclaimed seats are filled by AI bots.
-
-### 3. LAN multiplayer (production / Docker)
+### 2. Hosted multi-room (Docker, recommended)
 
 ```bash
 docker compose up --build
 ```
 
-Builds the production bundle and serves the UI **and** the WebSocket on a single port (default `8787`). Players open `http://<host-ip>:8787/` — no query parameters needed; the client auto-detects same-origin and connects.
+Builds the production bundle and starts the multi-room server. Everything is on **port 8787**:
+
+- `http://localhost:8787/` — landing page (Create / Join / Solo)
+- `http://localhost:8787/r/<id>` — a specific room (shareable link)
+- `http://localhost:8787/api/rooms` — REST: `POST` creates a room, `GET /:id` checks existence
+- `http://localhost:8787/ws?room=<id>` — WebSocket endpoint
+- `http://localhost:8787/healthz` — liveness check
+
+Room data persists to `./data/rooms/<id>.json`. Mount that path as a Docker volume in production to survive container rebuilds.
+
+### 3. Hosted multi-room (development, without Docker)
+
+```bash
+npm run host
+```
+
+Starts Vite on `:5173` with hot reload and the multi-room server on `:8787`. Use Vite for the UI; the WS server still owns rooms.
 
 ## How to play
 
@@ -58,55 +61,67 @@ The map fills the left half of the screen; everything else lives on the right si
 - **Hand**: your cards, hover for a zoomed view. Opponent hand sizes shown as face-down stacks.
 - **Log**: every game event, with per-faction filter chips.
 
-The game auto-saves to `localStorage` after every action. Closing and reopening the tab resumes the same game; pick **Resume** from the setup screen.
+In solo mode the game auto-saves to `localStorage`; reopening the tab resumes it. In multiplayer the server is the source of truth, so the room URL is the resume mechanism — share the link, anyone can rejoin.
+
+## Multiplayer flow
+
+1. Visit the homepage → click **Create game**. The server allocates a 6-character room code (e.g. `hupq5d`) and the URL updates to `/r/hupq5d`.
+2. Share the URL. Others paste it into **Join a game** or just click the link — they auto-connect to the same room.
+3. Each player claims one faction seat in the lobby. The Vagabond player also picks their character.
+4. Anyone clicks **Start game**. Unclaimed seats become AI bots.
+5. The server validates each action against the player's seat (faction prefix must match), applies the reducer, and broadcasts new state to everyone.
+
+If a player closes the tab, their seat is freed and the AI takes over. They can rejoin from the same URL and reclaim any free seat.
+
+## Stale-room cleanup
+
+Rooms idle for **90 days** with no live subscribers are automatically pruned. The server runs the check on startup and every 6 hours.
+
+For manual / scheduled cleanup outside the server (e.g., a cron job while the server is down):
+
+```bash
+npm run prune-stale                 # default: 90 days
+node scripts/prune-stale.mjs --days 30
+node scripts/prune-stale.mjs --dry-run
+DATA_DIR=/var/lib/root/rooms node scripts/prune-stale.mjs
+```
+
+The script operates directly on the JSON files in `DATA_DIR`, so it's safe to run while the server is running (it just won't see in-memory state that hasn't yet been flushed to disk — debounced at 500 ms).
 
 ## Adding your own art
 
-The app ships with original stylized SVG art so the board, faction icons, items, and dominance cards are visible out of the box. To use your own scans (e.g., from a physical copy of the game), drop files into `src/assets/raw/` and the loader will prefer them over the built-in art on a per-file basis.
+The app ships with original stylized SVG art so the board, faction icons, items, and dominance cards are visible out of the box. To use your own scans, drop files into `src/assets/raw/` and the loader will prefer them over the built-ins on a per-file basis.
 
 ### Where to drop files
 
 ```
 src/assets/raw/
-├── board/
-│   └── autumn.png                ← the SVG-backdrop map image
+├── board/autumn.png              ← SVG-backdrop map image
 ├── cards/
 │   ├── back.png                  ← generic card back
 │   ├── mousefolk-sword.png       ← one file per card, named after the card
-│   ├── foxfolk-steel.png
 │   └── …
 ├── factions/
 │   ├── marquise/
-│   │   ├── icon.png              ← faction symbol (scoreboard, hand label)
-│   │   ├── warrior.png           ← warrior token sprite
-│   │   ├── sawmill.png
-│   │   ├── workshop.png
-│   │   ├── recruiter.png
-│   │   └── keep.png
+│   │   ├── icon.png · warrior.png
+│   │   └── sawmill.png · workshop.png · recruiter.png · keep.png
 │   ├── eyrie/
-│   │   ├── icon.png
-│   │   ├── warrior.png
-│   │   └── roost.png
+│   │   └── icon.png · warrior.png · roost.png
 │   ├── alliance/
-│   │   ├── icon.png
-│   │   ├── warrior.png
-│   │   ├── base-fox.png
-│   │   ├── base-mouse.png
-│   │   ├── base-rabbit.png
-│   │   └── sympathy.png
+│   │   ├── icon.png · warrior.png · sympathy.png
+│   │   └── base-fox.png · base-mouse.png · base-rabbit.png
 │   └── vagabond/
-│       ├── icon.png
-│       └── warrior.png
+│       └── icon.png · warrior.png
 ├── items/
-│   ├── sword.png · hammer.png · crossbow.png · boots.png
-│   ├── bag.png · tea.png · coin.png · torch.png
+│   └── sword.png · hammer.png · crossbow.png · boots.png
+│   └── bag.png · tea.png · coin.png · torch.png
 └── dominance/
     └── fox.png · mouse.png · rabbit.png · bird.png
 ```
 
 ### Naming rule
 
-Filenames are **lowercase kebab-case** matches of the card or piece name. Punctuation (`!`, `'`, `"`, parentheses) is stripped; spaces and other separators become `-`. For example, the card "Ambush! (fox)" becomes `cards/ambush-fox.png`.
+Filenames are **lowercase kebab-case** matches of the card or piece name. Punctuation (`!`, `'`, `"`, parentheses) is stripped; spaces and other separators become `-`. For example, "Ambush! (fox)" becomes `cards/ambush-fox.png`.
 
 Run this to print every expected filename:
 
@@ -127,7 +142,7 @@ The loader is per-file, so you can scan things in piecemeal (e.g., just the boar
 
 ### Legal note
 
-The `src/assets/raw/` folder is **gitignored** (only its README is committed). Anything you put there stays local to your machine — never committed, never pushed, never served by the production Docker image unless you bake it in deliberately. Treat scanned game art as private/local use only; do not redistribute.
+The `src/assets/raw/` folder is **gitignored** and excluded from the Docker build context. Anything you put there stays local — never committed, never pushed, never baked into the public image unless you deliberately change that. Treat scanned game art as private/local use only.
 
 ## Architecture
 
@@ -150,33 +165,53 @@ src/engine/         pure TypeScript game engine (no React, no DOM)
 src/bots/bot.ts     priority-based action picker for non-human factions
 src/ui/             React components + Zustand stores
 src/assets/         art loader (raw/ overrides builtin/)
-src/sim/            headless game runner (npm run sim, used in tests)
+src/sim/            headless game runner (used in tests)
 
-server/             LAN multiplayer (Node + ws)
-├── protocol.ts     ClientMessage / ServerMessage types (shared with client)
-├── room.ts         canonical game state, seat claim, bot loop, authority check
-├── static.ts       tiny dep-free static-file handler for the built bundle
+server/             multi-room WebSocket + static server
+├── protocol.ts     ClientMessage / ServerMessage types (shared)
+├── room.ts         per-room state authority, bot loop, action authority
+├── rooms.ts        RoomManager: create / lookup / persist / prune
+├── static.ts       tiny dep-free static-file handler with SPA fallback
 └── index.ts        http + ws on a single port
 
+scripts/
+├── list-asset-names.mjs   print every filename the asset loader expects
+└── prune-stale.mjs        standalone stale-room cleanup
+
 PLAN.md             phased plan: scope, architecture decisions, what's done
+CLAUDE.md           project guide for future Claude sessions
 ```
 
 ## Scripts
 
-| Command            | What it does                                                |
-| ------------------ | ----------------------------------------------------------- |
-| `npm run dev`      | Vite dev server, single-player local                        |
-| `npm run host`     | Vite (with `--host`) + WS server, two ports, LAN multiplayer |
-| `npm run server`   | WebSocket / static server only (expects an existing `dist/`) |
-| `npm run build`    | Production bundle into `dist/`                              |
-| `npm run preview`  | Preview the built bundle locally                            |
-| `npm test`         | Run the Vitest suite                                        |
-| `npm run test:watch` | Vitest watch mode                                         |
-| `npm run typecheck`| `tsc -b --noEmit`                                           |
+| Command                | What it does                                                  |
+| ---------------------- | ------------------------------------------------------------- |
+| `npm run dev`          | Vite dev server, single-player local                          |
+| `npm run host`         | Vite (with `--host`) + multi-room WS server, two ports        |
+| `npm run server`       | Multi-room server only (serves `./dist` if it exists)         |
+| `npm run build`        | Production bundle into `dist/`                                |
+| `npm run preview`      | Preview the built bundle locally                              |
+| `npm test`             | Vitest                                                        |
+| `npm run test:watch`   | Vitest watch                                                  |
+| `npm run typecheck`    | `tsc -b --noEmit`                                             |
+| `npm run prune-stale`  | One-shot stale-room cleanup (`--days N`, `--dry-run`)         |
 
 Plus `docker compose up --build` for the containerized deployment.
 
+## Environment variables
+
+| Variable             | Default              | Purpose                                                |
+| -------------------- | -------------------- | ------------------------------------------------------ |
+| `PORT`               | `8787`               | HTTP + WebSocket port for the server                   |
+| `DIST_DIR`           | `./dist`             | Where to serve the React bundle from                   |
+| `DATA_DIR`           | `./data/rooms`       | Where to write per-room JSON files                     |
+| `MAX_ROOM_AGE_DAYS`  | `90`                 | Rooms idle longer than this are pruned                 |
+
 ## Tests
+
+```bash
+npm test
+```
 
 47 tests across:
 
@@ -184,18 +219,15 @@ Plus `docker compose up --build` for the containerized deployment.
 - **Property tests** (`fast-check`) — RNG determinism, hit-cap bounds, deck uniqueness, score monotonicity.
 - **Sim runner** — bot-vs-bot games complete without crashing across multiple seeds.
 
-```bash
-npm test
-```
-
 ## Status
 
-Implementation is tracked in `PLAN.md`. Phases 0–8 are complete; Phase 10 (LAN multiplayer + Docker) is in progress. Known simplifications:
+Implementation is tracked in `PLAN.md`. Phases 0–8 are complete; the hosted-website pivot (multi-room + persistence + cleanup) is in progress. Known simplifications:
 
 - Eyrie strategy is weak — the bot doesn't compose its Decree carefully, so it often falls into Turmoil before building roosts. The rules engine is in place; the AI just needs more thought.
 - Vagabond quest deck and full coalition flow are minimal.
-- Hidden hands are not yet view-filtered server-side: in LAN mode, the entire `GameState` is broadcast to every connected client. Don't play with adversarial opponents until this is wired up.
+- Hidden hands are not yet view-filtered server-side: in multiplayer, the entire `GameState` is broadcast to every connected client. Don't play with adversarial opponents on a public deployment until this is wired up.
+- Players don't have persistent identity, so closing the tab gives up your seat (a bot takes over). Rejoining lets you grab any free seat.
 
 ## License
 
-The code in this repository is mine. The game itself, the rules, and any artwork you choose to add are © Leder Games. This project is intended for personal/local use only; do not deploy publicly with copyrighted assets.
+The code in this repository is mine. The game itself, the rules, and any artwork you choose to add are © Leder Games. This project is intended for personal use; deploying publicly should be done with original art only.
