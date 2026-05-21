@@ -129,12 +129,37 @@ class NetClient {
 
 export const netClient = new NetClient();
 
-/** Read a `?host=ws://...` URL parameter that auto-connects on page load. */
+/** Auto-connect rules, in priority order:
+ *   1. `?host=ws://...` URL param → use that explicit endpoint
+ *   2. The page is served by the LAN server itself (i.e., there's a /ws
+ *      endpoint at the same origin → connect to ws://<same-origin>/ws)
+ *   3. Otherwise, stay offline (single-player mode).
+ *
+ * #2 makes the Docker deployment work with no manual URL editing.
+ */
 export function autoConnectFromUrl(): void {
   if (typeof window === 'undefined') return;
   const url = new URL(window.location.href);
-  const host = url.searchParams.get('host');
-  if (!host) return;
+  const explicit = url.searchParams.get('host');
   const name = url.searchParams.get('name') ?? 'Player';
-  netClient.connect(host, name);
+  if (explicit) {
+    netClient.connect(explicit, name);
+    return;
+  }
+  // Heuristic: when not running on Vite dev port (5173), assume the host
+  // bundle is being served by our LAN server, which exposes /ws at the
+  // same origin.
+  const port = window.location.port;
+  if (port && port !== '5173' && port !== '3000') {
+    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const sameOrigin = `${proto}://${window.location.host}/ws`;
+    netClient.connect(sameOrigin, name);
+  }
+}
+
+/** URL of the same-origin WS endpoint (used by the host banner). */
+export function sameOriginWsUrl(): string {
+  if (typeof window === 'undefined') return 'ws://localhost:8787/ws';
+  const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  return `${proto}://${window.location.host}/ws`;
 }

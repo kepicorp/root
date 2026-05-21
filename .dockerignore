@@ -1,0 +1,16 @@
+node_modules
+dist
+dist-ssr
+.git
+.gitignore
+.vite
+*.log
+.DS_Store
+.idea
+.vscode
+README.md
+PLAN.md
+coverage
+tests
+playwright-report
+*.tsbuildinfo

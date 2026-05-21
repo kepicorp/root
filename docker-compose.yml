@@ -1,0 +1,14 @@
+services:
+  root:
+    build: .
+    image: root-game:latest
+    container_name: root-game
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    environment:
+      PORT: 8787
+    # Use the host network stack so the server's printed LAN IP matches
+    # what other devices on the network can reach (commented out by default
+    # because port mapping above already works on most setups).
+    # network_mode: host

@@ -1,23 +1,47 @@
-// LAN multiplayer server. Listens for WebSocket connections, hosts one Room.
+// LAN multiplayer + static UI server. Single port serves both the built
+// React bundle (from ./dist) and the WebSocket endpoint at /ws.
 //
-//   npm run server    # start the server only
-//   npm run host      # start server + Vite dev server on LAN
+//   npm run server           # serve only (assumes dist/ exists)
+//   npm run host             # vite --host + ws server (dev mode, 2 ports)
+//   docker compose up        # production single-port deployment
 //
 // Default port 8787 (overridable via PORT env var).
 
+import http from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { Room } from './room';
-import type { ClientMessage, ServerMessage } from './protocol';
 import { networkInterfaces } from 'node:os';
+import { resolve } from 'node:path';
+import { Room } from './room';
+import { makeStaticHandler } from './static';
+import type { ClientMessage, ServerMessage } from './protocol';
 
 const PORT = Number(process.env.PORT ?? 8787);
-const wss = new WebSocketServer({ port: PORT });
-const room = new Room();
+const DIST_DIR = resolve(process.env.DIST_DIR ?? './dist');
 
+const room = new Room();
 let nextClientId = 1;
 
+const staticHandler = makeStaticHandler(DIST_DIR);
+
+const httpServer = http.createServer((req, res) => {
+  if (req.url === '/healthz') { res.writeHead(200); res.end('ok'); return; }
+  if (staticHandler(req, res)) return;
+  res.writeHead(503);
+  res.end('UI bundle not found at ' + DIST_DIR + ' — run `npm run build` or rebuild the container.');
+});
+
+const wss = new WebSocketServer({ noServer: true });
+
+httpServer.on('upgrade', (req, socket, head) => {
+  if (req.url?.startsWith('/ws')) {
+    wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
+  } else {
+    socket.destroy();
+  }
+});
+
 function send(ws: WebSocket, msg: ServerMessage): void {
-  try { ws.send(JSON.stringify(msg)); } catch { /* socket dead */ }
+  try { ws.send(JSON.stringify(msg)); } catch { /* dead socket */ }
 }
 
 function ifaceIp(): string {
@@ -32,10 +56,8 @@ function ifaceIp(): string {
 wss.on('connection', (ws) => {
   const clientId = `c${nextClientId++}`;
   let displayName = clientId;
-
   send(ws, { kind: 'welcome', clientId });
 
-  // Subscription: server pushes lobby + game state snapshots to this client.
   const subscriber = {
     send: () => {
       const snap = room.snapshotFor(clientId);
@@ -90,10 +112,12 @@ wss.on('connection', (ws) => {
   ws.on('error', () => room.disconnect(clientId));
 });
 
-const host = ifaceIp();
-console.log(
-  `\n  Root LAN server running.\n` +
-  `  WS endpoint: ws://${host}:${PORT}\n` +
-  `  Players on the same network should open:\n` +
-  `    http://${host}:5173/?host=ws://${host}:${PORT}&name=YourName\n`,
-);
+httpServer.listen(PORT, () => {
+  const host = ifaceIp();
+  console.log(
+    `\n  Root server listening.\n` +
+    `  Open on this machine:  http://localhost:${PORT}/\n` +
+    `  Open from the LAN:     http://${host}:${PORT}/\n` +
+    `  WebSocket endpoint:    ws://${host}:${PORT}/ws\n`,
+  );
+});
