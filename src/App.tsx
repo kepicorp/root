@@ -6,24 +6,53 @@ import { Scoreboard } from './ui/Scoreboard';
 import { SetupWizard } from './ui/SetupWizard';
 import { AssetStatus } from './ui/AssetStatus';
 import { PhaseHeader } from './ui/PhaseHeader';
+import { Lobby } from './ui/Lobby';
+import { HostBanner } from './ui/HostBanner';
 import { useGame } from './ui/store';
+import { useNetGame, useNetBridge } from './ui/networkStore';
+import { netClient } from './ui/network';
 import { FactionPanels } from './ui/factions';
 import { ALL_FACTIONS } from './engine/types';
 
 export function App() {
-  const state = useGame((s) => s.state);
-  const playerFaction = useGame((s) => s.playerFaction);
-  const dispatch = useGame((s) => s.dispatch);
+  useNetBridge();
+  const localState = useGame((s) => s.state);
+  const localPlayerFaction = useGame((s) => s.playerFaction);
+  const localDispatch = useGame((s) => s.dispatch);
   const begin = useGame((s) => s.begin);
   const reset = useGame((s) => s.reset);
 
-  if (state.phase === 'setup') {
+  const net = useNetGame((s) => s.net);
+  const netState = useNetGame((s) => s.state);
+  const netDispatch = useNetGame((s) => s.dispatch);
+
+  const online = net.mode !== 'off' && net.mode !== 'disconnected';
+
+  // Lobby screen when connected but the server hasn't started a game yet.
+  if (online && net.mode !== 'in-game') {
+    return (
+      <div className="app setup-only">
+        <header className="app-header">
+          <h1>Root</h1>
+          <p className="subtitle">LAN multiplayer · {net.mode}</p>
+        </header>
+        <Lobby />
+      </div>
+    );
+  }
+
+  const state = online ? netState : localState;
+  const playerFaction = online ? net.yourFaction : localPlayerFaction;
+  const dispatch = online ? netDispatch : localDispatch;
+
+  if (!state || state.phase === 'setup') {
     return (
       <div className="app setup-only">
         <header className="app-header">
           <h1>Root</h1>
           <p className="subtitle">A woodland faction war, against three AI opponents</p>
         </header>
+        <HostBanner />
         <SetupWizard />
       </div>
     );
@@ -39,9 +68,16 @@ export function App() {
             : <>playing as <strong>{playerFaction}</strong></>}
         </p>
         <AssetStatus />
-        <button className="btn ghost" onClick={() => reset(Math.floor(Math.random() * 1e9))}>
+        <button
+          className="btn ghost"
+          onClick={() => {
+            if (online) netClient.newGame();
+            else reset(Math.floor(Math.random() * 1e9));
+          }}
+        >
           new game
         </button>
+        {online && <span className="online-pill" title="LAN multiplayer">● LAN</span>}
       </header>
 
       <PhaseHeader state={state} playerFaction={playerFaction} />
