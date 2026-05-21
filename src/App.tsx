@@ -29,7 +29,7 @@ export function App() {
   }
 
   return (
-    <div className="app">
+    <div className="app app-game">
       <header className="app-header">
         <h1>Root</h1>
         <p className="subtitle">
@@ -42,33 +42,38 @@ export function App() {
           new game
         </button>
       </header>
-      <Scoreboard state={state} />
-      <main className="app-main">
+
+      <div className="board-pane">
         <Board />
-        <aside className="sidebar">
-          <Hand state={state} faction={playerFaction} />
-          <div className="faction-panels">
-            {ALL_FACTIONS.filter((f) => state.factions[f]).map((f) => {
-              const Panel = FactionPanels[f];
-              return (
-                <Panel
-                  key={f}
-                  state={state}
-                  isHuman={f === playerFaction}
-                  dispatch={dispatch}
-                />
-              );
-            })}
-          </div>
-        </aside>
-      </main>
-      <ActionBar
-        state={state}
-        playerFaction={playerFaction}
-        dispatch={dispatch}
-        onBegin={begin}
-      />
-      <Log state={state} />
+      </div>
+
+      <aside className="right-pane">
+        <Scoreboard state={state} />
+        <ActionBar
+          state={state}
+          playerFaction={playerFaction}
+          dispatch={dispatch}
+          onBegin={begin}
+        />
+        <Hand state={state} faction={playerFaction} />
+        <div className="faction-panels">
+          {ALL_FACTIONS.filter((f) => state.factions[f]).map((f) => {
+            const Panel = FactionPanels[f];
+            return (
+              <Panel
+                key={f}
+                state={state}
+                isHuman={f === playerFaction}
+                dispatch={dispatch}
+              />
+            );
+          })}
+        </div>
+      </aside>
+
+      <div className="log-pane">
+        <Log state={state} />
+      </div>
     </div>
   );
 }

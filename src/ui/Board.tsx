@@ -5,6 +5,7 @@ import { useGame } from './store';
 import { getLegalActions } from '../engine/legal';
 import { activeFaction } from '../engine/loop';
 import { boardArt, warriorArt, buildingArt } from '../assets';
+import { Trees } from './Trees';
 
 const BOARD_W = 1000;
 const BOARD_H = 800;
@@ -120,7 +121,24 @@ export function Board({ backgroundSrc }: BoardProps) {
       {bgSrc ? (
         <image href={bgSrc} x={0} y={0} width={BOARD_W} height={BOARD_H} preserveAspectRatio="xMidYMid slice" />
       ) : (
-        <rect x={0} y={0} width={BOARD_W} height={BOARD_H} fill="#2f4a2a" />
+        <>
+          {/* Mossy forest floor */}
+          <defs>
+            <radialGradient id="forestGradient" cx="50%" cy="50%" r="75%">
+              <stop offset="0%" stopColor="#3a5a2a" />
+              <stop offset="100%" stopColor="#1a2814" />
+            </radialGradient>
+            <pattern id="grassPattern" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
+              <rect width="20" height="20" fill="transparent" />
+              <line x1="2" y1="18" x2="4" y2="14" stroke="#2c4520" strokeWidth="0.8" />
+              <line x1="14" y1="19" x2="16" y2="15" stroke="#2c4520" strokeWidth="0.8" />
+              <line x1="8" y1="6" x2="9" y2="2" stroke="#2c4520" strokeWidth="0.6" />
+            </pattern>
+          </defs>
+          <rect x={0} y={0} width={BOARD_W} height={BOARD_H} fill="url(#forestGradient)" />
+          <rect x={0} y={0} width={BOARD_W} height={BOARD_H} fill="url(#grassPattern)" opacity="0.5" />
+          <Trees />
+        </>
       )}
 
       {/* Paths */}
@@ -173,21 +191,68 @@ export function Board({ backgroundSrc }: BoardProps) {
               role="button"
               aria-label={`Clearing ${c.id}, ${c.suit}${c.hasRuin ? ', has ruin' : ''}`}
             >
+              {/* Outer earth ring (the cleared dirt around the village) */}
               <circle
-                r={isHovered || isSelected ? 68 : 62}
+                r={isHovered || isSelected ? 72 : 66}
+                fill="#6b4f2a"
+                stroke="#3b2a18"
+                strokeWidth={2}
+                opacity={0.95}
+              />
+              {/* Suit-colored village center */}
+              <circle
+                r={isHovered || isSelected ? 60 : 54}
                 fill={SUIT_COLOR[c.suit]}
                 stroke={strokeColor}
                 strokeWidth={strokeWidth}
                 className={isValidTarget ? 'pulse' : ''}
               />
+              {/* Ruin marker (a small broken column near the top) */}
               {c.hasRuin && (
-                <text y={-44} textAnchor="middle" fontSize={12} fontWeight={700} fill="#3b2a18">
-                  ruin
-                </text>
+                <g transform="translate(-38 -38)" aria-hidden>
+                  <rect x={-6} y={-2} width={12} height={12} fill="#cdc3a8" stroke="#3b2a18" strokeWidth={1.5} />
+                  <rect x={-4} y={-10} width={8} height={8} fill="#cdc3a8" stroke="#3b2a18" strokeWidth={1.5} />
+                  <line x1={-6} y1={4} x2={6} y2={4} stroke="#3b2a18" strokeWidth={1} />
+                </g>
               )}
-              <text y={-22} textAnchor="middle" fontSize={26} fontWeight={800} fill="#3b2a18">
-                {c.id}
-              </text>
+              {/* Clearing number badge */}
+              <g transform="translate(0 -34)">
+                <circle r={13} fill="#3b2a18" stroke="#f5e9d0" strokeWidth={1.5} />
+                <text y={4} textAnchor="middle" fontSize={16} fontWeight={800} fill="#f5e9d0">
+                  {c.id}
+                </text>
+              </g>
+              {/* Slot indicator (empty plots shown as outlined squares; filled overlays appear below) */}
+              {(() => {
+                const usedSlots = cl.buildings.length + cl.tokens.filter(t => t.kind === 'keep').length;
+                const free = Math.max(0, c.buildingSlots - usedSlots);
+                const dotR = 4;
+                const totalWidth = (c.buildingSlots - 1) * 12;
+                return (
+                  <g transform={`translate(${-totalWidth / 2} -16)`} aria-label={`${usedSlots} of ${c.buildingSlots} slots used`}>
+                    {Array.from({ length: c.buildingSlots }).map((_, i) => {
+                      const filled = i < usedSlots;
+                      return (
+                        <circle
+                          key={i}
+                          cx={i * 12}
+                          cy={0}
+                          r={dotR}
+                          fill={filled ? '#3b2a18' : '#f5e9d0'}
+                          stroke="#3b2a18"
+                          strokeWidth={1.5}
+                          opacity={filled ? 0.85 : 0.75}
+                        />
+                      );
+                    })}
+                    {free > 0 && (
+                      <text x={totalWidth + 14} y={4} fontSize={10} fill="#3b2a18" fontWeight={700}>
+                        {free} free
+                      </text>
+                    )}
+                  </g>
+                );
+              })()}
 
               {/* Warriors: only render factions that have any here, centered. */}
               {(() => {
@@ -198,7 +263,7 @@ export function Board({ backgroundSrc }: BoardProps) {
                 const total = present.length * size + Math.max(0, present.length - 1) * gap;
                 const startX = -total / 2 + size / 2;
                 return (
-                  <g transform="translate(0, 12)">
+                  <g transform="translate(0, 4)">
                     {present.map((f, i) => {
                       const count = cl.warriors[f] ?? 0;
                       const art = WARRIOR_ART[f];
@@ -231,7 +296,7 @@ export function Board({ backgroundSrc }: BoardProps) {
                 const total = bldgs.length * size + Math.max(0, bldgs.length - 1) * gap;
                 const startX = -total / 2 + size / 2;
                 return (
-                  <g transform="translate(0, 38)">
+                  <g transform="translate(0, 36)">
                     {bldgs.map((b, idx) => {
                       const art = buildingArt(b.faction, b.kind);
                       const cx = startX + idx * (size + gap);
