@@ -32,22 +32,13 @@ const FACTION_COLOR: Record<string, string> = {
  *  highlights valid targets and applies the action on click. */
 export type MapIntent =
   | { kind: 'build'; building: 'sawmill' | 'workshop' | 'recruiter' }
+  | { kind: 'marquise.overwork'; cardId: string }
   | { kind: 'marquise.battle'; defender: Faction }
   | { kind: 'alliance.spreadSympathy' }
   | { kind: 'alliance.revolt' }
   | { kind: 'alliance.organize' }
   | { kind: 'alliance.battle'; defender: Faction }
   | { kind: 'vagabond.strike'; defender: Faction };
-
-export const MAP_INTENT_LABELS: Record<MapIntent['kind'], string> = {
-  'build':                  'building',
-  'marquise.battle':        'attack',
-  'alliance.spreadSympathy':'spread sympathy',
-  'alliance.revolt':        'revolt',
-  'alliance.organize':      'organize',
-  'alliance.battle':        'attack',
-  'vagabond.strike':        'strike',
-};
 
 interface BoardProps {
   state: GameState;
@@ -401,6 +392,9 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
           const isValidTarget = validTargets.has(c.id);
           const isValidSource = isHuman && selected == null && validSources.has(c.id);
           const isIntentTarget = mapIntent != null && intentTargets.has(c.id);
+          // When an intent is armed, clearings that wouldn't satisfy it
+          // get dimmed so it's obvious which ones the player can click.
+          const isIntentDimmed = mapIntent != null && !isIntentTarget;
           const cl = state.map.clearings[c.id]!;
 
           let strokeColor = '#3b2a18';
@@ -419,7 +413,7 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
               onMouseEnter={() => setHovered(c.id)}
               onMouseLeave={() => setHovered(h => (h === c.id ? null : h))}
               onClick={() => handleClearingClick(c.id)}
-              style={{ cursor: isHuman ? 'pointer' : 'default' }}
+              style={{ cursor: isHuman ? 'pointer' : 'default', opacity: isIntentDimmed ? 0.3 : 1 }}
               role="button"
               aria-label={`Clearing ${c.id}, ${c.suit}${c.hasRuin ? ', has ruin' : ''}`}
             >
@@ -706,6 +700,7 @@ function intentBannerText(intent: MapIntent, targets: number): ReactNode {
   const tail = targets === 0 ? ' — no legal targets' : '';
   switch (intent.kind) {
     case 'build':                    return <>Click a clearing to place a <strong>{intent.building}</strong>{tail}.</>;
+    case 'marquise.overwork':        return <>Click a matching-suit sawmill clearing to <strong>overwork</strong>{tail}.</>;
     case 'marquise.battle':          return <>Click a clearing to attack the <strong>{intent.defender}</strong>{tail}.</>;
     case 'alliance.spreadSympathy':  return <>Click a clearing to <strong>spread sympathy</strong>{tail}.</>;
     case 'alliance.revolt':          return <>Click a clearing to <strong>revolt</strong>{tail}.</>;
@@ -720,6 +715,8 @@ function matchIntent(intent: MapIntent, action: Action): ClearingId | null {
   switch (intent.kind) {
     case 'build':
       return action.kind === 'marquise.build' && action.building === intent.building ? action.clearing : null;
+    case 'marquise.overwork':
+      return action.kind === 'marquise.overwork' && action.cardId === intent.cardId ? action.clearing : null;
     case 'marquise.battle':
       return action.kind === 'marquise.battle' && action.defender === intent.defender ? action.clearing : null;
     case 'alliance.spreadSympathy':

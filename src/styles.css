@@ -20,11 +20,13 @@ body { background: var(--bg); color: var(--paper); }
 
 /* New layout: board fills the left, panels stack on the right, log + hand
    share the bottom strip. Hand sits on the right, sized to its card count
-   (max ~half the screen at 5 cards); the log fills whatever's left. */
+   (max ~half the screen at 5 cards); the log fills whatever's left. The
+   bottom strip is intentionally shallow so the board claims at least 2/3
+   of the screen height. */
 .app-game {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 380px;
-  grid-template-rows: auto auto minmax(0, 1fr) 300px;
+  grid-template-rows: auto auto minmax(0, 1fr) 220px;
   grid-template-areas:
     "header header"
     "phase  phase"
@@ -438,8 +440,8 @@ body { background: var(--bg); color: var(--paper); }
   border-radius: 8px;
   background: #2a1d10;
   font-size: 11px;
-  width: 180px;
-  min-width: 180px;
+  width: 130px;
+  min-width: 130px;
   aspect-ratio: 5 / 7;
   overflow: hidden;
   flex-shrink: 0;
@@ -467,11 +469,11 @@ body { background: var(--bg); color: var(--paper); }
 }
 .card-name {
   font-weight: 700;
-  font-size: 12px;
+  font-size: 11px;
   color: #f0e2c2;
   text-align: center;
   text-shadow: 0 1px 2px rgba(0,0,0,0.8);
-  line-height: 1.2;
+  line-height: 1.15;
 }
 .dim { color: #6a5640; }
 
@@ -989,6 +991,37 @@ circle.pulse {
   font-weight: 700;
   box-shadow: 0 0 0 2px rgba(240, 192, 96, 0.25);
 }
+
+/* Inline card picker that opens beneath a two-step ActionBar button
+   (currently used by Overwork — pick a card, then click a clearing). */
+.action-card-picker {
+  margin-top: 6px;
+  padding: 8px 10px;
+  background: rgba(20, 14, 8, 0.92);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+}
+.action-card-picker-title {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 11px; color: #f0e2c2; margin-bottom: 6px;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.action-card-picker-list { display: flex; flex-direction: column; gap: 4px; }
+.action-card-pick {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 8px;
+  background: #261b10;
+  border: 1.5px solid var(--rule);
+  border-radius: 4px;
+  color: #e8d6a8;
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.action-card-pick:hover { background: #322516; }
+.action-card-pick-suit { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+.action-card-pick-name { flex: 1; }
 .action-label { font-weight: 600; }
 .action-detail { font-size: 10px; opacity: 0.7; }
 

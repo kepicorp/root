@@ -51,7 +51,7 @@ export function Hand({ state, faction }: HandProps) {
               {art && <img src={art} alt="" className="card-art-bg" />}
               <div className="card-body">
                 <div className="card-name">{c.name}</div>
-                <CardIcon card={c} size={48} />
+                <CardIcon card={c} size={36} />
                 <CardDetails card={c} />
               </div>
             </div>
