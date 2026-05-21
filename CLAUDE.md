@@ -19,12 +19,19 @@ A web implementation of the *Root* board game with AI opponents and hosted multi
 ```
 src/engine/        pure TS engine (no DOM)
 src/bots/bot.ts    priority-table action picker; used by client AND server
-src/ui/            React components (Board.tsx, ActionBar.tsx, etc.)
+src/ui/            React components (Board.tsx, ActionBar.tsx, Admin.tsx, etc.)
 src/assets/        art loader (raw/ overrides builtin/, both via Vite glob imports)
 src/sim/           headless runner — bot-vs-bot games for sim tests
-server/            HTTP + WS server, room state, persistence, cleanup
+server/            HTTP + WS server, room state, persistence, cleanup, admin
 scripts/           Node CLI helpers (asset listing, stale-room pruning)
 ```
+
+## Admin page
+
+- Path: `/admin`. The SPA falls through any unmatched path to `index.html`, so `App.tsx` checks `window.location.pathname === '/admin'` *before* setting up the game state and renders `Admin.tsx`.
+- Auth: the React side stores the password in `localStorage` (`root-admin-token`) and sends it as `Authorization: Bearer <password>`. The server compares constant-time against `process.env.ADMIN_PASSWORD`.
+- Disabled-by-default: if `ADMIN_PASSWORD` is unset/empty, every admin route returns **503** (not 401). This is deliberate — a misconfigured server can't accept any token.
+- Routes live in `server/admin.ts`. They're registered before the `/api/rooms` and SPA routes in `server/index.ts` so they win on path collisions.
 
 ## Things you'll probably forget
 
@@ -59,7 +66,8 @@ scripts/           Node CLI helpers (asset listing, stale-room pruning)
 - **`reduce()` returns the same reference when an action is rejected.** The sim runner and the bot loop both rely on identity comparison (`next === state`) to detect "this action did nothing" — don't change that contract.
 - **WebSocket reconnect isn't implemented.** If the client connection drops, the page just shows `disconnected`. Users have to reload — and they'll lose their seat (a bot takes over). Fine for now, but if you wire reconnect later, also add rejoin tokens so a returning player keeps their seat.
 - **Property tests use 100 inputs locally, not 1000.** If you push a change that breaks rarely, the local Vitest run might miss it. The plan calls for CI to bump to 1000.
-- **Don't add new dependencies casually.** `ws`, `immer`, `zustand`, `react`, `tsx`, `concurrently` are it. The static handler and prune-stale script are dep-free on purpose so the Docker image stays small.
+- **Don't add new dependencies casually.** `ws`, `immer`, `zustand`, `react`, `tsx`, `concurrently` are it. The static handler, admin handler, and prune-stale script are dep-free on purpose so the Docker image stays small.
+- **Auth checks are constant-time.** Use `crypto.timingSafeEqual` and equal-length buffers (`server/admin.ts` already does this). Don't compare admin tokens with `===`.
 
 ## When the user asks for something specific
 
