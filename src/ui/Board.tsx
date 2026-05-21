@@ -65,6 +65,8 @@ export function Board({ backgroundSrc }: BoardProps) {
   const [legendOpen, setLegendOpen] = useState(true);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [spaceHeld, setSpaceHeld] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const dragRef = useRef<{ startX: number; startY: number; startPan: { x: number; y: number } } | null>(null);
   const bgSrc = backgroundSrc ?? boardArt() ?? undefined;
@@ -118,22 +120,55 @@ export function Board({ backgroundSrc }: BoardProps) {
     return () => el.removeEventListener('wheel', handler);
   }, [zoom, setZoomClamped]);
 
-  // Keyboard: + / - / 0.
+  // Keyboard: + / - / 0, and Space to enable drag-to-pan.
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.target && (e.target as HTMLElement).tagName === 'INPUT') return;
+    const isFormField = (t: EventTarget | null) => {
+      if (!(t instanceof HTMLElement)) return false;
+      const tag = t.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || t.isContentEditable;
+    };
+    const down = (e: KeyboardEvent) => {
+      if (isFormField(e.target)) return;
       if (e.key === '+' || e.key === '=') setZoomClamped(zoom * ZOOM_STEP);
       else if (e.key === '-' || e.key === '_') setZoomClamped(zoom / ZOOM_STEP);
       else if (e.key === '0') resetView();
+      else if (e.code === 'Space') {
+        e.preventDefault();
+        setSpaceHeld(true);
+      }
     };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    const up = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        setSpaceHeld(false);
+        // If a drag was in progress when space was released, end it.
+        if (dragRef.current) {
+          dragRef.current = null;
+          setDragging(false);
+        }
+      }
+    };
+    const blur = () => setSpaceHeld(false);
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    window.addEventListener('blur', blur);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', blur);
+    };
   }, [zoom, setZoomClamped, resetView]);
 
-  // Pan via right-mouse drag (left mouse stays for clearing-click selection).
+  // Pan via right-mouse drag, shift+left-drag, or space+left-drag.
+  // Left-click without modifier still selects clearings for movement.
   function onPointerDown(e: React.PointerEvent<SVGSVGElement>) {
-    if (e.button !== 2 && !(e.button === 0 && e.shiftKey)) return; // right-click or shift+click
+    const isDragInput =
+      e.button === 2 ||
+      (e.button === 0 && e.shiftKey) ||
+      (e.button === 0 && spaceHeld);
+    if (!isDragInput) return;
+    e.preventDefault();
     dragRef.current = { startX: e.clientX, startY: e.clientY, startPan: { ...pan } };
+    setDragging(true);
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
   }
   function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
@@ -148,6 +183,7 @@ export function Board({ backgroundSrc }: BoardProps) {
     if (dragRef.current) {
       (e.currentTarget as Element).releasePointerCapture(e.pointerId);
       dragRef.current = null;
+      setDragging(false);
     }
   }
 
@@ -203,6 +239,8 @@ export function Board({ backgroundSrc }: BoardProps) {
 
   const adjacentToHovered = hovered ? new Set(getAdjacent(AUTUMN_MAP, hovered)) : null;
 
+  const panCursor = dragging ? 'grabbing' : spaceHeld ? 'grab' : undefined;
+
   return (
     <div className="board-wrap">
       <svg
@@ -211,6 +249,7 @@ export function Board({ backgroundSrc }: BoardProps) {
         className="board"
         role="img"
         aria-label="Root autumn map"
+        style={panCursor ? { cursor: panCursor } : undefined}
         onContextMenu={(e) => e.preventDefault()}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
