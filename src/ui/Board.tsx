@@ -248,6 +248,17 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
     }
   }
 
+  // Vagabond forest interactions: which forests can be entered from the
+  // current clearing (one click each), and — when already in a forest —
+  // which clearings can be exited to.
+  const forestEnter: Map<string, Action> = new Map();
+  const forestExit: Map<ClearingId, Action> = new Map();
+  for (const a of legals) {
+    if (a.kind === 'vagabond.enterForest') forestEnter.set(a.forestId, a);
+    else if (a.kind === 'vagabond.exitForest') forestExit.set(a.to, a);
+  }
+  const vagabondInForest = state.factions.vagabond?.inForest;
+
   // Escape cancels any armed map intent or pending move.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -284,6 +295,16 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
     setInfoClearing(prev => (prev === id ? null : id));
 
     if (!isHuman) return;
+
+    // Vagabond exiting a forest: a click on a bordering clearing leaves.
+    if (vagabondInForest) {
+      const exit = forestExit.get(id);
+      if (exit) {
+        dispatch(exit);
+        setInfoClearing(null);
+      }
+      return;
+    }
 
     // Map-targeted intent (e.g. Build): consume the click here.
     if (mapIntent) {
@@ -390,6 +411,49 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
         })}
       </g>
 
+      {/* Forest tiles — sit between clearings. Vagabond-only space. */}
+      <g className="forests" style={{ pointerEvents: 'auto' }}>
+        {AUTUMN_MAP.forests.map(f => {
+          const enterable = forestEnter.has(f.id);
+          const occupied = vagabondInForest === f.id;
+          const dimmed = mapIntent != null && !occupied;
+          const strokeColor = occupied ? '#f0c060'
+                            : enterable ? '#9bbd58'
+                            : '#3a4a25';
+          const strokeWidth = (occupied || enterable) ? 5 : 2;
+          const fill = occupied ? '#2a3a20' : '#1d2812';
+          const enterAction = forestEnter.get(f.id);
+          return (
+            <g
+              key={f.id}
+              transform={`translate(${f.x}, ${f.y})`}
+              onClick={() => {
+                if (!isHuman) return;
+                if (enterAction) {
+                  dispatch(enterAction);
+                  return;
+                }
+              }}
+              style={{ cursor: enterable ? 'pointer' : 'default', opacity: dimmed ? 0.4 : 1 }}
+              role={enterable ? 'button' : undefined}
+              aria-label={`Forest ${f.id}${enterable ? ' (enter)' : ''}`}
+            >
+              <ellipse rx={42} ry={28} fill={fill} stroke={strokeColor} strokeWidth={strokeWidth} opacity={0.9}
+                className={enterable || occupied ? 'pulse' : ''} />
+              <text y={5} textAnchor="middle" fontSize={20} fill="#9bbd58" pointerEvents="none">🌲</text>
+              {occupied && (() => {
+                const art = warriorArt('vagabond');
+                return art ? (
+                  <image href={art} x={-18} y={-32} width={36} height={36} />
+                ) : (
+                  <circle cx={0} cy={-14} r={13} fill={FACTION_COLOR.vagabond} stroke="#3b2a18" strokeWidth={2} />
+                );
+              })()}
+            </g>
+          );
+        })}
+      </g>
+
       {/* Clearings */}
       <g className="clearings" style={{ pointerEvents: 'auto' }}>
         {AUTUMN_MAP.clearings.map(c => {
@@ -399,15 +463,20 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
           const isValidTarget = validTargets.has(c.id);
           const isValidSource = isHuman && selected == null && validSources.has(c.id);
           const isIntentTarget = mapIntent != null && intentTargets.has(c.id);
+          const isForestExit = vagabondInForest != null && forestExit.has(c.id);
           // When an intent is armed, clearings that wouldn't satisfy it
           // get dimmed so it's obvious which ones the player can click.
-          const isIntentDimmed = mapIntent != null && !isIntentTarget;
+          // Same dimming applies when the Vagabond is in a forest:
+          // only the forest's bordering clearings can be clicked to exit.
+          const isIntentDimmed = (mapIntent != null && !isIntentTarget)
+            || (vagabondInForest != null && !isForestExit);
           const cl = state.map.clearings[c.id]!;
 
           let strokeColor = '#3b2a18';
           let strokeWidth = 3;
           if (isSelected)          { strokeColor = '#fff';    strokeWidth = 7; }
           else if (isIntentTarget) { strokeColor = '#f0c060'; strokeWidth = 6; }
+          else if (isForestExit)   { strokeColor = '#88e08a'; strokeWidth = 6; }
           else if (isValidTarget)  { strokeColor = '#88e08a'; strokeWidth = 6; }
           else if (isValidSource)  { strokeColor = '#f3e3a8'; strokeWidth = 5; }
           else if (isHovered)      { strokeColor = '#fff';    strokeWidth = 5; }

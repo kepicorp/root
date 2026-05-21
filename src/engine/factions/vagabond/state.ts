@@ -1,5 +1,5 @@
 import type { CardId } from '../../cards';
-import type { ClearingId, Faction, ItemKind } from '../../types';
+import type { ClearingId, Faction, ItemKind, ForestId } from '../../types';
 
 export type VagabondCharacter = 'thief' | 'tinker' | 'ranger';
 export type ItemFace = 'face-up' | 'face-down' | 'damaged';
@@ -13,7 +13,13 @@ export interface CarriedItem {
 
 export interface VagabondState {
   character: VagabondCharacter;
+  /** Clearing the Vagabond was last in. Stays valid even when the Vagabond
+   *  is currently sitting in a forest (so the UI still has somewhere
+   *  meaningful to anchor). */
   clearing: ClearingId;
+  /** Set when the Vagabond is inside a forest tile instead of a clearing.
+   *  `clearing` keeps pointing at the clearing they came from. */
+  inForest?: ForestId;
   items: CarriedItem[];
   relationships: Record<Exclude<Faction, 'vagabond'>, Relationship>;
   quests: CardId[];          // legacy: shared-deck cards (unused)

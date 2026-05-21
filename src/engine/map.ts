@@ -8,7 +8,7 @@
 // Adjacency mirrors a plausible Root autumn map; precise paths can be tuned later
 // without changing the type signature.
 
-import type { Clearing, Path, RootMap, ClearingId } from './types';
+import type { Clearing, Path, RootMap, ClearingId, Forest, ForestId } from './types';
 
 const clearings: readonly Clearing[] = [
   // Row 1 (top)
@@ -40,7 +40,20 @@ const paths: readonly Path[] = [
   [2, 5], [3, 8], [6, 9], [7, 12],
 ];
 
-export const AUTUMN_MAP: RootMap = { clearings, paths };
+// Six forest tiles sit between the 4x3 grid of clearings — each bordered
+// by the four clearings that share its cell. The Vagabond is the only
+// faction that can move into a forest; forests don't accept warriors,
+// buildings, or tokens.
+const forests: readonly Forest[] = [
+  { id: 'fA', clearings: [1, 2, 5, 6], x: 280, y: 270 },
+  { id: 'fB', clearings: [2, 3, 6, 7], x: 510, y: 270 },
+  { id: 'fC', clearings: [3, 4, 7, 8], x: 735, y: 270 },
+  { id: 'fD', clearings: [5, 6, 9, 10], x: 280, y: 530 },
+  { id: 'fE', clearings: [6, 7, 10, 11], x: 510, y: 530 },
+  { id: 'fF', clearings: [7, 8, 11, 12], x: 735, y: 530 },
+];
+
+export const AUTUMN_MAP: RootMap = { clearings, paths, forests };
 
 // ─── Derived helpers ────────────────────────────────────────────────────────
 
@@ -48,6 +61,12 @@ export function getClearing(map: RootMap, id: ClearingId): Clearing {
   const c = map.clearings.find(c => c.id === id);
   if (!c) throw new Error(`Unknown clearing: ${id}`);
   return c;
+}
+
+export function getForest(map: RootMap, id: ForestId): Forest {
+  const f = map.forests.find(f => f.id === id);
+  if (!f) throw new Error(`Unknown forest: ${id}`);
+  return f;
 }
 
 export function getAdjacent(map: RootMap, id: ClearingId): ClearingId[] {
@@ -63,6 +82,12 @@ export function areAdjacent(map: RootMap, a: ClearingId, b: ClearingId): boolean
   return map.paths.some(
     ([x, y]) => (x === a && y === b) || (x === b && y === a),
   );
+}
+
+/** Forests directly accessible from a clearing (the clearing is one of
+ *  the forest's bordering clearings). */
+export function forestsAtClearing(map: RootMap, c: ClearingId): ForestId[] {
+  return map.forests.filter(f => f.clearings.includes(c)).map(f => f.id);
 }
 
 export const CORNER_CLEARINGS: readonly ClearingId[] = [1, 4, 9, 12];

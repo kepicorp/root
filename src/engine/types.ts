@@ -43,9 +43,21 @@ export interface Clearing {
   y: number;
 }
 
+export type ForestId = string;
+
+export interface Forest {
+  id: ForestId;
+  /** Clearings that ring this forest — the Vagabond can enter from any
+   *  one of them and exit to any one of them. */
+  clearings: readonly ClearingId[];
+  x: number;
+  y: number;
+}
+
 export interface RootMap {
   clearings: readonly Clearing[];
   paths: readonly Path[];
+  forests: readonly Forest[];
 }
 
 // ─── Per-clearing dynamic state ─────────────────────────────────────────────

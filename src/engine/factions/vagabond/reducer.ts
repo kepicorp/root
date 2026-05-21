@@ -1,7 +1,7 @@
 import { produce } from 'immer';
 import type { GameState, Action, ClearingId, Faction, ItemKind } from '../../types';
 import { getCard } from '../../cards';
-import { AUTUMN_MAP, getAdjacent } from '../../map';
+import { AUTUMN_MAP, getAdjacent, getForest, forestsAtClearing } from '../../map';
 import type { VagabondAction } from './actions';
 import type { Relationship } from './state';
 import { getQuest } from './quests';
@@ -48,11 +48,50 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
       return produce(state, draft => {
         if (draft.phase !== 'birdsong') return;
         const v = draft.factions.vagabond!;
+        if (v.inForest) return;
         if (!getAdjacent(AUTUMN_MAP, v.clearing).includes(a.to)) return;
         draft.map.clearings[v.clearing]!.vagabondHere = false;
         v.clearing = a.to;
         draft.map.clearings[a.to]!.vagabondHere = true;
         v.slipped = true;
+      });
+
+    case 'vagabond.enterForest':
+      return produce(state, draft => {
+        if (draft.phase !== 'daylight') return;
+        const v = draft.factions.vagabond!;
+        if (v.daylightActionsLeft <= 0) return;
+        if (v.inForest) return;
+        if (!forestsAtClearing(AUTUMN_MAP, v.clearing).includes(a.forestId)) return;
+        if (!exhaustItem(v.items, 'boots')) return;
+        draft.map.clearings[v.clearing]!.vagabondHere = false;
+        v.inForest = a.forestId;
+        v.daylightActionsLeft -= 1;
+        draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Entered forest ${a.forestId}.` });
+      });
+
+    case 'vagabond.exitForest':
+      return produce(state, draft => {
+        if (draft.phase !== 'daylight') return;
+        const v = draft.factions.vagabond!;
+        if (v.daylightActionsLeft <= 0) return;
+        if (!v.inForest) return;
+        const f = getForest(AUTUMN_MAP, v.inForest);
+        if (!f.clearings.includes(a.to)) return;
+        if (!exhaustItem(v.items, 'boots')) return;
+        const destCl = draft.map.clearings[a.to]!;
+        const hostilePresent = (['marquise', 'eyrie', 'alliance'] as const).some(faction => {
+          const rel = v.relationships[faction];
+          return rel !== 'allied' && (destCl.warriors[faction] ?? 0) > 0;
+        });
+        if (hostilePresent) {
+          if (!exhaustItem(v.items, 'boots')) return;
+        }
+        v.inForest = undefined;
+        v.clearing = a.to;
+        draft.map.clearings[a.to]!.vagabondHere = true;
+        v.daylightActionsLeft -= 1;
+        draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Exited forest → clearing ${a.to}.` });
       });
 
     case 'vagabond.refresh':
@@ -272,55 +311,67 @@ export function vagabondLegalActions(state: GameState): Action[] {
 
   if (state.phase === 'birdsong') {
     out.push({ kind: 'vagabond.refresh' });
-    for (const nb of getAdjacent(AUTUMN_MAP, v.clearing)) {
-      out.push({ kind: 'vagabond.slip', to: nb });
+    if (!v.inForest) {
+      for (const nb of getAdjacent(AUTUMN_MAP, v.clearing)) {
+        out.push({ kind: 'vagabond.slip', to: nb });
+      }
     }
   }
   if (state.phase === 'daylight' && v.daylightActionsLeft > 0) {
-    // Move
-    if (findItem(v.items, 'boots')) {
-      for (const nb of getAdjacent(AUTUMN_MAP, v.clearing)) {
-        out.push({ kind: 'vagabond.move', to: nb });
+    // Move + forest entry/exit. While in a forest, almost everything else
+    // is gated off — you have to step back into a clearing first.
+    if (v.inForest) {
+      if (findItem(v.items, 'boots')) {
+        const f = getForest(AUTUMN_MAP, v.inForest);
+        for (const cid of f.clearings) out.push({ kind: 'vagabond.exitForest', to: cid });
       }
-    }
-    // Explore
-    const meta = AUTUMN_MAP.clearings.find(c => c.id === v.clearing)!;
-    if (meta.hasRuin && findItem(v.items, 'torch') && v.ruinsExplored < 4) {
-      out.push({ kind: 'vagabond.exploreRuin' });
-    }
-    // Aid
-    const cl = state.map.clearings[v.clearing]!;
-    for (const cardId of state.hands.vagabond) {
-      const card = getCard(cardId);
-      if (card.suit !== meta.suit && card.suit !== 'bird') continue;
-      for (const f of ['marquise', 'eyrie', 'alliance'] as const) {
-        if ((cl.warriors[f] ?? 0) > 0) out.push({ kind: 'vagabond.aid', faction: f, cardId });
+    } else {
+      if (findItem(v.items, 'boots')) {
+        for (const nb of getAdjacent(AUTUMN_MAP, v.clearing)) {
+          out.push({ kind: 'vagabond.move', to: nb });
+        }
+        for (const fid of forestsAtClearing(AUTUMN_MAP, v.clearing)) {
+          out.push({ kind: 'vagabond.enterForest', forestId: fid });
+        }
       }
-    }
-    // Strike
-    if (findItem(v.items, 'crossbow')) {
-      for (const f of ['marquise', 'eyrie', 'alliance'] as const) {
-        if (v.relationships[f] === 'allied') continue;
-        if ((cl.warriors[f] ?? 0) > 0) out.push({ kind: 'vagabond.strike', clearing: v.clearing, faction: f });
+      const meta = AUTUMN_MAP.clearings.find(c => c.id === v.clearing)!;
+      // Explore
+      if (meta.hasRuin && findItem(v.items, 'torch') && v.ruinsExplored < 4) {
+        out.push({ kind: 'vagabond.exploreRuin' });
       }
-    }
-    // Repair
-    if (findItem(v.items, 'hammer') && v.items.some(i => i.state === 'damaged')) {
-      const damaged = v.items.find(i => i.state === 'damaged')!;
-      out.push({ kind: 'vagabond.repair', itemKind: damaged.kind });
-    }
-    // Complete quest
-    const here = AUTUMN_MAP.clearings.find(c => c.id === v.clearing)!;
-    for (const questId of v.questDisplay) {
-      const q = getQuest(questId);
-      if (q.suit !== here.suit) continue;
-      if (!findItem(v.items, q.item1)) continue;
-      if (q.item1 !== q.item2 && !findItem(v.items, q.item2)) continue;
-      if (q.item1 === q.item2) {
-        const count = v.items.filter(i => i.kind === q.item1 && i.state === 'face-up' && !i.exhausted).length;
-        if (count < 2) continue;
+      // Aid
+      const cl = state.map.clearings[v.clearing]!;
+      for (const cardId of state.hands.vagabond) {
+        const card = getCard(cardId);
+        if (card.suit !== meta.suit && card.suit !== 'bird') continue;
+        for (const f of ['marquise', 'eyrie', 'alliance'] as const) {
+          if ((cl.warriors[f] ?? 0) > 0) out.push({ kind: 'vagabond.aid', faction: f, cardId });
+        }
       }
-      out.push({ kind: 'vagabond.completeQuest', questId });
+      // Strike
+      if (findItem(v.items, 'crossbow')) {
+        for (const f of ['marquise', 'eyrie', 'alliance'] as const) {
+          if (v.relationships[f] === 'allied') continue;
+          if ((cl.warriors[f] ?? 0) > 0) out.push({ kind: 'vagabond.strike', clearing: v.clearing, faction: f });
+        }
+      }
+      // Repair
+      if (findItem(v.items, 'hammer') && v.items.some(i => i.state === 'damaged')) {
+        const damaged = v.items.find(i => i.state === 'damaged')!;
+        out.push({ kind: 'vagabond.repair', itemKind: damaged.kind });
+      }
+      // Complete quest
+      for (const questId of v.questDisplay) {
+        const q = getQuest(questId);
+        if (q.suit !== meta.suit) continue;
+        if (!findItem(v.items, q.item1)) continue;
+        if (q.item1 !== q.item2 && !findItem(v.items, q.item2)) continue;
+        if (q.item1 === q.item2) {
+          const count = v.items.filter(i => i.kind === q.item1 && i.state === 'face-up' && !i.exhausted).length;
+          if (count < 2) continue;
+        }
+        out.push({ kind: 'vagabond.completeQuest', questId });
+      }
     }
     // Form coalition — only with a strictly-last-place faction.
     if (!v.coalitionPartner) {
