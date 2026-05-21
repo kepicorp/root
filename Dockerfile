@@ -15,12 +15,15 @@ ENV NODE_ENV=development
 
 # Install all deps (build needs dev deps for tsc / vite). --include=dev
 # defends against hosts that export NODE_ENV=production. Bump fetch
-# timeout / retries so a slow registry doesn't kill the install.
+# timeout / retries so a slow registry doesn't kill the install. We split
+# install + verify into separate RUNs so a future failure points at the
+# specific step (npm itself vs. missing devDep) instead of an ambiguous
+# chained shell exit.
 COPY package*.json ./
 RUN npm ci --include=dev --no-audit --no-fund \
-      --fetch-timeout=300000 --fetch-retries=5 \
- && test -x node_modules/.bin/tsc \
- && test -x node_modules/.bin/vite
+      --fetch-timeout=300000 --fetch-retries=5 --loglevel=warn
+RUN test -x node_modules/.bin/tsc  || (echo "ERROR: tsc not installed — devDependencies skipped?"  && ls node_modules/.bin/ && exit 1)
+RUN test -x node_modules/.bin/vite || (echo "ERROR: vite not installed — devDependencies skipped?" && ls node_modules/.bin/ && exit 1)
 
 # Copy source and build the production bundle.
 COPY tsconfig.json vite.config.ts index.html ./
