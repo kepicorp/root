@@ -42,14 +42,22 @@ export function runOne(opts: SimOptions): SimResult {
   let state = startGame(performSetup(newGame({ seed: opts.seed })));
   let steps = 0;
   try {
+    let stuckCounter = 0;
     while (!state.winner && state.turn <= turnCap && steps < stepCap) {
       const action = policy(state);
       const next = reduce(state, action);
-      // Stuck detection: action had no effect at all.
-      if (next === state || JSON.stringify(next.scores) === JSON.stringify(state.scores) && next.turn === state.turn && next.phase === state.phase && next.activeIndex === state.activeIndex) {
-        // Fall back to phase advance to make progress.
-        state = reduce(state, { kind: 'system.advancePhase' });
+      if (next === state) {
+        // Action was rejected (returned same reference). Force a phase advance.
+        const adv = reduce(state, { kind: 'system.advancePhase' });
+        if (adv === state) {
+          stuckCounter += 1;
+          if (stuckCounter > 5) break; // genuinely stuck
+        } else {
+          stuckCounter = 0;
+          state = adv;
+        }
       } else {
+        stuckCounter = 0;
         state = next;
       }
       state = checkVictory(state);
