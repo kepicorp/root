@@ -28,20 +28,23 @@ const MAP_DRIVEN: ReadonlySet<string> = new Set([
   'marquise.build',
   'marquise.battle',
   'marquise.overwork',
-  'marquise.craft',                // single button + card picker
-  'marquise.spendBirdForExtra',    // single button + card picker
+  'marquise.craft',
+  'marquise.spendBirdForExtra',
   'alliance.spreadSympathy',
   'alliance.revolt',
   'alliance.organize',
   'alliance.battle',
   'alliance.mobilize',
   'alliance.move',
+  'alliance.craft',
+  'alliance.trainOfficer',
   'vagabond.move',
   'vagabond.slip',
   'vagabond.strike',
-  'vagabond.aid',                  // collapsed into one button + (card × faction) picker
+  'vagabond.aid',
   'vagabond.repair',
-  'eyrie.addToDecree',             // surfaced via the Decree slots in EyriePanel
+  'vagabond.craft',
+  'eyrie.addToDecree',
   'eyrie.executeRecruit',
   'eyrie.executeMove',
   'eyrie.executeBattle',
@@ -125,6 +128,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
   const [spendBirdPicking, setSpendBirdPicking] = useState(false);
   const [aidPicking, setAidPicking] = useState(false);
   const [repairPicking, setRepairPicking] = useState(false);
+  const [trainPicking, setTrainPicking] = useState(false);
   function closeAllPickers(): void {
     setOverworkPicking(false);
     setMobilizePicking(false);
@@ -132,6 +136,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
     setSpendBirdPicking(false);
     setAidPicking(false);
     setRepairPicking(false);
+    setTrainPicking(false);
   }
   useEffect(() => {
     function onKey(ev: KeyboardEvent) {
@@ -201,10 +206,12 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
   const overworkCards = new Set<string>();
   // Cards the Alliance can Mobilize.
   const mobilizeCards = new Set<string>();
-  // Marquise can craft item-cards.
+  // Each faction's craftable cards (only one of these can be non-empty
+  // per turn, since only the active faction has legals). Same for the
+  // optional "spend bird" / officer-training pickers.
   const craftCards = new Set<string>();
-  // Marquise can spend a bird card for an extra daylight action.
   const spendBirdCards = new Set<string>();
+  const trainOfficerCards = new Set<string>();
   // Vagabond can aid: (card × faction with warriors here in matching suit).
   const aidLegals: Array<{ cardId: string; faction: Exclude<Faction, 'vagabond'> }> = [];
   // Vagabond can repair (per damaged item kind).
@@ -232,6 +239,9 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
     else if (a.kind === 'eyrie.executeBuild')      canEyrieBuild = true;
     else if (a.kind === 'marquise.craft')             craftCards.add(a.cardId);
     else if (a.kind === 'marquise.spendBirdForExtra') spendBirdCards.add(a.cardId);
+    else if (a.kind === 'alliance.craft')             craftCards.add(a.cardId);
+    else if (a.kind === 'alliance.trainOfficer')      trainOfficerCards.add(a.cardId);
+    else if (a.kind === 'vagabond.craft')             craftCards.add(a.cardId);
     else if (a.kind === 'vagabond.aid')               aidLegals.push({ cardId: a.cardId, faction: a.faction });
     else if (a.kind === 'vagabond.repair')            repairItems.add(a.itemKind);
   }
@@ -327,9 +337,10 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
         const showSpendBird = g === 'bonus' && spendBirdCards.size > 0;
         const showAid = g === 'main' && aidLegals.length > 0;
         const showRepair = g === 'main' && repairItems.size > 0;
+        const showTrain = g === 'main' && trainOfficerCards.size > 0;
         if (list.length === 0 && ibs.length === 0
             && !showOverwork && !showMobilize && !showCraft
-            && !showSpendBird && !showAid && !showRepair) return null;
+            && !showSpendBird && !showAid && !showRepair && !showTrain) return null;
         const overworkArmed = mapIntent?.kind === 'marquise.overwork';
         return (
           <div key={g} className={`action-group action-group-${g}`}>
@@ -398,6 +409,16 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                 >
                   <span className="action-label">Repair</span>
                   {repairPicking && <span className="action-detail">pick an item below</span>}
+                </button>
+              )}
+              {showTrain && (
+                <button
+                  className={`btn action-btn ${trainPicking ? 'armed' : ''} faction-${active}`}
+                  onClick={() => setTrainPicking(p => !p)}
+                  title="Spend a bird-suit supporter to promote an officer"
+                >
+                  <span className="action-label">Train officer</span>
+                  {trainPicking && <span className="action-detail">pick a bird supporter below</span>}
                 </button>
               )}
               {list.slice(0, 20).map((a, i) => {
@@ -486,7 +507,9 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                         className="action-card-pick"
                         style={{ borderColor: SUIT_COLOR[c.suit] }}
                         onClick={() => {
-                          dispatch({ kind: 'marquise.craft', cardId: id });
+                          if (active === 'marquise')      dispatch({ kind: 'marquise.craft', cardId: id });
+                          else if (active === 'alliance') dispatch({ kind: 'alliance.craft', cardId: id });
+                          else if (active === 'vagabond') dispatch({ kind: 'vagabond.craft', cardId: id });
                           setCraftPicking(false);
                         }}
                       >
@@ -571,6 +594,33 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                       <span className="action-card-pick-name">{item}</span>
                     </button>
                   ))}
+                </div>
+              </div>
+            )}
+            {showTrain && trainPicking && (
+              <div className="action-card-picker">
+                <div className="action-card-picker-title">
+                  Train officer — pick a bird-suit supporter
+                  <button className="btn ghost small" onClick={() => setTrainPicking(false)} aria-label="Cancel">×</button>
+                </div>
+                <div className="action-card-picker-list">
+                  {Array.from(trainOfficerCards).map(id => {
+                    const c = getCard(id);
+                    return (
+                      <button
+                        key={id}
+                        className="action-card-pick"
+                        style={{ borderColor: SUIT_COLOR[c.suit] }}
+                        onClick={() => {
+                          dispatch({ kind: 'alliance.trainOfficer', cardId: id });
+                          setTrainPicking(false);
+                        }}
+                      >
+                        <span className="action-card-pick-suit" style={{ background: SUIT_COLOR[c.suit] }} />
+                        <span className="action-card-pick-name">{c.name}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}

@@ -4,6 +4,7 @@ import type { CardId } from '../../cards';
 import { getCard } from '../../cards';
 import { AUTUMN_MAP, getAdjacent } from '../../map';
 import { resolveCombat } from '../../combat';
+import { applyFavor } from '../../effects';
 import { vpForBuilding, buildCost } from './scoring';
 import type { MarquiseAction } from './actions';
 
@@ -203,15 +204,14 @@ export function marquiseReducer(state: GameState, action: Action): GameState {
       return produce(state, draft => {
         if (draft.phase !== 'daylight') return;
         const card = getCard(a.cardId);
-        if (card.category !== 'item' && card.category !== 'persistent') return;
-        // For simplicity: require at least 1 workshop on board; pay any card from hand of matching suit (or bird).
+        if (card.category !== 'item' && card.category !== 'persistent' && card.category !== 'favor') return;
         const m = draft.factions.marquise!;
-        const totalWorkshops = m.buildings.workshop;
-        if (totalWorkshops <= 0) return;
+        if (m.buildings.workshop <= 0) return;
         if (!consumeCardFromHand(draft, a.cardId)) return;
         if (card.craftVp) draft.scores.marquise += card.craftVp;
         if (card.item) draft.itemSupply.push(card.item);
         if (card.category === 'persistent') draft.craftedPersistents.push({ faction: 'marquise', cardId: a.cardId });
+        if (card.category === 'favor') applyFavor(draft, card.suit, 'marquise');
         draft.log.push({ turn: draft.turn, faction: 'marquise', message: `Crafted ${card.name} (+${card.craftVp ?? 0} VP).` });
       });
 

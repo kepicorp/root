@@ -2,6 +2,7 @@ import { produce } from 'immer';
 import type { GameState, Action, ClearingId, Faction, ItemKind } from '../../types';
 import { getCard } from '../../cards';
 import { AUTUMN_MAP, getAdjacent, getForest, forestsAtClearing } from '../../map';
+import { applyFavor } from '../../effects';
 import type { VagabondAction } from './actions';
 import type { Relationship } from './state';
 import { getQuest } from './quests';
@@ -196,6 +197,26 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
         damaged.state = 'face-up';
       });
 
+    case 'vagabond.craft':
+      return produce(state, draft => {
+        if (draft.phase !== 'daylight') return;
+        const v = draft.factions.vagabond!;
+        if (v.inForest) return;
+        const card = getCard(a.cardId);
+        if (card.category !== 'item' && card.category !== 'persistent' && card.category !== 'favor') return;
+        // Vagabond crafts by exhausting one face-up item (the "hammer power").
+        if (!exhaustItem(v.items, 'hammer')) return;
+        const idx = draft.hands.vagabond.indexOf(a.cardId);
+        if (idx < 0) return;
+        draft.hands.vagabond.splice(idx, 1);
+        if (card.craftVp) draft.scores.vagabond += card.craftVp;
+        if (card.item) draft.itemSupply.push(card.item);
+        if (card.category === 'persistent') draft.craftedPersistents.push({ faction: 'vagabond', cardId: a.cardId });
+        if (card.category === 'favor') applyFavor(draft, card.suit, 'vagabond');
+        draft.discard.push(a.cardId);
+        draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Crafted ${card.name} (+${card.craftVp ?? 0} VP).` });
+      });
+
     case 'vagabond.completeQuest':
       return produce(state, draft => {
         if (draft.phase !== 'daylight') return;
@@ -359,6 +380,15 @@ export function vagabondLegalActions(state: GameState): Action[] {
       if (findItem(v.items, 'hammer') && v.items.some(i => i.state === 'damaged')) {
         const damaged = v.items.find(i => i.state === 'damaged')!;
         out.push({ kind: 'vagabond.repair', itemKind: damaged.kind });
+      }
+      // Craft — exhausts a hammer, consumes a card.
+      if (findItem(v.items, 'hammer')) {
+        for (const cardId of state.hands.vagabond) {
+          const card = getCard(cardId);
+          if (card.category === 'item' || card.category === 'persistent' || card.category === 'favor') {
+            out.push({ kind: 'vagabond.craft', cardId });
+          }
+        }
       }
       // Complete quest
       for (const questId of v.questDisplay) {

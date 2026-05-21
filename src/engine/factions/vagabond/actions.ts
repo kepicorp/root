@@ -13,6 +13,7 @@ export type VagabondAction =
   | { kind: 'vagabond.completeQuest'; questId: string }
   | { kind: 'vagabond.formCoalition'; faction: Exclude<Faction, 'vagabond'> }
   | { kind: 'vagabond.refresh' }
+  | { kind: 'vagabond.craft'; cardId: CardId }
   | { kind: 'vagabond.endDaylight' }
   | { kind: 'vagabond.evening' }
   | { kind: 'vagabond.discardCard'; cardId: CardId };

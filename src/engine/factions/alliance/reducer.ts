@@ -4,6 +4,7 @@ import { getCard, type CardId } from '../../cards';
 import { AUTUMN_MAP, getAdjacent } from '../../map';
 import { resolveCombat } from '../../combat';
 import { SYMPATHY_VP_TRACK, SYMPATHY_COST } from './state';
+import { applyFavor } from '../../effects';
 import type { AllianceAction } from './actions';
 
 function isAllianceTurn(state: GameState): boolean {
@@ -39,6 +40,7 @@ function allianceRules(state: GameState, clearing: ClearingId): boolean {
   }
   return true;
 }
+
 
 function returnToSupply(draft: GameState, clearing: ClearingId, faction: Faction): void {
   const cl = draft.map.clearings[clearing]!;
@@ -167,6 +169,46 @@ export function allianceReducer(state: GameState, action: Action): GameState {
         draft.log.push({ turn: draft.turn, faction: 'alliance', message: `Moved ${n} from ${a.from} → ${a.to}.` });
       });
 
+    case 'alliance.craft':
+      return produce(state, draft => {
+        if (draft.phase !== 'daylight') return;
+        const al = draft.factions.alliance!;
+        const card = getCard(a.cardId);
+        if (card.category !== 'item' && card.category !== 'persistent' && card.category !== 'favor') return;
+        // Alliance crafts using sympathy as power — requires at least one
+        // sympathy token on the board.
+        if (al.sympathy.length <= 0) return;
+        const idx = draft.hands.alliance.indexOf(a.cardId);
+        if (idx < 0) return;
+        draft.hands.alliance.splice(idx, 1);
+        if (card.craftVp) draft.scores.alliance += card.craftVp;
+        if (card.item) draft.itemSupply.push(card.item);
+        if (card.category === 'persistent') draft.craftedPersistents.push({ faction: 'alliance', cardId: a.cardId });
+        if (card.category === 'favor') applyFavor(draft, card.suit, 'alliance');
+        draft.discard.push(a.cardId);
+        draft.log.push({ turn: draft.turn, faction: 'alliance', message: `Crafted ${card.name} (+${card.craftVp ?? 0} VP).` });
+      });
+
+    case 'alliance.trainOfficer':
+      return produce(state, draft => {
+        if (draft.phase !== 'daylight') return;
+        const al = draft.factions.alliance!;
+        if (al.daylightActionsLeft <= 0) return;
+        if (al.officers >= 10) return;
+        // Real rules: spend a bird-suit card OR a supporter to bump officers.
+        // We allow spending a supporter card directly (Alliance's recruiting
+        // power), keyed by id.
+        const idx = al.supporters.indexOf(a.cardId);
+        if (idx < 0) return;
+        const card = getCard(a.cardId);
+        if (card.suit !== 'bird') return;
+        al.supporters.splice(idx, 1);
+        draft.discard.push(a.cardId);
+        al.officers += 1;
+        al.daylightActionsLeft -= 1;
+        draft.log.push({ turn: draft.turn, faction: 'alliance', message: `Trained an officer (now ${al.officers}).` });
+      });
+
     case 'alliance.endDaylight':
       return produce(state, draft => {
         draft.factions.alliance!.daylightActionsLeft = 0;
@@ -249,6 +291,23 @@ export function allianceLegalActions(state: GameState): Action[] {
   }
   if (state.phase === 'daylight' && al.daylightActionsLeft > 0) {
     for (const cardId of state.hands.alliance) out.push({ kind: 'alliance.mobilize', cardId });
+    // Train officer: spend a bird-suit supporter.
+    if (al.officers < 10) {
+      for (const id of al.supporters) {
+        if (getCard(id).suit === 'bird') {
+          out.push({ kind: 'alliance.trainOfficer', cardId: id });
+        }
+      }
+    }
+    // Craft (item / persistent / favor) — needs at least one sympathy on the board.
+    if (al.sympathy.length > 0) {
+      for (const id of state.hands.alliance) {
+        const card = getCard(id);
+        if (card.category === 'item' || card.category === 'persistent' || card.category === 'favor') {
+          out.push({ kind: 'alliance.craft', cardId: id });
+        }
+      }
+    }
     for (const c of AUTUMN_MAP.clearings) {
       const cl = state.map.clearings[c.id]!;
       if ((cl.warriors.alliance ?? 0) > 0 && !al.sympathy.includes(c.id)) {
