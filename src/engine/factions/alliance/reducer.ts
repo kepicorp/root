@@ -1,7 +1,7 @@
 import { produce } from 'immer';
 import type { GameState, Action, ClearingId, Faction } from '../../types';
 import { getCard, type CardId } from '../../cards';
-import { AUTUMN_MAP } from '../../map';
+import { AUTUMN_MAP, getAdjacent } from '../../map';
 import { resolveCombat } from '../../combat';
 import { SYMPATHY_VP_TRACK, SYMPATHY_COST } from './state';
 import type { AllianceAction } from './actions';
@@ -17,6 +17,27 @@ function clearingSuit(clearing: ClearingId): 'fox' | 'mouse' | 'rabbit' {
 function matchesSuit(cardId: CardId, suit: 'fox' | 'mouse' | 'rabbit'): boolean {
   const s = getCard(cardId).suit;
   return s === suit || s === 'bird';
+}
+
+/** Alliance rules a clearing when its warriors + sympathy + bases beat
+ *  every other faction's pieces there. Mirrors the rule used elsewhere
+ *  for movement legality. */
+function allianceRules(state: GameState, clearing: ClearingId): boolean {
+  const cl = state.map.clearings[clearing];
+  if (!cl) return false;
+  const al = state.factions.alliance;
+  if (!al) return false;
+  const mine = (cl.warriors.alliance ?? 0)
+    + cl.tokens.filter(t => t.faction === 'alliance').length
+    + cl.buildings.filter(b => b.faction === 'alliance').length;
+  if (mine <= 0) return false;
+  for (const f of ['marquise', 'eyrie', 'vagabond'] as const) {
+    const theirs = (cl.warriors[f] ?? 0)
+      + cl.tokens.filter(t => t.faction === f).length
+      + cl.buildings.filter(b => b.faction === f).length;
+    if (theirs >= mine) return false;
+  }
+  return true;
 }
 
 function returnToSupply(draft: GameState, clearing: ClearingId, faction: Faction): void {
@@ -128,6 +149,24 @@ export function allianceReducer(state: GameState, action: Action): GameState {
       });
     }
 
+    case 'alliance.move':
+      return produce(state, draft => {
+        if (draft.phase !== 'daylight') return;
+        const al = draft.factions.alliance!;
+        if (al.daylightActionsLeft <= 0) return;
+        if (!getAdjacent(AUTUMN_MAP, a.from).includes(a.to)) return;
+        if (!(allianceRules(draft, a.from) || allianceRules(draft, a.to))) return;
+        const fromCl = draft.map.clearings[a.from]!;
+        const toCl = draft.map.clearings[a.to]!;
+        const have = fromCl.warriors.alliance ?? 0;
+        const n = Math.min(a.count, have);
+        if (n <= 0) return;
+        fromCl.warriors.alliance = have - n;
+        toCl.warriors.alliance = (toCl.warriors.alliance ?? 0) + n;
+        al.daylightActionsLeft -= 1;
+        draft.log.push({ turn: draft.turn, faction: 'alliance', message: `Moved ${n} from ${a.from} → ${a.to}.` });
+      });
+
     case 'alliance.endDaylight':
       return produce(state, draft => {
         draft.factions.alliance!.daylightActionsLeft = 0;
@@ -219,6 +258,15 @@ export function allianceLegalActions(state: GameState): Action[] {
         for (const f of ['marquise', 'eyrie', 'vagabond'] as const) {
           if ((cl.warriors[f] ?? 0) > 0 || cl.buildings.some(b => b.faction === f)) {
             out.push({ kind: 'alliance.battle', clearing: c.id, defender: f });
+          }
+        }
+      }
+      // Move: must rule source or destination, costs 1 daylight action.
+      const have = cl.warriors.alliance ?? 0;
+      if (have > 0) {
+        for (const nb of getAdjacent(AUTUMN_MAP, c.id)) {
+          if (allianceRules(state, c.id) || allianceRules(state, nb)) {
+            out.push({ kind: 'alliance.move', from: c.id, to: nb, count: have });
           }
         }
       }

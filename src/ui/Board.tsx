@@ -64,6 +64,7 @@ const WARRIOR_ART: Record<Faction, string | null> = {
 function getMovementActions(actions: Action[]): Action[] {
   return actions.filter(a =>
     a.kind === 'marquise.march' ||
+    a.kind === 'alliance.move' ||
     a.kind === 'vagabond.move' ||
     a.kind === 'vagabond.slip' ||
     a.kind === 'eyrie.executeMove'
@@ -72,6 +73,7 @@ function getMovementActions(actions: Action[]): Action[] {
 
 function actionFromTo(a: Action): { from: ClearingId | null; to: ClearingId } | null {
   if (a.kind === 'marquise.march')     return { from: a.from, to: a.to };
+  if (a.kind === 'alliance.move')      return { from: a.from, to: a.to };
   if (a.kind === 'eyrie.executeMove')  return { from: a.from, to: a.to };
   if (a.kind === 'vagabond.move')      return { from: null, to: a.to };
   if (a.kind === 'vagabond.slip')      return { from: null, to: a.to };
@@ -309,7 +311,7 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
         // If the action carries a `count` (Marquise march) and there's
         // more than one warrior available, ask the player how many to
         // move instead of always shipping the maximum.
-        const max = a.kind === 'marquise.march' ? a.count : 1;
+        const max = (a.kind === 'marquise.march' || a.kind === 'alliance.move') ? a.count : 1;
         if (max > 1) {
           setPendingMove({ from: selected, to: id, max, action: a, pick: max });
           return;
@@ -627,7 +629,7 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
       {pendingMove && (
         <div className="count-picker" role="dialog" aria-label="Choose how many warriors to move">
           <div className="count-picker-title">
-            March from <strong>{pendingMove.from}</strong> → <strong>{pendingMove.to}</strong>
+            {pendingMove.action.kind === 'marquise.march' ? 'March' : 'Move'} from <strong>{pendingMove.from}</strong> → <strong>{pendingMove.to}</strong>
           </div>
           <div className="count-picker-row">
             <button
@@ -660,7 +662,7 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
               onClick={() => {
                 if (!pendingMove) return;
                 const a = pendingMove.action;
-                if (a.kind === 'marquise.march') {
+                if (a.kind === 'marquise.march' || a.kind === 'alliance.move') {
                   dispatch({ ...a, count: pendingMove.pick });
                 } else {
                   dispatch(a);
@@ -669,7 +671,7 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
                 setSelected(null);
                 setInfoClearing(null);
               }}
-            >March {pendingMove.pick}</button>
+            >{pendingMove.action.kind === 'marquise.march' ? 'March' : 'Move'} {pendingMove.pick}</button>
           </div>
         </div>
       )}

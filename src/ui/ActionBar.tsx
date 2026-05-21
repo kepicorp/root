@@ -32,6 +32,8 @@ const MAP_DRIVEN: ReadonlySet<string> = new Set([
   'alliance.revolt',
   'alliance.organize',
   'alliance.battle',
+  'alliance.mobilize', // collapsed into one button + card picker
+  'alliance.move',
   'vagabond.move',
   'vagabond.slip',
   'vagabond.strike',
@@ -111,12 +113,13 @@ function actionDetail(a: Action): string {
 }
 
 export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, setMapIntent }: ActionBarProps) {
-  // Two-step intents like Overwork ("pick a card, then pick a matching
-  // clearing") use a tiny local state for the picker UI. Esc dismisses.
+  // Two-step intents like Overwork / Mobilize ("pick a card, then go") use
+  // tiny local picker states. Esc dismisses any open picker.
   const [overworkPicking, setOverworkPicking] = useState(false);
+  const [mobilizePicking, setMobilizePicking] = useState(false);
   useEffect(() => {
     function onKey(ev: KeyboardEvent) {
-      if (ev.key === 'Escape') setOverworkPicking(false);
+      if (ev.key === 'Escape') { setOverworkPicking(false); setMobilizePicking(false); }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -180,6 +183,8 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
   const vagabondStrikeDefenders = new Set<Faction>();
   // Cards that can be spent on Overwork (matching at least one sawmill).
   const overworkCards = new Set<string>();
+  // Cards the Alliance can Mobilize.
+  const mobilizeCards = new Set<string>();
   let canSpreadSympathy = false;
   let canRevolt = false;
   let canOrganize = false;
@@ -192,6 +197,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
     else if (a.kind === 'marquise.battle')     marquiseBattleDefenders.add(a.defender);
     else if (a.kind === 'marquise.overwork')   overworkCards.add(a.cardId);
     else if (a.kind === 'alliance.battle')     allianceBattleDefenders.add(a.defender);
+    else if (a.kind === 'alliance.mobilize')   mobilizeCards.add(a.cardId);
     else if (a.kind === 'vagabond.strike')     vagabondStrikeDefenders.add(a.faction);
     else if (a.kind === 'alliance.spreadSympathy') canSpreadSympathy = true;
     else if (a.kind === 'alliance.revolt')         canRevolt = true;
@@ -288,7 +294,8 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                   : g === 'main'     ? intentButtonsByGroup.main
                   : [];
         const showOverwork = g === 'main' && overworkCards.size > 0;
-        if (list.length === 0 && ibs.length === 0 && !showOverwork) return null;
+        const showMobilize = g === 'main' && mobilizeCards.size > 0;
+        if (list.length === 0 && ibs.length === 0 && !showOverwork && !showMobilize) return null;
         const overworkArmed = mapIntent?.kind === 'marquise.overwork';
         return (
           <div key={g} className={`action-group action-group-${g}`}>
@@ -307,6 +314,16 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                   <span className="action-label">Overwork</span>
                   {overworkArmed && <span className="action-detail">click map · Esc to cancel</span>}
                   {overworkPicking && !overworkArmed && <span className="action-detail">pick a card below</span>}
+                </button>
+              )}
+              {showMobilize && (
+                <button
+                  className={`btn action-btn ${mobilizePicking ? 'armed' : ''} faction-${active}`}
+                  onClick={() => setMobilizePicking(p => !p)}
+                  title="Pick a card to add to your supporters"
+                >
+                  <span className="action-label">Mobilize</span>
+                  {mobilizePicking && <span className="action-detail">pick a card below</span>}
                 </button>
               )}
               {list.slice(0, 20).map((a, i) => {
@@ -343,6 +360,33 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                         onClick={() => {
                           setMapIntent({ kind: 'marquise.overwork', cardId: id });
                           setOverworkPicking(false);
+                        }}
+                      >
+                        <span className="action-card-pick-suit" style={{ background: SUIT_COLOR[c.suit] }} />
+                        <span className="action-card-pick-name">{c.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {showMobilize && mobilizePicking && (
+              <div className="action-card-picker">
+                <div className="action-card-picker-title">
+                  Mobilize — pick a card to become a supporter
+                  <button className="btn ghost small" onClick={() => setMobilizePicking(false)} aria-label="Cancel">×</button>
+                </div>
+                <div className="action-card-picker-list">
+                  {Array.from(mobilizeCards).map(id => {
+                    const c = getCard(id);
+                    return (
+                      <button
+                        key={id}
+                        className="action-card-pick"
+                        style={{ borderColor: SUIT_COLOR[c.suit] }}
+                        onClick={() => {
+                          dispatch({ kind: 'alliance.mobilize', cardId: id });
+                          setMobilizePicking(false);
                         }}
                       >
                         <span className="action-card-pick-suit" style={{ background: SUIT_COLOR[c.suit] }} />
