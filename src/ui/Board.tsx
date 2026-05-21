@@ -174,73 +174,99 @@ export function Board({ backgroundSrc }: BoardProps) {
               aria-label={`Clearing ${c.id}, ${c.suit}${c.hasRuin ? ', has ruin' : ''}`}
             >
               <circle
-                r={isHovered || isSelected ? 56 : 50}
+                r={isHovered || isSelected ? 68 : 62}
                 fill={SUIT_COLOR[c.suit]}
                 stroke={strokeColor}
                 strokeWidth={strokeWidth}
                 className={isValidTarget ? 'pulse' : ''}
               />
               {c.hasRuin && (
-                <text y={-32} textAnchor="middle" fontSize={11} fontWeight={700} fill="#3b2a18">
+                <text y={-44} textAnchor="middle" fontSize={12} fontWeight={700} fill="#3b2a18">
                   ruin
                 </text>
               )}
-              <text y={-15} textAnchor="middle" fontSize={22} fontWeight={700} fill="#3b2a18">
+              <text y={-22} textAnchor="middle" fontSize={26} fontWeight={800} fill="#3b2a18">
                 {c.id}
               </text>
 
-              {/* Warrior stacks per faction (art when available, colored circle otherwise) */}
-              <g transform="translate(0, 5)">
-                {(['marquise', 'eyrie', 'alliance', 'vagabond'] as const).map((f, i) => {
-                  const count = cl.warriors[f] ?? 0;
-                  if (count <= 0) return null;
-                  const art = WARRIOR_ART[f];
-                  return (
-                    <g key={f} transform={`translate(${-30 + i * 20}, 0)`}>
-                      {art ? (
-                        <image href={art} x={-9} y={-9} width={18} height={18} />
-                      ) : (
-                        <circle r={8} fill={FACTION_COLOR[f]} stroke="#3b2a18" strokeWidth={1.5} />
-                      )}
-                      <text y={4} textAnchor="middle" fontSize={10} fontWeight={700}
-                            fill={art ? '#fff' : '#3b2a18'}
-                            stroke={art ? '#000' : 'none'} strokeWidth={art ? 0.5 : 0}>
-                        {count}
-                      </text>
-                    </g>
-                  );
-                })}
-              </g>
+              {/* Warriors: only render factions that have any here, centered. */}
+              {(() => {
+                const present = (['marquise', 'eyrie', 'alliance', 'vagabond'] as const)
+                  .filter(f => (cl.warriors[f] ?? 0) > 0);
+                const size = 30;
+                const gap = 4;
+                const total = present.length * size + Math.max(0, present.length - 1) * gap;
+                const startX = -total / 2 + size / 2;
+                return (
+                  <g transform="translate(0, 12)">
+                    {present.map((f, i) => {
+                      const count = cl.warriors[f] ?? 0;
+                      const art = WARRIOR_ART[f];
+                      const cx = startX + i * (size + gap);
+                      return (
+                        <g key={f} transform={`translate(${cx}, 0)`}>
+                          {art ? (
+                            <image href={art} x={-size/2} y={-size/2} width={size} height={size} />
+                          ) : (
+                            <circle r={size/2 - 2} fill={FACTION_COLOR[f]} stroke="#3b2a18" strokeWidth={2} />
+                          )}
+                          <g transform={`translate(${size/2 - 4}, ${size/2 - 4})`}>
+                            <circle r={9} fill="#1a1410" stroke="#fff" strokeWidth={1.5} />
+                            <text y={4} textAnchor="middle" fontSize={12} fontWeight={800} fill="#fff">
+                              {count}
+                            </text>
+                          </g>
+                        </g>
+                      );
+                    })}
+                  </g>
+                );
+              })()}
 
-              {/* Building stack + tokens (art when available) */}
-              <g transform="translate(0, 23)">
-                {cl.buildings.map((b, idx) => {
-                  const art = buildingArt(b.faction, b.kind);
-                  return art ? (
-                    <image key={idx} href={art} x={-30 + idx * 13 - 1} y={-7} width={13} height={13} />
-                  ) : (
-                    <rect
-                      key={idx}
-                      x={-30 + idx * 13} y={-6} width={11} height={11}
-                      fill={FACTION_COLOR[b.faction]}
-                      stroke="#3b2a18" strokeWidth={1.5}
-                    />
-                  );
-                })}
-                {cl.tokens.filter(t => t.kind === 'wood').slice(0, 4).map((_, idx) => (
+              {/* Buildings + tokens row */}
+              {(() => {
+                const size = 22;
+                const gap = 2;
+                const bldgs = cl.buildings;
+                const total = bldgs.length * size + Math.max(0, bldgs.length - 1) * gap;
+                const startX = -total / 2 + size / 2;
+                return (
+                  <g transform="translate(0, 38)">
+                    {bldgs.map((b, idx) => {
+                      const art = buildingArt(b.faction, b.kind);
+                      const cx = startX + idx * (size + gap);
+                      return art ? (
+                        <image key={idx} href={art} x={cx - size/2} y={-size/2} width={size} height={size} />
+                      ) : (
+                        <rect
+                          key={idx}
+                          x={cx - size/2} y={-size/2} width={size} height={size}
+                          fill={FACTION_COLOR[b.faction]}
+                          stroke="#3b2a18" strokeWidth={1.5}
+                        />
+                      );
+                    })}
+                  </g>
+                );
+              })()}
+
+              {/* Wood tokens, sympathy, keep — small overlays on the side */}
+              <g>
+                {cl.tokens.filter(t => t.kind === 'wood').slice(0, 5).map((_, idx) => (
                   <circle
                     key={`w${idx}`}
-                    cx={20 + idx * 6} cy={0} r={3.5}
-                    fill="#7c5c2e" stroke="#3b2a18" strokeWidth={1}
+                    cx={36} cy={-12 + idx * 7} r={4.5}
+                    fill="#7c5c2e" stroke="#3b2a18" strokeWidth={1.2}
                   />
                 ))}
                 {cl.tokens.filter(t => t.kind === 'sympathy').map((_, idx) => {
                   const art = buildingArt('alliance', 'sympathy');
-                  if (art) return <image key={`s${idx}`} href={art} x={-26} y={-12 - idx * 8} width={12} height={12} />;
-                  return (
+                  return art ? (
+                    <image key={`s${idx}`} href={art} x={-46} y={-12 + idx * 18} width={18} height={18} />
+                  ) : (
                     <polygon
                       key={`s${idx}`}
-                      points={`-20,${-12 - idx*8} -14,${-2 - idx*8} -26,${-2 - idx*8}`}
+                      points={`-30,${-12 + idx*18 - 8} -22,${-12 + idx*18 + 4} -38,${-12 + idx*18 + 4}`}
                       fill="#9bbd58" stroke="#3b2a18" strokeWidth={1}
                     />
                   );
@@ -248,9 +274,9 @@ export function Board({ backgroundSrc }: BoardProps) {
                 {cl.tokens.filter(t => t.kind === 'keep').length > 0 && (() => {
                   const art = buildingArt('marquise', 'keep');
                   return art ? (
-                    <image href={art} x={26} y={-6} width={12} height={12} />
+                    <image href={art} x={28} y={-44} width={22} height={22} />
                   ) : (
-                    <text x={32} y={2} textAnchor="middle" fontSize={9} fill="#3b2a18" fontWeight={700}>
+                    <text x={36} y={-30} textAnchor="middle" fontSize={11} fill="#3b2a18" fontWeight={800}>
                       K
                     </text>
                   );
@@ -261,9 +287,9 @@ export function Board({ backgroundSrc }: BoardProps) {
               {cl.vagabondHere && (() => {
                 const art = warriorArt('vagabond');
                 return art ? (
-                  <image href={art} x={-8} y={28} width={16} height={16} />
+                  <image href={art} x={-44} y={20} width={28} height={28} />
                 ) : (
-                  <circle cx={0} cy={36} r={6} fill={FACTION_COLOR.vagabond} stroke="#3b2a18" strokeWidth={1.5} />
+                  <circle cx={-30} cy={34} r={10} fill={FACTION_COLOR.vagabond} stroke="#3b2a18" strokeWidth={2} />
                 );
               })()}
             </g>
