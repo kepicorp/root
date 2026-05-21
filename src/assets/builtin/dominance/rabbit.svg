@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 140">
+  <rect x="2" y="2" width="96" height="136" rx="6" fill="#f5e9d0" stroke="#3b2a18" stroke-width="3"/>
+  <text x="50" y="22" text-anchor="middle" font-family="Iowan Old Style, Georgia, serif" font-size="10" fill="#3b2a18" letter-spacing="2">DOMINANCE</text>
+  <g transform="translate(50 85)" stroke="#3b2a18" stroke-width="2.5" stroke-linejoin="round">
+    <ellipse cx="-12" cy="-30" rx="6" ry="18" fill="#9bbd58"/>
+    <ellipse cx="12" cy="-30" rx="6" ry="18" fill="#9bbd58"/>
+    <ellipse cx="0" cy="0" rx="22" ry="20" fill="#9bbd58"/>
+    <circle cx="-8" cy="-4" r="2.5" fill="#3b2a18"/>
+    <circle cx="8" cy="-4" r="2.5" fill="#3b2a18"/>
+    <path d="M-3 8 L0 12 L3 8 Z" fill="#3b2a18"/>
+    <path d="M-3 12 L-1 14 M3 12 L1 14" stroke-width="1.5" fill="none"/>
+  </g>
+  <text x="50" y="128" text-anchor="middle" font-family="Iowan Old Style, Georgia, serif" font-size="9" fill="#3b2a18" letter-spacing="2">RABBIT</text>
+</svg>

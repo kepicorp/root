@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 140">
+  <rect x="2" y="2" width="96" height="136" rx="6" fill="#f5e9d0" stroke="#3b2a18" stroke-width="3"/>
+  <text x="50" y="22" text-anchor="middle" font-family="Iowan Old Style, Georgia, serif" font-size="10" fill="#3b2a18" letter-spacing="2">DOMINANCE</text>
+  <g transform="translate(50 80)" stroke="#3b2a18" stroke-width="2.5" stroke-linejoin="round">
+    <ellipse cx="0" cy="0" rx="28" ry="22" fill="#e6c34a"/>
+    <circle cx="-22" cy="-18" r="9" fill="#e6c34a"/>
+    <circle cx="22" cy="-18" r="9" fill="#e6c34a"/>
+    <circle cx="-22" cy="-18" r="5" fill="#c9892f"/>
+    <circle cx="22" cy="-18" r="5" fill="#c9892f"/>
+    <circle cx="-8" cy="-2" r="2.5" fill="#3b2a18"/>
+    <circle cx="8" cy="-2" r="2.5" fill="#3b2a18"/>
+    <circle cx="0" cy="10" r="3" fill="#3b2a18"/>
+    <path d="M-4 16 L-12 18 M4 16 L12 18" stroke-width="1.5"/>
+  </g>
+  <text x="50" y="128" text-anchor="middle" font-family="Iowan Old Style, Georgia, serif" font-size="9" fill="#3b2a18" letter-spacing="2">MOUSE</text>
+</svg>

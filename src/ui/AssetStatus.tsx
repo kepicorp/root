@@ -1,28 +1,19 @@
-import { useState } from 'react';
 import { assetReport } from '../assets';
 
 export function AssetStatus() {
-  const [open, setOpen] = useState(false);
   const r = assetReport();
-  const total = r.cards + r.factionArt + r.items + (r.board ? 1 : 0);
-  if (total === 0) {
-    return (
-      <button
-        className="asset-status none"
-        onClick={() => setOpen(o => !o)}
-        title="No asset files detected"
-      >
-        no art · drop files in src/assets/raw/{open ? ' ▴' : ' ▾'}
-      </button>
-    );
-  }
+  const hasUser = r.rawCards > 0 || r.rawFaction > 0 || r.rawItems > 0;
+  const label = hasUser
+    ? `art: ${r.rawCards} cards + ${r.rawFaction} faction + ${r.rawItems} items (your scans)`
+    : `art: stylized fallback (${r.factionArt} faction · ${r.items} items)`;
   return (
-    <button
-      className="asset-status ok"
-      onClick={() => setOpen(o => !o)}
-      title="Asset detection summary"
+    <span
+      className={`asset-status ${hasUser ? 'ok' : 'none'}`}
+      title={hasUser
+        ? 'Your scans in src/assets/raw/ are being used.'
+        : 'Original SVG fallback is in use. Drop scans into src/assets/raw/ to override.'}
     >
-      art: {r.cards} cards · {r.items} items · {r.factionArt} faction · {r.board ? 'board' : 'no board'}
-    </button>
+      {label}
+    </span>
   );
 }

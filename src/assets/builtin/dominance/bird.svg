@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 140">
+  <rect x="2" y="2" width="96" height="136" rx="6" fill="#f5e9d0" stroke="#3b2a18" stroke-width="3"/>
+  <text x="50" y="22" text-anchor="middle" font-family="Iowan Old Style, Georgia, serif" font-size="10" fill="#3b2a18" letter-spacing="2">DOMINANCE</text>
+  <g transform="translate(50 80)" stroke="#3b2a18" stroke-width="2.5" stroke-linejoin="round">
+    <path d="M-30 0 Q-30 -22 0 -28 Q30 -22 30 0 Q26 8 18 12 L8 24 L0 14 L-8 24 L-18 12 Q-26 8 -30 0 Z" fill="#7da3c9"/>
+    <path d="M30 0 L46 4 L30 6 Z" fill="#e6c34a" stroke-linejoin="miter"/>
+    <circle cx="18" cy="-8" r="2.5" fill="#3b2a18"/>
+    <path d="M-30 0 Q-10 -8 8 0" fill="none" stroke-width="1.8"/>
+  </g>
+  <text x="50" y="128" text-anchor="middle" font-family="Iowan Old Style, Georgia, serif" font-size="9" fill="#3b2a18" letter-spacing="2">BIRD</text>
+</svg>

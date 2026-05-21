@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 140">
+  <rect x="2" y="2" width="96" height="136" rx="6" fill="#2a1d10" stroke="#c9892f" stroke-width="3"/>
+  <rect x="8" y="8" width="84" height="124" rx="4" fill="none" stroke="#7c5c2e" stroke-width="1.5"/>
+  <g stroke="#c9892f" stroke-width="2" fill="none" stroke-linecap="round">
+    <path d="M50 30 Q40 50 30 60 Q40 70 50 50 Q60 70 70 60 Q60 50 50 30 Z" fill="#7c5c2e" opacity="0.5"/>
+    <path d="M50 50 L50 110" stroke-width="2"/>
+    <path d="M50 70 Q42 75 38 82 M50 70 Q58 75 62 82" stroke-width="1.5"/>
+    <path d="M50 85 Q40 90 35 100 M50 85 Q60 90 65 100" stroke-width="1.5"/>
+    <path d="M50 100 Q42 105 38 112 M50 100 Q58 105 62 112" stroke-width="1.5"/>
+    <circle cx="50" cy="115" r="3" fill="#c9892f"/>
+  </g>
+  <text x="50" y="20" text-anchor="middle" font-family="Iowan Old Style, Georgia, serif" font-size="9" fill="#c9892f" letter-spacing="3">ROOT</text>
+</svg>
