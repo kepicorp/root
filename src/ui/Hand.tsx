@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { GameState, Faction } from '../engine/types';
 import { getCard } from '../engine/cards';
-import { cardArt, cardBackArt, factionIcon } from '../assets';
+import { cardArt, factionIcon } from '../assets';
 import { CardIcon, CardDetails } from './CardIcon';
 
 interface HandProps {
@@ -32,7 +32,7 @@ export function Hand({ state, faction }: HandProps) {
     <div className="hand">
       <div className="hand-label">
         {icon && <img src={icon} alt="" className="faction-icon" />}
-        Hand · {faction}
+        Hand · {faction} <span className="dim hand-count">({cards.length})</span>
       </div>
       <div className="hand-cards">
         {cards.length === 0 && <em className="dim">— empty —</em>}
@@ -51,7 +51,7 @@ export function Hand({ state, faction }: HandProps) {
               {art && <img src={art} alt="" className="card-art-bg" />}
               <div className="card-body">
                 <div className="card-name">{c.name}</div>
-                <CardIcon card={c} />
+                <CardIcon card={c} size={48} />
                 <CardDetails card={c} />
               </div>
             </div>
@@ -63,34 +63,6 @@ export function Hand({ state, faction }: HandProps) {
           <img src={zoomed} alt="" />
         </div>
       )}
-      <OpponentHands state={state} you={faction} />
-    </div>
-  );
-}
-
-function OpponentHands({ state, you }: { state: GameState; you: Faction }) {
-  const back = cardBackArt();
-  const others = (Object.keys(state.hands) as Faction[]).filter(
-    (f) => f !== you && state.factions[f] !== undefined,
-  );
-  if (others.length === 0) return null;
-  return (
-    <div className="opponent-hands">
-      {others.map((f) => (
-        <div key={f} className="opp-hand">
-          <span className="opp-hand-label">{f}</span>
-          <div className="opp-hand-stack">
-            {state.hands[f].slice(0, 6).map((_, i) =>
-              back ? (
-                <img key={i} src={back} alt="" className="card-back-mini" />
-              ) : (
-                <div key={i} className="card-back-mini placeholder" />
-              ),
-            )}
-            <span className="opp-hand-count">{state.hands[f].length}</span>
-          </div>
-        </div>
-      ))}
     </div>
   );
 }

@@ -82,27 +82,32 @@ export function App() {
   return (
     <div className="app app-game">
       <header className="app-header">
-        <h1>Root</h1>
-        <p className="subtitle">
-          {state.phase === 'gameOver'
-            ? <strong>Game over — {state.winner?.faction} wins via {state.winner?.via}.</strong>
-            : <>playing as <strong>{playerFaction}</strong></>}
-        </p>
-        <AssetStatus />
-        <button
-          className="btn ghost"
-          onClick={() => {
-            if (online) netClient.newGame();
-            else reset(Math.floor(Math.random() * 1e9));
-          }}
-        >
-          new game
-        </button>
-        {online && (
-          <span className="online-pill" title={`Room ${net.roomId}`}>
-            ● {net.roomId}
-          </span>
-        )}
+        <div className="header-left">
+          <h1>Root</h1>
+          <p className="subtitle">
+            {state.phase === 'gameOver'
+              ? <strong>Game over — {state.winner?.faction} wins via {state.winner?.via}.</strong>
+              : <>playing as <strong>{playerFaction}</strong></>}
+          </p>
+        </div>
+        <Scoreboard state={state} />
+        <div className="header-right">
+          <AssetStatus />
+          <button
+            className="btn ghost"
+            onClick={() => {
+              if (online) netClient.newGame();
+              else reset(Math.floor(Math.random() * 1e9));
+            }}
+          >
+            new game
+          </button>
+          {online && (
+            <span className="online-pill" title={`Room ${net.roomId}`}>
+              ● {net.roomId}
+            </span>
+          )}
+        </div>
       </header>
 
       <PhaseHeader state={state} playerFaction={playerFaction} />
@@ -118,7 +123,6 @@ export function App() {
       </div>
 
       <aside className="right-pane">
-        <Scoreboard state={state} />
         <ActionBar
           state={state}
           playerFaction={playerFaction}
@@ -127,7 +131,6 @@ export function App() {
           mapIntent={mapIntent}
           setMapIntent={setMapIntent}
         />
-        <Hand state={state} faction={playerFaction} />
         <div className="faction-panels">
           {ALL_FACTIONS.filter((f) => state.factions[f]).map((f) => {
             const Panel = FactionPanels[f];
@@ -143,8 +146,13 @@ export function App() {
         </div>
       </aside>
 
-      <div className="log-pane">
-        <Log state={state} />
+      <div className="bottom-pane">
+        <div className="log-pane">
+          <Log state={state} />
+        </div>
+        <div className="hand-pane">
+          <Hand state={state} faction={playerFaction} />
+        </div>
       </div>
     </div>
   );

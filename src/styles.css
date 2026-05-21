@@ -18,18 +18,28 @@ body { background: var(--bg); color: var(--paper); }
   height: 100%;
 }
 
-/* New layout: board fills the left, panels stack on the right, log spans bottom. */
+/* New layout: board fills the left, panels stack on the right, log + hand
+   share the bottom strip. Hand sits on the right, sized to its card count
+   (max ~half the screen at 5 cards); the log fills whatever's left. */
 .app-game {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 380px;
-  grid-template-rows: auto auto minmax(0, 1fr) 180px;
+  grid-template-rows: auto auto minmax(0, 1fr) 300px;
   grid-template-areas:
     "header header"
     "phase  phase"
     "board  right"
-    "log    log";
+    "bottom bottom";
   height: 100vh;
   gap: 0;
+}
+.app-game .bottom-pane {
+  grid-area: bottom;
+  display: flex;
+  align-items: stretch;
+  min-height: 0;
+  border-top: 1px solid var(--rule);
+  background: #15110c;
 }
 .app-game .phase-header { grid-area: phase; }
 .app-game .app-header { grid-area: header; }
@@ -281,19 +291,36 @@ body { background: var(--bg); color: var(--paper); }
   min-height: 0;
 }
 .app-game .log-pane {
-  grid-area: log;
-  border-top: 1px solid var(--rule);
-  background: #15110c;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  min-height: 0;
+  border-right: 1px solid var(--rule);
+}
+.app-game .log-pane .log-container { width: 100%; }
+.app-game .hand-pane {
+  /* The hand grows with card count, capped at 50% of the bottom strip so
+     5 cards land at half-width as requested. */
+  flex: 0 0 auto;
+  max-width: 50%;
   display: flex;
   min-height: 0;
 }
-.app-game .log-pane .log-container { width: 100%; }
+.app-game .hand-pane .hand {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 12px;
+  font-size: 12px;
+  overflow: hidden;
+  min-height: 0;
+}
 
 .app-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 16px;
-  padding: 12px 24px;
+  padding: 10px 16px;
   border-bottom: 1px solid var(--rule);
   background: #221a12;
 }
@@ -311,35 +338,49 @@ body { background: var(--bg); color: var(--paper); }
   flex: 1;
 }
 
-.scoreboard {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+/* Scoreboard sits in the top bar — always visible. Compact pill per
+   faction with icon + name + VP. */
+.app-header .header-left { display: flex; align-items: baseline; gap: 12px; }
+.app-header .header-right { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.app-header .scoreboard {
+  display: flex;
   gap: 8px;
   padding: 0;
   background: transparent;
   border-bottom: none;
+  flex: 1;
+  justify-content: center;
+  flex-wrap: wrap;
 }
 .score {
-  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   border: 2px solid var(--rule);
   border-radius: 6px;
-  padding: 8px 12px;
+  padding: 4px 10px;
   background: #221a12;
   transition: transform 0.15s, box-shadow 0.15s;
+  min-width: 0;
 }
 .score.active {
-  transform: translateY(-2px);
+  transform: translateY(-1px);
   box-shadow: 0 0 0 2px var(--accent);
 }
 .score.absent { opacity: 0.35; }
 .score-faction {
-  font-size: 12px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 1px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 .score-value {
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 700;
+  min-width: 22px;
+  text-align: right;
 }
 
 .app-main {
@@ -383,17 +424,25 @@ body { background: var(--bg); color: var(--paper); }
 }
 .hand-cards {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 8px;
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
+  overflow-x: auto;
 }
+.hand-count { font-weight: 400; margin-left: 4px; }
 .card {
   position: relative;
   border: 2px solid var(--rule);
   border-radius: 8px;
   background: #2a1d10;
-  font-size: 12px;
-  width: 240px;
+  font-size: 11px;
+  width: 180px;
+  min-width: 180px;
+  aspect-ratio: 5 / 7;
   overflow: hidden;
+  flex-shrink: 0;
 }
 /* Art (when present) sits as a faded background behind the body so it
    stays decorative without competing with the readable layout. */
@@ -410,15 +459,19 @@ body { background: var(--bg); color: var(--paper); }
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px;
+  gap: 6px;
+  padding: 8px;
+  height: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 .card-name {
   font-weight: 700;
-  font-size: 15px;
+  font-size: 12px;
   color: #f0e2c2;
   text-align: center;
   text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+  line-height: 1.2;
 }
 .dim { color: #6a5640; }
 
@@ -453,18 +506,21 @@ body { background: var(--bg); color: var(--paper); }
 .card-category-glyph.cat-favor      { background: rgba(217, 76, 76, 0.28);   color: #ff9c9c; }
 
 /* Body text — short description + craft cost row. */
-.card-details { display: flex; flex-direction: column; gap: 6px; }
+.card-details { display: flex; flex-direction: column; gap: 4px; flex: 1; min-height: 0; overflow: hidden; }
 .card-description {
-  font-size: 12px;
-  line-height: 1.35;
+  font-size: 10.5px;
+  line-height: 1.3;
   color: #e8d6a8;
   text-shadow: 0 1px 1px rgba(0,0,0,0.7);
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 .card-cost {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 11px;
+  font-size: 10px;
   color: #b8a37a;
   text-transform: uppercase;
   letter-spacing: 0.5px;
