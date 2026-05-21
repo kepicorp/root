@@ -3,6 +3,7 @@ import { Hand } from './ui/Hand';
 import { ActionBar } from './ui/ActionBar';
 import { Log } from './ui/Log';
 import { Scoreboard } from './ui/Scoreboard';
+import { SetupWizard } from './ui/SetupWizard';
 import { useGame } from './ui/store';
 import { FactionPanels } from './ui/factions';
 import { ALL_FACTIONS } from './engine/types';
@@ -14,11 +15,27 @@ export function App() {
   const begin = useGame((s) => s.begin);
   const reset = useGame((s) => s.reset);
 
+  if (state.phase === 'setup') {
+    return (
+      <div className="app setup-only">
+        <header className="app-header">
+          <h1>Root</h1>
+          <p className="subtitle">A woodland faction war, against three AI opponents</p>
+        </header>
+        <SetupWizard />
+      </div>
+    );
+  }
+
   return (
     <div className="app">
       <header className="app-header">
         <h1>Root</h1>
-        <p className="subtitle">Phase 1 — cards, combat, turn loop</p>
+        <p className="subtitle">
+          {state.phase === 'gameOver'
+            ? <strong>Game over — {state.winner?.faction} wins via {state.winner?.via}.</strong>
+            : <>playing as <strong>{playerFaction}</strong></>}
+        </p>
         <button className="btn ghost" onClick={() => reset(Math.floor(Math.random() * 1e9))}>
           new game
         </button>

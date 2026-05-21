@@ -150,6 +150,78 @@ body { background: var(--bg); color: var(--paper); }
 .faction-panel.alliance { border-color: #9bbd58; }
 .faction-panel.vagabond { border-color: #b8a37a; }
 
+/* Setup wizard */
+.app.setup-only { grid-template-rows: auto 1fr; }
+.setup-wizard {
+  padding: 24px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+.setup-wizard h2 {
+  color: var(--accent);
+  letter-spacing: 2px;
+  margin: 0 0 16px;
+}
+.faction-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.faction-card {
+  text-align: left;
+  border: 2px solid var(--rule);
+  background: #221a12;
+  color: var(--paper);
+  padding: 16px;
+  border-radius: 6px;
+  font: inherit;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.faction-card:hover { transform: translateY(-2px); }
+.faction-card.selected { box-shadow: 0 0 0 3px var(--accent); }
+.faction-card-name {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.faction-card.faction-marquise .faction-card-name { color: #d97a3c; }
+.faction-card.faction-eyrie    .faction-card-name { color: #7da3c9; }
+.faction-card.faction-alliance .faction-card-name { color: #9bbd58; }
+.faction-card.faction-vagabond .faction-card-name { color: #e0d4b0; }
+.faction-card-desc { font-size: 13px; color: #b8a37a; }
+.character-picker {
+  margin: 0 0 24px;
+}
+.character-picker h3 { color: var(--accent); margin: 0 0 12px; }
+.character-picker .btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin-bottom: 8px;
+  padding: 10px 14px;
+}
+.character-picker .btn.selected { box-shadow: 0 0 0 2px var(--accent); }
+.btn.primary {
+  background: var(--accent);
+  color: #1a1410;
+  font-weight: 700;
+  padding: 10px 18px;
+  font-size: 15px;
+  letter-spacing: 1px;
+}
+.btn.primary:hover { background: #e09a3a; }
+
+.actions-list { display: flex; flex-wrap: wrap; gap: 6px; max-width: 80%; }
+.action-btn { font-size: 12px; padding: 4px 8px; }
+.btn.faction-marquise { border-color: #d97a3c; }
+.btn.faction-eyrie    { border-color: #7da3c9; }
+.btn.faction-alliance { border-color: #9bbd58; }
+.btn.faction-vagabond { border-color: #b8a37a; }
+
 .actionbar {
   display: flex;
   align-items: center;
