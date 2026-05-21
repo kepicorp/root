@@ -1,12 +1,209 @@
-// Alliance reducer stub. Phase 4 fills it in.
-
 import { produce } from 'immer';
-import type { GameState, Action } from '../../types';
+import type { GameState, Action, ClearingId, Faction } from '../../types';
+import { getCard, type CardId } from '../../cards';
+import { AUTUMN_MAP } from '../../map';
+import { resolveCombat } from '../../combat';
+import { SYMPATHY_VP_TRACK, SYMPATHY_COST } from './state';
+import type { AllianceAction } from './actions';
 
-export function allianceReducer(state: GameState, _action: Action): GameState {
-  return produce(state, _draft => {});
+function isAllianceTurn(state: GameState): boolean {
+  return state.factionOrder[state.activeIndex] === 'alliance';
 }
 
-export function allianceLegalActions(_state: GameState): Action[] {
-  return [];
+function clearingSuit(clearing: ClearingId): 'fox' | 'mouse' | 'rabbit' {
+  return AUTUMN_MAP.clearings.find(c => c.id === clearing)!.suit;
+}
+
+function matchesSuit(cardId: CardId, suit: 'fox' | 'mouse' | 'rabbit'): boolean {
+  const s = getCard(cardId).suit;
+  return s === suit || s === 'bird';
+}
+
+function returnToSupply(draft: GameState, clearing: ClearingId, faction: Faction): void {
+  const cl = draft.map.clearings[clearing]!;
+  const n = cl.warriors[faction] ?? 0;
+  cl.warriors[faction] = 0;
+  if (n <= 0) return;
+  if (faction === 'marquise' && draft.factions.marquise) draft.factions.marquise.warriorSupply += n;
+  else if (faction === 'eyrie' && draft.factions.eyrie) draft.factions.eyrie.warriorSupply += n;
+  else if (faction === 'alliance' && draft.factions.alliance) draft.factions.alliance.warriorSupply += n;
+}
+
+export function allianceReducer(state: GameState, action: Action): GameState {
+  if (!action.kind.startsWith('alliance.')) return state;
+  if (!isAllianceTurn(state)) return state;
+  const a = action as AllianceAction;
+
+  switch (a.kind) {
+    case 'alliance.spreadSympathy':
+      return produce(state, draft => {
+        const al = draft.factions.alliance!;
+        if (al.sympathy.includes(a.clearing)) return;
+        const suit = clearingSuit(a.clearing);
+        const need = SYMPATHY_COST[Math.min(al.sympathy.length, SYMPATHY_COST.length - 1)] ?? 4;
+        const valid = a.supporterCards.filter(id => matchesSuit(id, suit));
+        if (valid.length < need) return;
+        // Spend supporters
+        for (const id of valid.slice(0, need)) {
+          const idx = al.supporters.indexOf(id);
+          if (idx >= 0) {
+            al.supporters.splice(idx, 1);
+            draft.discard.push(id);
+          }
+        }
+        al.sympathy.push(a.clearing);
+        draft.map.clearings[a.clearing]!.tokens.push({ faction: 'alliance', kind: 'sympathy' });
+        const vp = SYMPATHY_VP_TRACK[Math.min(al.sympathy.length - 1, SYMPATHY_VP_TRACK.length - 1)] ?? 0;
+        draft.scores.alliance += vp;
+        draft.log.push({ turn: draft.turn, faction: 'alliance', message: `Spread sympathy to ${a.clearing} (+${vp} VP).` });
+      });
+
+    case 'alliance.mobilize':
+      return produce(state, draft => {
+        const idx = draft.hands.alliance.indexOf(a.cardId);
+        if (idx < 0) return;
+        draft.hands.alliance.splice(idx, 1);
+        draft.factions.alliance!.supporters.push(a.cardId);
+        draft.factions.alliance!.daylightActionsLeft -= 1;
+      });
+
+    case 'alliance.organize':
+      return produce(state, draft => {
+        const al = draft.factions.alliance!;
+        const cl = draft.map.clearings[a.clearing]!;
+        if ((cl.warriors.alliance ?? 0) <= 0) return;
+        if (al.sympathy.includes(a.clearing)) return;
+        cl.warriors.alliance = (cl.warriors.alliance ?? 0) - 1;
+        al.warriorSupply += 1;
+        al.sympathy.push(a.clearing);
+        cl.tokens.push({ faction: 'alliance', kind: 'sympathy' });
+        const vp = SYMPATHY_VP_TRACK[Math.min(al.sympathy.length - 1, SYMPATHY_VP_TRACK.length - 1)] ?? 0;
+        draft.scores.alliance += vp;
+        al.daylightActionsLeft -= 1;
+      });
+
+    case 'alliance.revolt':
+      return produce(state, draft => {
+        const al = draft.factions.alliance!;
+        if (!al.sympathy.includes(a.clearing)) return;
+        const suit = clearingSuit(a.clearing);
+        const valid = a.supporterCards.filter(id => matchesSuit(id, suit));
+        if (valid.length < 2) return;
+        if (al.bases[suit] !== undefined) return;
+        for (const id of valid.slice(0, 2)) {
+          const idx = al.supporters.indexOf(id);
+          if (idx >= 0) {
+            al.supporters.splice(idx, 1);
+            draft.discard.push(id);
+          }
+        }
+        // Remove enemy warriors/tokens.
+        const cl = draft.map.clearings[a.clearing]!;
+        let vp = 0;
+        for (const f of ['marquise', 'eyrie', 'vagabond'] as const) returnToSupply(draft, a.clearing, f);
+        const remainingBuildings: typeof cl.buildings = [];
+        for (const b of cl.buildings) {
+          if (b.faction !== 'alliance') vp += 1; else remainingBuildings.push(b);
+        }
+        cl.buildings = remainingBuildings;
+        // Place base + warriors per base on board.
+        const basesBefore = Object.keys(al.bases).length;
+        cl.buildings.push({ faction: 'alliance', kind: `base-${suit}` });
+        al.bases[suit] = a.clearing;
+        const warriorsToPlace = basesBefore + 1;
+        cl.warriors.alliance = (cl.warriors.alliance ?? 0) + warriorsToPlace;
+        al.warriorSupply = Math.max(0, al.warriorSupply - warriorsToPlace);
+        al.officers += 1;
+        draft.scores.alliance += vp;
+        draft.log.push({ turn: draft.turn, faction: 'alliance', message: `Revolt in ${a.clearing}! +${vp} VP, base placed.` });
+      });
+
+    case 'alliance.battle': {
+      if (state.phase !== 'daylight') return state;
+      const al = state.factions.alliance!;
+      if (al.daylightActionsLeft <= 0) return state;
+      const after = resolveCombat(state, { clearing: a.clearing, attacker: 'alliance', defender: a.defender });
+      return produce(after, draft => {
+        draft.factions.alliance!.daylightActionsLeft -= 1;
+      });
+    }
+
+    case 'alliance.endDaylight':
+      return produce(state, draft => {
+        draft.factions.alliance!.daylightActionsLeft = 0;
+        draft.phase = 'evening';
+      });
+
+    case 'alliance.evening':
+      return produce(state, draft => {
+        if (draft.phase !== 'evening') return;
+        const al = draft.factions.alliance!;
+        const draws = 1 + Object.keys(al.bases).length;
+        for (let i = 0; i < draws; i++) {
+          const c = draft.deck.pop();
+          if (!c) break;
+          draft.hands.alliance.push(c);
+        }
+        while (draft.hands.alliance.length > 5) {
+          const c = draft.hands.alliance.shift()!;
+          draft.discard.push(c);
+        }
+        al.birdsongDone = false;
+        al.daylightActionsLeft = 2 + al.officers;
+        draft.activeIndex = (draft.activeIndex + 1) % draft.factionOrder.length;
+        if (draft.activeIndex === 0) draft.turn += 1;
+        draft.phase = 'birdsong';
+        draft.log.push({ turn: draft.turn, faction: 'alliance', message: `Evening: drew ${draws}.` });
+      });
+
+    default:
+      return state;
+  }
+}
+
+export function allianceLegalActions(state: GameState): Action[] {
+  if (!isAllianceTurn(state)) return [];
+  const out: Action[] = [];
+  const al = state.factions.alliance;
+  if (!al) return out;
+
+  if (state.phase === 'birdsong') {
+    // Try to spread sympathy
+    for (const c of AUTUMN_MAP.clearings) {
+      if (al.sympathy.includes(c.id)) continue;
+      const matching = al.supporters.filter(id => matchesSuit(id, c.suit));
+      const need = SYMPATHY_COST[Math.min(al.sympathy.length, SYMPATHY_COST.length - 1)] ?? 4;
+      if (matching.length >= need) {
+        out.push({ kind: 'alliance.spreadSympathy', clearing: c.id, supporterCards: matching.slice(0, need) });
+      }
+    }
+    // Revolt
+    for (const cid of al.sympathy) {
+      const suit = clearingSuit(cid);
+      if (al.bases[suit] !== undefined) continue;
+      const matching = al.supporters.filter(id => matchesSuit(id, suit));
+      if (matching.length >= 2) {
+        out.push({ kind: 'alliance.revolt', clearing: cid, supporterCards: matching.slice(0, 2) });
+      }
+    }
+  }
+  if (state.phase === 'daylight' && al.daylightActionsLeft > 0) {
+    for (const cardId of state.hands.alliance) out.push({ kind: 'alliance.mobilize', cardId });
+    for (const c of AUTUMN_MAP.clearings) {
+      const cl = state.map.clearings[c.id]!;
+      if ((cl.warriors.alliance ?? 0) > 0 && !al.sympathy.includes(c.id)) {
+        out.push({ kind: 'alliance.organize', clearing: c.id });
+      }
+      if ((cl.warriors.alliance ?? 0) > 0) {
+        for (const f of ['marquise', 'eyrie', 'vagabond'] as const) {
+          if ((cl.warriors[f] ?? 0) > 0 || cl.buildings.some(b => b.faction === f)) {
+            out.push({ kind: 'alliance.battle', clearing: c.id, defender: f });
+          }
+        }
+      }
+    }
+  }
+  if (state.phase === 'daylight') out.push({ kind: 'alliance.endDaylight' });
+  if (state.phase === 'evening') out.push({ kind: 'alliance.evening' });
+  return out;
 }

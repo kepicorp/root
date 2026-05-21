@@ -1,14 +1,14 @@
-// Woodland Alliance per-faction state. Phase 4 fills this in.
-
 import type { CardId } from '../../cards';
 import type { ClearingId, Suit } from '../../types';
 
 export interface AllianceState {
-  warriorSupply: number;       // 10 max
-  officers: number;            // 0..10
-  supporters: CardId[];        // hidden; max 5 unless bases on board
+  warriorSupply: number;
+  officers: number;
+  supporters: CardId[];
   bases: Partial<Record<Suit, ClearingId>>;
-  sympathy: ClearingId[];      // clearings with sympathy tokens
+  sympathy: ClearingId[];
+  daylightActionsLeft: number;
+  birdsongDone: boolean;
 }
 
 export const INITIAL_ALLIANCE_STATE: AllianceState = {
@@ -17,4 +17,9 @@ export const INITIAL_ALLIANCE_STATE: AllianceState = {
   supporters: [],
   bases: {},
   sympathy: [],
+  daylightActionsLeft: 0,
+  birdsongDone: false,
 };
+
+export const SYMPATHY_VP_TRACK = [1, 1, 1, 2, 2, 3, 3, 4, 4, 5] as const;
+export const SYMPATHY_COST     = [1, 1, 1, 2, 2, 2, 3, 3, 3, 4] as const;

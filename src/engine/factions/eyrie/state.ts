@@ -1,5 +1,3 @@
-// Eyrie Dynasties per-faction state. Phase 3 fills this in.
-
 import type { CardId } from '../../cards';
 import type { ClearingId } from '../../types';
 
@@ -7,12 +5,15 @@ export type DecreeSlot = 'recruit' | 'move' | 'battle' | 'build';
 export type EyrieLeader = 'despot' | 'commander' | 'charismatic' | 'builder';
 
 export interface EyrieState {
-  warriorSupply: number;       // 20 max
-  roosts: ClearingId[];        // up to 7
+  warriorSupply: number;
+  roosts: ClearingId[];
   leader: EyrieLeader;
-  viziers: CardId[];           // 2 bird cards
+  viziers: CardId[];
   decree: Record<DecreeSlot, CardId[]>;
-  usedLeaders: EyrieLeader[];  // for cycling
+  usedLeaders: EyrieLeader[];
+  birdsongDone: boolean;
+  decreeResolved: boolean;
+  eveningDone: boolean;
 }
 
 export const INITIAL_EYRIE_STATE: EyrieState = {
@@ -22,4 +23,9 @@ export const INITIAL_EYRIE_STATE: EyrieState = {
   viziers: [],
   decree: { recruit: [], move: [], battle: [], build: [] },
   usedLeaders: [],
+  birdsongDone: false,
+  decreeResolved: false,
+  eveningDone: false,
 };
+
+export const ROOST_VP_TRACK = [0, 0, 1, 2, 3, 4, 4, 5] as const;

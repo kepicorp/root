@@ -1,19 +1,25 @@
-// Vagabond setup. Phase 5 fills this in.
-//
-// Per Root rules:
-//   • Choose a character (Thief / Tinker / Ranger).
-//   • Place pawn in any clearing with a ruin.
-//   • Gain starting items per character (face-up, unexhausted):
-//       - Thief: torch, boots, tea, sword
-//       - Tinker: torch, boots, bag, hammer
-//       - Ranger: torch, boots, sword, crossbow
-//   • Place 4 ruins on map (face-down item under each); on explore, gain
-//     the item and 1 VP.
-//   • Initialize relationships: indifferent with every non-Vagabond faction.
-//   • Draw 3 cards.
-
+import { produce } from 'immer';
 import type { GameState } from '../../types';
+import { AUTUMN_MAP } from '../../map';
+import { STARTING_ITEMS, INITIAL_VAGABOND_STATE } from './state';
 
 export function setupVagabond(state: GameState): GameState {
-  return state; // Phase 5 will implement.
+  return produce(state, draft => {
+    const v = draft.factions.vagabond;
+    if (!v) return;
+    // Pick first ruin clearing as default start.
+    const ruin = AUTUMN_MAP.clearings.find(c => c.hasRuin);
+    v.clearing = ruin?.id ?? 3;
+    draft.map.clearings[v.clearing]!.vagabondHere = true;
+    const startItems = STARTING_ITEMS[v.character];
+    for (const kind of startItems) {
+      v.items.push({ kind, state: 'face-up', exhausted: false });
+    }
+    v.relationships = { ...INITIAL_VAGABOND_STATE.relationships };
+    draft.log.push({
+      turn: draft.turn,
+      faction: 'vagabond',
+      message: `Setup: ${v.character} at clearing ${v.clearing} with ${startItems.length} items.`,
+    });
+  });
 }

@@ -1,15 +1,13 @@
-// Vagabond per-faction state. Phase 5 fills this in.
-
 import type { CardId } from '../../cards';
 import type { ClearingId, Faction, ItemKind } from '../../types';
 
 export type VagabondCharacter = 'thief' | 'tinker' | 'ranger';
-export type ItemState = 'face-up' | 'face-down' | 'damaged';
+export type ItemFace = 'face-up' | 'face-down' | 'damaged';
 export type Relationship = 'hostile' | 'indifferent' | 1 | 2 | 3 | 'allied';
 
 export interface CarriedItem {
   kind: ItemKind;
-  state: ItemState;
+  state: ItemFace;
   exhausted: boolean;
 }
 
@@ -18,18 +16,28 @@ export interface VagabondState {
   clearing: ClearingId;
   items: CarriedItem[];
   relationships: Record<Exclude<Faction, 'vagabond'>, Relationship>;
-  quests: CardId[];
-  completedQuests: CardId[];
+  quests: CardId[];          // unused for now
+  completedQuests: CardId[]; // unused
   ruinsExplored: number;
   coalitionPartner?: Exclude<Faction, 'vagabond'>;
+  slipped: boolean;
+  daylightActionsLeft: number;
 }
 
 export const INITIAL_VAGABOND_STATE: VagabondState = {
   character: 'thief',
-  clearing: 1, // overridden during setup
+  clearing: 3,
   items: [],
   relationships: { marquise: 'indifferent', eyrie: 'indifferent', alliance: 'indifferent' },
   quests: [],
   completedQuests: [],
   ruinsExplored: 0,
+  slipped: false,
+  daylightActionsLeft: 0,
+};
+
+export const STARTING_ITEMS: Record<VagabondCharacter, ItemKind[]> = {
+  thief:  ['torch', 'boots', 'tea', 'sword'],
+  tinker: ['torch', 'boots', 'bag', 'hammer'],
+  ranger: ['torch', 'boots', 'sword', 'crossbow'],
 };
