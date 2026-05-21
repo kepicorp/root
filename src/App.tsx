@@ -5,6 +5,7 @@ import { Log } from './ui/Log';
 import { Scoreboard } from './ui/Scoreboard';
 import { SetupWizard } from './ui/SetupWizard';
 import { AssetStatus } from './ui/AssetStatus';
+import { PhaseHeader } from './ui/PhaseHeader';
 import { useGame } from './ui/store';
 import { FactionPanels } from './ui/factions';
 import { ALL_FACTIONS } from './engine/types';
@@ -42,6 +43,8 @@ export function App() {
           new game
         </button>
       </header>
+
+      <PhaseHeader state={state} playerFaction={playerFaction} />
 
       <div className="board-pane">
         <Board />
