@@ -18,7 +18,7 @@ export const INITIAL_ALLIANCE_STATE: AllianceState = {
   supporters: [],
   bases: {},
   sympathy: [],
-  daylightActionsLeft: 0,
+  daylightActionsLeft: 2,  // resets to 2+officers each turn; must be non-zero from turn 1
   birdsongDone: false,
   pendingDiscard: 0,
 };
