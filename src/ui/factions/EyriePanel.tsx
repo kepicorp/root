@@ -13,10 +13,10 @@ import type { DecreeSlot, EyrieLeader } from '../../engine/factions/eyrie/state'
 const LEADERS: EyrieLeader[] = ['despot', 'commander', 'charismatic', 'builder'];
 
 const LEADER_DESC: Record<EyrieLeader, string> = {
-  despot:      'Turmoil: score 1 VP per bird card removed from the Decree.',
-  commander:   'Turmoil: move up to 3 warriors to any clearing with a roost.',
-  charismatic: 'Turmoil: recruit 1 warrior. Viziers fill Recruit + Move slots.',
-  builder:     'Turmoil: place 1 building. Viziers fill Build + Move slots.',
+  despot:      'Viziers: Move + Build. In battle, score 1 VP when you remove any enemy building or token.',
+  commander:   'Viziers: Move + Battle. As the attacker in battle, deal +1 hit.',
+  charismatic: 'Viziers: Recruit + Battle. When you Recruit, place 2 warriors instead of 1.',
+  builder:     'Viziers: Recruit + Move. When you Craft, ignore Disdain for Trade (score full VP).',
 };
 
 interface Props {

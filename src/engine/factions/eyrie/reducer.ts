@@ -5,7 +5,7 @@ import { getCard } from '../../cards';
 import { AUTUMN_MAP, getAdjacent } from '../../map';
 import { resolveCombat } from '../../combat';
 import { onEnterBirdsong } from '../../loop';
-import { ROOST_VP_TRACK, type EyrieLeader, type DecreeSlot, type EyrieState } from './state';
+import { ROOST_VP_TRACK, LEADER_VIZIER_SLOTS, type EyrieLeader, type DecreeSlot, type EyrieState } from './state';
 import { findSlotTarget, eyrieRules, suitMatches } from './decree';
 import type { EyrieAction } from './actions';
 
@@ -83,6 +83,8 @@ function triggerTurmoil(draft: GameState): void {
   e.resolutionLeft = undefined;
   e.decreeResolved = true;
   e.needsLeaderChoice = true;  // player must pick a new leader next birdsong
+  // Do NOT pre-place viziers here — they go into the chosen leader's slots
+  // when the player picks a leader via chooseLeader.
   draft.phase = 'evening';
   draft.log.push({
     turn: draft.turn,
@@ -100,8 +102,29 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
     case 'eyrie.chooseLeader':
       return produce(state, draft => {
         const e = draft.factions.eyrie!;
+        const changing = e.leader !== a.leader;
         e.leader = a.leader;
         e.needsLeaderChoice = false;
+        // After Turmoil the decree was cleared; re-seat the viziers in the
+        // slots specified by the newly chosen leader.  On the very first turn
+        // the viziers were placed by setupEyrie so only re-place after Turmoil
+        // (signalled by the decree being otherwise empty).
+        const totalDecreeCards = Object.values(e.decree).flat().length;
+        if (totalDecreeCards === 0) {
+          // Decree just reset — re-place viziers for this leader.
+          const slots = LEADER_VIZIER_SLOTS[a.leader];
+          if (e.viziers[0]) e.decree[slots[0]].push(e.viziers[0]);
+          if (e.viziers[1]) e.decree[slots[1]].push(e.viziers[1]);
+        } else if (changing) {
+          // Mid-game leader swap (shouldn't happen per rules, but keep it safe).
+          // Remove viziers from wherever they currently sit and re-place them.
+          for (const slot of ['recruit', 'move', 'battle', 'build'] as const) {
+            e.decree[slot] = e.decree[slot].filter(id => !e.viziers.includes(id));
+          }
+          const slots = LEADER_VIZIER_SLOTS[a.leader];
+          if (e.viziers[0]) e.decree[slots[0]].push(e.viziers[0]);
+          if (e.viziers[1]) e.decree[slots[1]].push(e.viziers[1]);
+        }
         draft.log.push({ turn: draft.turn, faction: 'eyrie', message: `Leader chosen: ${a.leader}.` });
       });
 

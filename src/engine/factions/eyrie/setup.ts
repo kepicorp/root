@@ -1,6 +1,7 @@
 import { produce } from 'immer';
 import type { GameState } from '../../types';
 import { getCard } from '../../cards';
+import { LEADER_VIZIER_SLOTS } from './state';
 
 export const EYRIE_CORNER = 12;
 
@@ -30,8 +31,10 @@ export function setupEyrie(state: GameState): GameState {
       draft.deck.splice(x.i, 1);
     }
     // Place viziers in default slots (despot: move + battle).
-    if (e.viziers[0]) e.decree.move.push(e.viziers[0]);
-    if (e.viziers[1]) e.decree.battle.push(e.viziers[1]);
+    // Place viziers in the slots defined by the chosen leader.
+    const slots = LEADER_VIZIER_SLOTS[e.leader];
+    if (e.viziers[0]) e.decree[slots[0]].push(e.viziers[0]);
+    if (e.viziers[1]) e.decree[slots[1]].push(e.viziers[1]);
 
     draft.log.push({
       turn: draft.turn,

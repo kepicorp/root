@@ -45,3 +45,11 @@ export const INITIAL_EYRIE_STATE: EyrieState = {
 };
 
 export const ROOST_VP_TRACK = [0, 0, 1, 2, 3, 4, 4, 5] as const;
+
+/** The two Decree slots a leader's Loyal Viziers occupy. */
+export const LEADER_VIZIER_SLOTS: Record<EyrieLeader, [DecreeSlot, DecreeSlot]> = {
+  despot:      ['move', 'build'],
+  commander:   ['move', 'battle'],
+  charismatic: ['recruit', 'battle'],
+  builder:     ['recruit', 'move'],
+};

@@ -18,9 +18,16 @@ export function pickEyrieAction(state: GameState, legals: Action[]): Action | nu
   const eyrie = state.factions.eyrie;
   if (!eyrie) return null;
   if (state.phase !== 'birdsong') return null;
-  // Must choose a leader first — fall through to the generic priority picker
-  // which has eyrie.chooseLeader at a high priority.
-  if (eyrie.needsLeaderChoice) return null;
+  // Must choose a leader first. Commander (Move + Battle viziers) works
+  // best for the bot: Move sets up the Battle, and combat removes warriors
+  // from the board — preventing supply exhaustion that plagues Recruit-
+  // heavy leaders like Builder.
+  if (eyrie.needsLeaderChoice) {
+    const preferred: Action = { kind: 'eyrie.chooseLeader', leader: 'commander' };
+    const hasIt = legals.some(a => a.kind === 'eyrie.chooseLeader' && (a as typeof preferred).leader === 'commander');
+    if (hasIt) return preferred;
+    return null; // fall through
+  }
 
   // One safe add per birdsong is plenty — keeps the Decree manageable and
   // gives the bot a cushion against the map shifting around it.
