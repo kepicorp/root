@@ -12,6 +12,13 @@ import type { DecreeSlot, EyrieLeader } from '../../engine/factions/eyrie/state'
 
 const LEADERS: EyrieLeader[] = ['despot', 'commander', 'charismatic', 'builder'];
 
+const LEADER_DESC: Record<EyrieLeader, string> = {
+  despot:      'Turmoil: score 1 VP per bird card removed from the Decree.',
+  commander:   'Turmoil: move up to 3 warriors to any clearing with a roost.',
+  charismatic: 'Turmoil: recruit 1 warrior. Viziers fill Recruit + Move slots.',
+  builder:     'Turmoil: place 1 building. Viziers fill Build + Move slots.',
+};
+
 interface Props {
   state: GameState;
   isHuman: boolean;
@@ -76,18 +83,23 @@ export function EyriePanel({ state, isHuman, dispatch }: Props) {
           <div className="eyrie-leader-picker-label">
             <strong>Choose your leader</strong> before adding to the Decree:
           </div>
-          <div className="eyrie-leader-picker-row">
-            {LEADERS.map(l => (
-              <button
-                key={l}
-                type="button"
-                className={`btn ${l === e!.leader ? 'primary' : 'ghost'} small`}
-                onClick={() => dispatch({ kind: 'eyrie.chooseLeader', leader: l })}
-                title={`Play as ${l}`}
-              >
-                {l}
-              </button>
-            ))}
+          <div className="eyrie-leader-cards">
+            {LEADERS.map(l => {
+              const isCurrent = l === e!.leader;
+              return (
+                <button
+                  key={l}
+                  type="button"
+                  className={`eyrie-leader-card ${isCurrent ? 'current' : ''}`}
+                  onClick={() => dispatch({ kind: 'eyrie.chooseLeader', leader: l })}
+                >
+                  <span className="eyrie-leader-card-name">
+                    {l}{isCurrent && <span className="eyrie-leader-default"> (current)</span>}
+                  </span>
+                  <span className="eyrie-leader-card-desc">{LEADER_DESC[l]}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}

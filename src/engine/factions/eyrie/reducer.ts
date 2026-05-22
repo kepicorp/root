@@ -365,8 +365,9 @@ export function eyrieLegalActions(state: GameState): Action[] {
     }
     // Leader pick — see task for timing; conditional handled in legals below.
     if (e.needsLeaderChoice) {
+      // Show ALL four leaders so the player can confirm the current default
+      // (Despot on turn 1) or switch to any other.
       for (const leader of ['despot', 'commander', 'charismatic', 'builder'] as const) {
-        if (leader === e.leader) continue;
         out.push({ kind: 'eyrie.chooseLeader', leader });
       }
     }
