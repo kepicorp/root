@@ -21,6 +21,7 @@ import type {
 } from './types';
 import { mulberry32, rollDie, mixSeed } from './rng';
 import { getCard, type CardId } from './cards';
+import { AUTUMN_MAP } from './map';
 
 export interface CombatParams {
   clearing: ClearingId;
@@ -287,4 +288,58 @@ function removeNTokens(tokens: TokenInstance[], faction: Faction, n: number): To
 /** True if `cardId` is an ambush card. */
 export function isAmbushCard(cardId: CardId): boolean {
   return getCard(cardId).category === 'ambush';
+}
+
+/** Find every matching-suit ambush card a defender could play for a battle
+ *  at the given clearing. Matching = same suit as the clearing OR bird. */
+export function defenderAmbushOptions(state: GameState, clearing: ClearingId, defender: Faction): CardId[] {
+  const meta = AUTUMN_MAP.clearings.find(c => c.id === clearing);
+  if (!meta) return [];
+  return (state.hands[defender] ?? []).filter(id => {
+    const c = getCard(id);
+    return c.category === 'ambush' && (c.suit === meta.suit || c.suit === 'bird');
+  });
+}
+
+/** Battle entry point used by every faction's battle/strike action. If the
+ *  defender has a matching ambush in hand, queues a pending prompt so they
+ *  can decide whether to play it; otherwise resolves combat immediately. */
+export function declareBattle(state: GameState, params: CombatParams): GameState {
+  if (state.pendingPrompts.some(p => p.kind === 'combat.defenderAmbush')) {
+    // Already mid-prompt — shouldn't happen, but guard against re-entry.
+    return state;
+  }
+  const ambushes = defenderAmbushOptions(state, params.clearing, params.defender);
+  if (ambushes.length === 0) {
+    return resolveCombat(state, params);
+  }
+  return produce(state, draft => {
+    draft.pendingPrompts.push({
+      id: `defAmbush-${draft.turn}-${params.clearing}`,
+      kind: 'combat.defenderAmbush',
+      faction: params.defender,
+      payload: params,
+    });
+    draft.log.push({
+      turn: draft.turn,
+      faction: 'system',
+      message: `${params.defender} may play an ambush against ${params.attacker}'s battle in clearing ${params.clearing}.`,
+    });
+  });
+}
+
+/** Resolve a queued ambush prompt — the defender either plays their card
+ *  or skips. Both paths call resolveCombat with the queued params and pop
+ *  the prompt. */
+export function resolveAmbushPrompt(state: GameState, options: { playedCard?: CardId }): GameState {
+  const prompt = state.pendingPrompts.find(p => p.kind === 'combat.defenderAmbush');
+  if (!prompt) return state;
+  const params = prompt.payload as CombatParams;
+  const next: CombatParams = options.playedCard
+    ? { ...params, defenderAmbush: options.playedCard }
+    : params;
+  const after = resolveCombat(state, next);
+  return produce(after, draft => {
+    draft.pendingPrompts = draft.pendingPrompts.filter(p => p.id !== prompt.id);
+  });
 }

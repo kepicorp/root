@@ -12,7 +12,7 @@ import { INITIAL_MARQUISE_STATE } from './factions/marquise/state';
 import { INITIAL_EYRIE_STATE } from './factions/eyrie/state';
 import { INITIAL_ALLIANCE_STATE } from './factions/alliance/state';
 import { INITIAL_VAGABOND_STATE } from './factions/vagabond/state';
-import { resolveCombat } from './combat';
+import { declareBattle, defenderAmbushOptions, resolveAmbushPrompt } from './combat';
 import { advancePhase, endTurn } from './loop';
 
 export interface NewGameOptions {
@@ -112,15 +112,30 @@ export function reduce(state: GameState, action: Action): GameState {
         draft.log.push({ turn: draft.turn, faction: action.faction, message: `Played ${card.name} — chasing dominance.` });
       });
     case 'combat.declare':
-      return resolveCombat(state, {
+      return declareBattle(state, {
         clearing: action.clearing,
         attacker: action.attacker,
         defender: action.defender,
       });
-    case 'combat.playAmbush':
-    case 'combat.skipAmbush':
+    case 'combat.playAmbush': {
+      const prompt = state.pendingPrompts.find(p => p.kind === 'combat.defenderAmbush');
+      if (!prompt || prompt.faction !== action.faction) return state;
+      const card = getCard(action.cardId);
+      if (card.category !== 'ambush') return state;
+      if (!(state.hands[action.faction] ?? []).includes(action.cardId)) return state;
+      // The ambush card must match the clearing's suit (or be a bird).
+      const params = prompt.payload as { clearing: number };
+      const validIds = defenderAmbushOptions(state, params.clearing, action.faction);
+      if (!validIds.includes(action.cardId)) return state;
+      return resolveAmbushPrompt(state, { playedCard: action.cardId });
+    }
+    case 'combat.skipAmbush': {
+      const prompt = state.pendingPrompts.find(p => p.kind === 'combat.defenderAmbush');
+      if (!prompt || prompt.faction !== action.faction) return state;
+      return resolveAmbushPrompt(state, {});
+    }
     case 'prompt.respond':
-      // These flow through the pendingPrompts system; faction reducers handle them.
+      // Generic prompt response — faction reducers handle their own.
       return state;
     default:
       if (action.kind.startsWith('marquise.')) return marquiseReducer(state, action);

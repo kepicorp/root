@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Board, type MapIntent } from './ui/Board';
 import { Hand } from './ui/Hand';
 import { DiscardPicker } from './ui/DiscardPicker';
+import { AmbushPrompt } from './ui/AmbushPrompt';
 import { ActionBar } from './ui/ActionBar';
 import { Log } from './ui/Log';
 import { Scoreboard } from './ui/Scoreboard';
@@ -157,6 +158,7 @@ export function App() {
       </div>
 
       <DiscardPicker state={state} playerFaction={playerFaction} dispatch={dispatch} />
+      <AmbushPrompt state={state} playerFaction={playerFaction} dispatch={dispatch} />
     </div>
   );
 }

@@ -133,8 +133,15 @@ function runOneAIAction(): void {
   const { state, playerFaction, scoreTick } = useGame.getState();
   if (state.winner) return;
   if (state.phase === 'setup' || state.phase === 'gameOver') return;
-  const active = state.factionOrder[state.activeIndex];
-  if (active === playerFaction) return;
+  // Pending prompts (e.g. defender ambush) freeze the active-faction
+  // check — the respondent answers instead. Wait if it's the human.
+  if (state.pendingPrompts.length > 0) {
+    const respondent = state.pendingPrompts[0]!.faction;
+    if (respondent === playerFaction) return;
+  } else {
+    const active = state.factionOrder[state.activeIndex];
+    if (active === playerFaction) return;
+  }
   const action = pickAction(state);
   if (!action) return;
   let next = reduce(state, action);

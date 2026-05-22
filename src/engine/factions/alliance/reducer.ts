@@ -2,7 +2,7 @@ import { produce } from 'immer';
 import type { GameState, Action, ClearingId, Faction } from '../../types';
 import { getCard, type CardId } from '../../cards';
 import { AUTUMN_MAP, getAdjacent } from '../../map';
-import { resolveCombat } from '../../combat';
+import { declareBattle } from '../../combat';
 import { SYMPATHY_VP_TRACK, SYMPATHY_COST } from './state';
 import { applyFavor } from '../../effects';
 import { onEnterBirdsong } from '../../loop';
@@ -146,10 +146,10 @@ export function allianceReducer(state: GameState, action: Action): GameState {
       if (state.phase !== 'daylight') return state;
       const al = state.factions.alliance!;
       if (al.daylightActionsLeft <= 0) return state;
-      const after = resolveCombat(state, { clearing: a.clearing, attacker: 'alliance', defender: a.defender });
-      return produce(after, draft => {
+      const pre = produce(state, draft => {
         draft.factions.alliance!.daylightActionsLeft -= 1;
       });
+      return declareBattle(pre, { clearing: a.clearing, attacker: 'alliance', defender: a.defender });
     }
 
     case 'alliance.move':

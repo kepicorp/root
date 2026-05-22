@@ -3,7 +3,7 @@ import type { GameState, Action, ClearingId, Faction } from '../../types';
 import type { CardId } from '../../cards';
 import { getCard } from '../../cards';
 import { AUTUMN_MAP, getAdjacent } from '../../map';
-import { resolveCombat } from '../../combat';
+import { declareBattle } from '../../combat';
 import { applyFavor } from '../../effects';
 import { onEnterBirdsong } from '../../loop';
 import { vpForBuilding, buildCost } from './scoring';
@@ -195,10 +195,13 @@ export function marquiseReducer(state: GameState, action: Action): GameState {
       if (state.phase !== 'daylight') return state;
       const m = state.factions.marquise!;
       if (m.daylightActionsLeft <= 0) return state;
-      const after = resolveCombat(state, { clearing: a.clearing, attacker: 'marquise', defender: a.defender });
-      return produce(after, draft => {
+      // Spend the action up-front so the cost lands whether or not the
+      // defender ambushes; declareBattle either resolves the combat
+      // immediately or queues a defender-ambush prompt.
+      const pre = produce(state, draft => {
         draft.factions.marquise!.daylightActionsLeft -= 1;
       });
+      return declareBattle(pre, { clearing: a.clearing, attacker: 'marquise', defender: a.defender });
     }
 
     case 'marquise.craft':

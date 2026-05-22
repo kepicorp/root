@@ -295,7 +295,13 @@ export class Room {
     const player = this.players.get(clientId);
     if (!player) return 'not connected';
     const isSystem = action.kind.startsWith('system.');
-    if (!isSystem) {
+    const isCombat = action.kind.startsWith('combat.');
+    if (isCombat) {
+      // combat.playAmbush / skipAmbush carry an explicit `faction` field
+      // that identifies the responder. Authorize the player's seat against it.
+      const respondent = (action as { faction?: Faction }).faction;
+      if (respondent && player.faction !== respondent) return 'not your seat';
+    } else if (!isSystem) {
       const factionPrefix = action.kind.split('.')[0];
       if (player.faction !== factionPrefix) return 'not your seat';
     }
@@ -319,8 +325,15 @@ export class Room {
     this.aiTimer = null;
     if (!this.started || this.state.winner) return;
     if (this.state.phase === 'setup' || this.state.phase === 'gameOver') return;
-    const active = this.state.factionOrder[this.state.activeIndex];
-    const seatClientId = this.seats[active!];
+    // A pending prompt (e.g. defender ambush) pauses the active-faction
+    // turn — the respondent is the one to act. Check their seat first.
+    let actingFaction: Faction | undefined;
+    if (this.state.pendingPrompts.length > 0) {
+      actingFaction = this.state.pendingPrompts[0]!.faction;
+    } else {
+      actingFaction = this.state.factionOrder[this.state.activeIndex];
+    }
+    const seatClientId = this.seats[actingFaction!];
     if (seatClientId) {
       const holder = this.players.get(seatClientId);
       // Only block the bot if a *live* human is seated. An offline holder

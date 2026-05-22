@@ -30,6 +30,9 @@ const PRIORITY: Record<string, number> = {
   'marquise.battle':                 20,
   'eyrie.battle':                    20,
   'alliance.battle':                 20,
+  // Combat prompts — bot ambushes when it can, otherwise skips.
+  'combat.playAmbush':               50,
+  'combat.skipAmbush':                5,
   // Phase-ending fallbacks
   'eyrie.endBirdsong':               10,
   'marquise.endDaylight':             1,
