@@ -61,15 +61,15 @@ function maybeFinishResolution(draft: GameState): void {
 
 function triggerTurmoil(draft: GameState): void {
   const e = draft.factions.eyrie!;
+  // Lose 1 VP for EVERY bird card in the Decree, including Loyal Viziers.
+  // Then remove all non-Loyal cards; viziers stay.
   let vpLost = 0;
   for (const slot of RESOLUTION_ORDER) {
     const keep: CardId[] = [];
     for (const id of e.decree[slot]) {
-      if (e.viziers.includes(id)) keep.push(id);
-      else {
-        if (getCard(id).suit === 'bird') vpLost += 1;
-        draft.discard.push(id);
-      }
+      if (getCard(id).suit === 'bird') vpLost += 1;  // count ALL bird cards
+      if (e.viziers.includes(id)) keep.push(id);     // keep viziers
+      else draft.discard.push(id);                    // discard the rest
     }
     e.decree[slot] = keep;
   }
@@ -77,14 +77,12 @@ function triggerTurmoil(draft: GameState): void {
   if (e.usedLeaders.length >= 3) e.usedLeaders = [];
   e.usedLeaders.push(e.leader);
   e.leader = NEXT_LEADER[e.leader];
+  // Wipe decree completely (viziers are still in e.viziers; they'll be
+  // re-seated in the chosen leader's slots when chooseLeader is called).
   e.decree = { recruit: [], move: [], battle: [], build: [] };
-  if (e.viziers[0]) e.decree.move.push(e.viziers[0]);
-  if (e.viziers[1]) e.decree.battle.push(e.viziers[1]);
   e.resolutionLeft = undefined;
   e.decreeResolved = true;
-  e.needsLeaderChoice = true;  // player must pick a new leader next birdsong
-  // Do NOT pre-place viziers here — they go into the chosen leader's slots
-  // when the player picks a leader via chooseLeader.
+  e.needsLeaderChoice = true;
   draft.phase = 'evening';
   draft.log.push({
     turn: draft.turn,
