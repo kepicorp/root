@@ -84,11 +84,22 @@ export function allianceReducer(state: GameState, action: Action): GameState {
 
     case 'alliance.mobilize':
       return produce(state, draft => {
+        if (draft.phase !== 'daylight') return;
+        const al = draft.factions.alliance!;
         const idx = draft.hands.alliance.indexOf(a.cardId);
         if (idx < 0) return;
         draft.hands.alliance.splice(idx, 1);
-        draft.factions.alliance!.supporters.push(a.cardId);
-        draft.factions.alliance!.daylightActionsLeft -= 1;
+        // Supporters stack is capped at 5 unless at least one base is on the
+        // board; if full, the card is discarded instead.
+        const hasBase = Object.keys(al.bases).length > 0;
+        if (!hasBase && al.supporters.length >= 5) {
+          draft.discard.push(a.cardId);
+          draft.log.push({ turn: draft.turn, faction: 'alliance', message: `Supporter stack full — discarded ${a.cardId}.` });
+        } else {
+          al.supporters.push(a.cardId);
+          draft.log.push({ turn: draft.turn, faction: 'alliance', message: `Mobilized a supporter.` });
+        }
+        // Mobilize is FREE — does not cost an officer action.
       });
 
     case 'alliance.organize':
@@ -194,11 +205,9 @@ export function allianceReducer(state: GameState, action: Action): GameState {
       return produce(state, draft => {
         if (draft.phase !== 'daylight') return;
         const al = draft.factions.alliance!;
-        if (al.daylightActionsLeft <= 0) return;
         if (al.officers >= 10) return;
-        // Real rules: spend a bird-suit card OR a supporter to bump officers.
-        // We allow spending a supporter card directly (Alliance's recruiting
-        // power), keyed by id.
+        // Spend a bird-suit supporter to gain an officer.
+        // Train is FREE — does not cost an officer action.
         const idx = al.supporters.indexOf(a.cardId);
         if (idx < 0) return;
         const card = getCard(a.cardId);
@@ -206,7 +215,9 @@ export function allianceReducer(state: GameState, action: Action): GameState {
         al.supporters.splice(idx, 1);
         draft.discard.push(a.cardId);
         al.officers += 1;
-        al.daylightActionsLeft -= 1;
+        // Training also immediately grants one more officer-limited action slot
+        // for the rest of this daylight.
+        al.daylightActionsLeft += 1;
         draft.log.push({ turn: draft.turn, faction: 'alliance', message: `Trained an officer (now ${al.officers}).` });
       });
 
@@ -256,7 +267,9 @@ export function allianceReducer(state: GameState, action: Action): GameState {
 function finishAllianceTurn(draft: GameState, _draws: number): void {
   const al = draft.factions.alliance!;
   al.birdsongDone = false;
-  al.daylightActionsLeft = 2 + al.officers;
+  // Officer-limited actions (Organize / Battle / Move) get exactly al.officers
+  // slots; free actions (Craft / Mobilize / Train) ignore this counter.
+  al.daylightActionsLeft = al.officers;
   al.pendingDiscard = 0;
   draft.activeIndex = (draft.activeIndex + 1) % draft.factionOrder.length;
   if (draft.activeIndex === 0) draft.turn += 1;
@@ -291,9 +304,16 @@ export function allianceLegalActions(state: GameState): Action[] {
       }
     }
   }
-  if (state.phase === 'daylight' && al.daylightActionsLeft > 0) {
-    for (const cardId of state.hands.alliance) out.push({ kind: 'alliance.mobilize', cardId });
-    // Train officer: spend a bird-suit supporter.
+  if (state.phase === 'daylight') {
+    // ── Free actions (unlimited, no officer cost) ────────────────────────────
+    const hasBase = Object.keys(al.bases).length > 0;
+    const stackFull = !hasBase && al.supporters.length >= 5;
+    if (!stackFull) {
+      for (const cardId of state.hands.alliance) {
+        out.push({ kind: 'alliance.mobilize', cardId });
+      }
+    }
+    // Train officer: spend a bird-suit supporter (free action).
     if (al.officers < 10) {
       for (const id of al.supporters) {
         if (getCard(id).suit === 'bird') {
@@ -301,7 +321,7 @@ export function allianceLegalActions(state: GameState): Action[] {
         }
       }
     }
-    // Craft (item / persistent / favor) — needs at least one sympathy on the board.
+    // Craft (free action) — needs at least one sympathy on the board.
     if (al.sympathy.length > 0) {
       for (const id of state.hands.alliance) {
         const card = getCard(id);
@@ -310,30 +330,32 @@ export function allianceLegalActions(state: GameState): Action[] {
         }
       }
     }
-    for (const c of AUTUMN_MAP.clearings) {
-      const cl = state.map.clearings[c.id]!;
-      if ((cl.warriors.alliance ?? 0) > 0 && !al.sympathy.includes(c.id)) {
-        out.push({ kind: 'alliance.organize', clearing: c.id });
-      }
-      if ((cl.warriors.alliance ?? 0) > 0) {
-        for (const f of ['marquise', 'eyrie', 'vagabond'] as const) {
-          if ((cl.warriors[f] ?? 0) > 0 || cl.buildings.some(b => b.faction === f)) {
-            out.push({ kind: 'alliance.battle', clearing: c.id, defender: f });
+    // ── Officer-limited actions (Organize / Battle / Move) ──────────────────
+    if (al.daylightActionsLeft > 0) {
+      for (const c of AUTUMN_MAP.clearings) {
+        const cl = state.map.clearings[c.id]!;
+        if ((cl.warriors.alliance ?? 0) > 0 && !al.sympathy.includes(c.id)) {
+          out.push({ kind: 'alliance.organize', clearing: c.id });
+        }
+        if ((cl.warriors.alliance ?? 0) > 0) {
+          for (const f of ['marquise', 'eyrie', 'vagabond'] as const) {
+            if ((cl.warriors[f] ?? 0) > 0 || cl.buildings.some(b => b.faction === f)) {
+              out.push({ kind: 'alliance.battle', clearing: c.id, defender: f });
+            }
           }
         }
-      }
-      // Move: must rule source or destination, costs 1 daylight action.
-      const have = cl.warriors.alliance ?? 0;
-      if (have > 0) {
-        for (const nb of getAdjacent(AUTUMN_MAP, c.id)) {
-          if (allianceRules(state, c.id) || allianceRules(state, nb)) {
-            out.push({ kind: 'alliance.move', from: c.id, to: nb, count: have });
+        const have = cl.warriors.alliance ?? 0;
+        if (have > 0) {
+          for (const nb of getAdjacent(AUTUMN_MAP, c.id)) {
+            if (allianceRules(state, c.id) || allianceRules(state, nb)) {
+              out.push({ kind: 'alliance.move', from: c.id, to: nb, count: have });
+            }
           }
         }
       }
     }
+    out.push({ kind: 'alliance.endDaylight' });
   }
-  if (state.phase === 'daylight') out.push({ kind: 'alliance.endDaylight' });
   if (state.phase === 'evening') {
     if (al.pendingDiscard > 0) {
       for (const cardId of state.hands.alliance) {

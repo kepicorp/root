@@ -18,7 +18,7 @@ export const INITIAL_ALLIANCE_STATE: AllianceState = {
   supporters: [],
   bases: {},
   sympathy: [],
-  daylightActionsLeft: 2,  // resets to 2+officers each turn; must be non-zero from turn 1
+  daylightActionsLeft: 0,  // officer-limited actions (Organize/Battle/Move); free actions (Craft/Mobilize/Train) ignore this
   birdsongDone: false,
   pendingDiscard: 0,
 };
