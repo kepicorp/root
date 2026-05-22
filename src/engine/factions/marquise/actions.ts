@@ -6,7 +6,9 @@ export type MarquiseAction =
   | { kind: 'marquise.build'; clearing: ClearingId; building: 'sawmill' | 'workshop' | 'recruiter' }
   | { kind: 'marquise.recruit' }
   | { kind: 'marquise.overwork'; clearing: ClearingId; cardId: CardId }
+  | { kind: 'marquise.beginMarch' }
   | { kind: 'marquise.march'; from: ClearingId; to: ClearingId; count: number }
+  | { kind: 'marquise.endMarch' }
   | { kind: 'marquise.battle'; clearing: ClearingId; defender: Faction }
   | { kind: 'marquise.craft'; cardId: CardId }
   | { kind: 'marquise.spendBirdForExtra'; cardId: CardId }

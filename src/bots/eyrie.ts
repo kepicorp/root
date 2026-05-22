@@ -18,6 +18,9 @@ export function pickEyrieAction(state: GameState, legals: Action[]): Action | nu
   const eyrie = state.factions.eyrie;
   if (!eyrie) return null;
   if (state.phase !== 'birdsong') return null;
+  // Must choose a leader first — fall through to the generic priority picker
+  // which has eyrie.chooseLeader at a high priority.
+  if (eyrie.needsLeaderChoice) return null;
 
   // One safe add per birdsong is plenty — keeps the Decree manageable and
   // gives the bot a cushion against the map shifting around it.

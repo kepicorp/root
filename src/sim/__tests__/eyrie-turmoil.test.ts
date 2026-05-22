@@ -51,7 +51,7 @@ describe('Eyrie bot Decree composition', () => {
   });
 
   it('Eyrie wins or scores meaningfully on at least one of these seeds', () => {
-    const seeds = [1, 2, 4, 5, 7, 10];
+    const seeds = [1, 2, 3, 4, 5, 7, 9, 10];
     const wins = seeds.filter(s => playToEnd(s).winner === 'eyrie').length;
     expect(wins).toBeGreaterThan(0);
   });

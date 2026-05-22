@@ -16,6 +16,9 @@ export interface MarquiseState {
   craftedThisTurn: string[];   // card ids used to craft this turn (for de-dup)
   bonusActionUsed: boolean;    // bird-card extra action consumed
   pendingDiscard: number;      // cards to discard before evening completes
+  // Tracks sub-moves remaining in the current March action. A single
+  // March costs 1 daylight action and grants 2 independent sub-moves.
+  marchMovesLeft: number;
 }
 
 export const INITIAL_MARQUISE_STATE: MarquiseState = {
@@ -28,4 +31,5 @@ export const INITIAL_MARQUISE_STATE: MarquiseState = {
   craftedThisTurn: [],
   bonusActionUsed: false,
   pendingDiscard: 0,
+  marchMovesLeft: 0,
 };

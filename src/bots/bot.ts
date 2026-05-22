@@ -10,7 +10,11 @@ import { pickEyrieAction } from './eyrie';
 const PRIORITY: Record<string, number> = {
   // Score-generating
   'marquise.build':                 100,
+  'marquise.beginMarch':             60,
+  'marquise.march':                  60,
+  'marquise.endMarch':               10,
   'marquise.craft':                  90,
+  'eyrie.chooseLeader':              95,   // must happen before decree adds
   'eyrie.resolveDecree':            100,
   'alliance.spreadSympathy':        100,
   'alliance.revolt':                100,

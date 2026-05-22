@@ -24,7 +24,7 @@ const FACTIONS: Faction[] = ['marquise', 'eyrie', 'alliance', 'vagabond'];
  *  map-driven intents (build / battle / etc., applied by clicking the
  *  Board) or in a faction-specific panel (Eyrie's Decree slots). */
 const MAP_DRIVEN: ReadonlySet<string> = new Set([
-  'marquise.march',
+  'marquise.march',     // sub-moves are map-driven; beginMarch is the ActionBar button
   'marquise.build',
   'marquise.battle',
   'marquise.overwork',
@@ -75,6 +75,8 @@ const ACTION_META: Record<string, ActionMeta> = {
   'marquise.battle':              { label: 'Battle',              group: 'main' },
   'marquise.craft':               { label: 'Craft',               group: 'main' },
   'marquise.spendBirdForExtra':   { label: 'Bird → extra action', group: 'bonus' },
+  'marquise.beginMarch':          { label: 'March',               group: 'main' },
+  'marquise.endMarch':            { label: 'End march',           group: 'main' },
   'marquise.endDaylight':         { label: 'End daylight',        group: 'end' },
   'marquise.evening':             { label: 'End evening',         group: 'end',         primary: true },
   // Eyrie
@@ -188,6 +190,9 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
     || a.kind === 'vagabond.slip'
     || a.kind === 'eyrie.executeMove'
   );
+  const marchMovesLeft = isHuman && active === 'marquise'
+    ? (state.factions.marquise?.marchMovesLeft ?? 0)
+    : 0;
 
   // Group actions
   const groups: Record<string, Action[]> = { birdsong: [], main: [], bonus: [], end: [] };
@@ -318,10 +323,16 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
         Your turn <span className="dim">({state.phase})</span>
       </div>
 
-      {hasMapMoves && (
+      {marchMovesLeft > 0 && (
+        <div className="actionbar-hint map-hint" style={{ borderColor: '#f0c060', color: '#f0e2c2' }}>
+          ⚔ <strong>March in progress</strong> — {marchMovesLeft} move{marchMovesLeft === 1 ? '' : 's'} remaining.
+          Click the map to pick a source and destination.
+        </div>
+      )}
+      {hasMapMoves && marchMovesLeft === 0 && (
         <div className="actionbar-hint map-hint">
           ⤵ <strong>Click the map</strong> to {active === 'marquise'
-            ? <>move warriors (<em>March</em> = 2 moves per turn)</>
+            ? <>move warriors</>
             : active === 'vagabond'
               ? <>move the Vagabond</>
               : <>resolve a Decree move</>}.

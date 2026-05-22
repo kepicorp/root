@@ -82,6 +82,7 @@ function triggerTurmoil(draft: GameState): void {
   if (e.viziers[1]) e.decree.battle.push(e.viziers[1]);
   e.resolutionLeft = undefined;
   e.decreeResolved = true;
+  e.needsLeaderChoice = true;  // player must pick a new leader next birdsong
   draft.phase = 'evening';
   draft.log.push({
     turn: draft.turn,
@@ -100,13 +101,16 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
       return produce(state, draft => {
         const e = draft.factions.eyrie!;
         e.leader = a.leader;
-        draft.log.push({ turn: draft.turn, faction: 'eyrie', message: `Leader: ${a.leader}.` });
+        e.needsLeaderChoice = false;
+        draft.log.push({ turn: draft.turn, faction: 'eyrie', message: `Leader chosen: ${a.leader}.` });
       });
 
     case 'eyrie.addToDecree':
       return produce(state, draft => {
         const e = draft.factions.eyrie!;
         if (draft.phase !== 'birdsong') return;
+        if (e.needsLeaderChoice) return; // must pick leader first
+        if (e.cardsAddedThisBirdsong >= 1) return; // only 1 add per birdsong
         const idx = draft.hands.eyrie.indexOf(a.cardId);
         if (idx < 0) return;
         draft.hands.eyrie.splice(idx, 1);
@@ -351,16 +355,20 @@ export function eyrieLegalActions(state: GameState): Action[] {
   const e = state.factions.eyrie;
   if (!e) return out;
   if (state.phase === 'birdsong') {
-    for (const cardId of state.hands.eyrie) {
-      for (const slot of ['recruit', 'move', 'battle', 'build'] as const) {
-        out.push({ kind: 'eyrie.addToDecree', slot, cardId });
+    // Official rule: exactly one card added to the Decree per birdsong.
+    if (e.cardsAddedThisBirdsong === 0) {
+      for (const cardId of state.hands.eyrie) {
+        for (const slot of ['recruit', 'move', 'battle', 'build'] as const) {
+          out.push({ kind: 'eyrie.addToDecree', slot, cardId });
+        }
       }
     }
-    // Leader pick: real rules force this after a Turmoil; we expose it
-    // every birdsong so the player can also tune up-front.
-    for (const leader of ['despot', 'commander', 'charismatic', 'builder'] as const) {
-      if (leader === e.leader) continue;
-      out.push({ kind: 'eyrie.chooseLeader', leader });
+    // Leader pick — see task for timing; conditional handled in legals below.
+    if (e.needsLeaderChoice) {
+      for (const leader of ['despot', 'commander', 'charismatic', 'builder'] as const) {
+        if (leader === e.leader) continue;
+        out.push({ kind: 'eyrie.chooseLeader', leader });
+      }
     }
     out.push({ kind: 'eyrie.endBirdsong' });
   }

@@ -869,9 +869,17 @@ body { background: var(--bg); color: var(--paper); }
 .decree-pick-name { flex: 1; }
 .eyrie-progress { margin-top: 6px; font-size: 11px; }
 .eyrie-leader-picker { margin-top: 6px; font-size: 11px; color: #cfc2a8; }
+.eyrie-leader-picker.eyrie-leader-required {
+  border: 1px solid #f0c060;
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: rgba(240, 192, 96, 0.06);
+  color: #f0e2c2;
+}
 .eyrie-leader-picker-label { margin-bottom: 4px; }
 .eyrie-leader-picker-row { display: flex; gap: 4px; flex-wrap: wrap; }
-.eyrie-leader-picker-row .btn.ghost.small { padding: 2px 8px; font-size: 11px; text-transform: capitalize; }
+.eyrie-leader-picker-row .btn.ghost.small,
+.eyrie-leader-picker-row .btn.primary.small { padding: 2px 8px; font-size: 11px; text-transform: capitalize; }
 .eyrie-resolution {
   margin-top: 8px;
   padding: 6px 8px;

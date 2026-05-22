@@ -71,17 +71,19 @@ export function EyriePanel({ state, isHuman, dispatch }: Props) {
         <span>Leader: <strong>{e.leader}</strong></span>
       </div>
 
-      {canAdd && (
-        <div className="eyrie-leader-picker">
-          <div className="eyrie-leader-picker-label">Change leader:</div>
+      {canAdd && e!.needsLeaderChoice && (
+        <div className="eyrie-leader-picker eyrie-leader-required">
+          <div className="eyrie-leader-picker-label">
+            <strong>Choose your leader</strong> before adding to the Decree:
+          </div>
           <div className="eyrie-leader-picker-row">
-            {LEADERS.filter(l => l !== e!.leader).map(l => (
+            {LEADERS.map(l => (
               <button
                 key={l}
                 type="button"
-                className="btn ghost small"
+                className={`btn ${l === e!.leader ? 'primary' : 'ghost'} small`}
                 onClick={() => dispatch({ kind: 'eyrie.chooseLeader', leader: l })}
-                title={`Switch leader to ${l}`}
+                title={`Play as ${l}`}
               >
                 {l}
               </button>

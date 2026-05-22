@@ -169,13 +169,22 @@ export function marquiseReducer(state: GameState, action: Action): GameState {
         draft.log.push({ turn: draft.turn, faction: 'marquise', message: `Overworked sawmill in ${a.clearing}.` });
       });
 
-    case 'marquise.march': {
-      // Treat each march action as one "move"; the rulebook allows 2 moves per
-      // March action — we model this by allowing two march actions in a row.
+    case 'marquise.beginMarch':
       return produce(state, draft => {
         if (draft.phase !== 'daylight') return;
         const m = draft.factions.marquise!;
         if (m.daylightActionsLeft <= 0) return;
+        if (m.marchMovesLeft > 0) return; // already mid-march
+        m.daylightActionsLeft -= 1;
+        m.marchMovesLeft = 2;
+        draft.log.push({ turn: draft.turn, faction: 'marquise', message: 'March begun (2 moves).' });
+      });
+
+    case 'marquise.march': {
+      return produce(state, draft => {
+        if (draft.phase !== 'daylight') return;
+        const m = draft.factions.marquise!;
+        if (m.marchMovesLeft <= 0) return; // must beginMarch first
         const from = draft.map.clearings[a.from];
         const to = draft.map.clearings[a.to];
         if (!from || !to) return;
@@ -186,10 +195,15 @@ export function marquiseReducer(state: GameState, action: Action): GameState {
         if (n <= 0) return;
         from.warriors.marquise = have - n;
         to.warriors.marquise = (to.warriors.marquise ?? 0) + n;
-        m.daylightActionsLeft -= 1;
+        m.marchMovesLeft -= 1;
         draft.log.push({ turn: draft.turn, faction: 'marquise', message: `Marched ${n} from ${a.from} to ${a.to}.` });
       });
     }
+
+    case 'marquise.endMarch':
+      return produce(state, draft => {
+        draft.factions.marquise!.marchMovesLeft = 0;
+      });
 
     case 'marquise.battle': {
       if (state.phase !== 'daylight') return state;
@@ -285,6 +299,7 @@ function finishMarquiseTurn(draft: GameState, drawsLogged: number): void {
   m.bonusActionUsed = false;
   m.craftedThisTurn = [];
   m.pendingDiscard = 0;
+  m.marchMovesLeft = 0;
   draft.activeIndex = (draft.activeIndex + 1) % draft.factionOrder.length;
   if (draft.activeIndex === 0) draft.turn += 1;
   draft.phase = 'birdsong';
@@ -303,6 +318,20 @@ export function marquiseLegalActions(state: GameState): Action[] {
     out.push({ kind: 'marquise.placeWood' });
   }
   if (state.phase === 'daylight') {
+    // Mid-march: only march sub-moves and end-march are legal.
+    if (m.marchMovesLeft > 0) {
+      for (const c of AUTUMN_MAP.clearings) {
+        const have = state.map.clearings[c.id]!.warriors.marquise ?? 0;
+        if (have <= 0) continue;
+        for (const nb of getAdjacent(AUTUMN_MAP, c.id)) {
+          if (rules(state, c.id) || rules(state, nb)) {
+            out.push({ kind: 'marquise.march', from: c.id, to: nb, count: have });
+          }
+        }
+      }
+      out.push({ kind: 'marquise.endMarch' });
+      return out; // nothing else allowed while mid-march
+    }
     if (m.daylightActionsLeft > 0) {
       // Build candidates
       for (const kind of ['sawmill', 'workshop', 'recruiter'] as const) {
@@ -320,15 +349,13 @@ export function marquiseLegalActions(state: GameState): Action[] {
       if (!m.recruitedThisTurn && m.buildings.recruiter > 0 && m.warriorSupply > 0) {
         out.push({ kind: 'marquise.recruit' });
       }
-      // March
-      for (const c of AUTUMN_MAP.clearings) {
+      // Begin March (the March button — march sub-moves come after)
+      const hasMovablePieces = AUTUMN_MAP.clearings.some(c => {
         const have = state.map.clearings[c.id]!.warriors.marquise ?? 0;
-        if (have <= 0) continue;
-        for (const nb of getAdjacent(AUTUMN_MAP, c.id)) {
-          if (rules(state, c.id) || rules(state, nb)) {
-            out.push({ kind: 'marquise.march', from: c.id, to: nb, count: have });
-          }
-        }
+        return have > 0 && getAdjacent(AUTUMN_MAP, c.id).some(nb => rules(state, c.id) || rules(state, nb));
+      });
+      if (hasMovablePieces) {
+        out.push({ kind: 'marquise.beginMarch' });
       }
       // Overwork
       for (const c of AUTUMN_MAP.clearings) {

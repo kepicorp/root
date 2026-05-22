@@ -24,6 +24,9 @@ export interface EyrieState {
   // player drains each in slot order; auto-resolve finishes the rest.
   resolutionLeft?: { recruit: number; move: number; battle: number; build: number };
   pendingDiscard: number;
+  // True at game start and immediately after a Turmoil. The player must
+  // choose a leader before adding to the Decree; cleared by chooseLeader.
+  needsLeaderChoice: boolean;
 }
 
 export const INITIAL_EYRIE_STATE: EyrieState = {
@@ -38,6 +41,7 @@ export const INITIAL_EYRIE_STATE: EyrieState = {
   eveningDone: false,
   cardsAddedThisBirdsong: 0,
   pendingDiscard: 0,
+  needsLeaderChoice: true,   // prompt for first leader before the first Decree add
 };
 
 export const ROOST_VP_TRACK = [0, 0, 1, 2, 3, 4, 4, 5] as const;
