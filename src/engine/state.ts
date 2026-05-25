@@ -12,7 +12,7 @@ import { INITIAL_MARQUISE_STATE } from './factions/marquise/state';
 import { INITIAL_EYRIE_STATE } from './factions/eyrie/state';
 import { INITIAL_ALLIANCE_STATE } from './factions/alliance/state';
 import { INITIAL_VAGABOND_STATE } from './factions/vagabond/state';
-import { declareBattle, defenderAmbushOptions, resolveAmbushPrompt } from './combat';
+import { declareBattle, defenderAmbushOptions, resolveAmbushPrompt, resolveMiceCancelPrompt } from './combat';
 import { advancePhase, endTurn } from './loop';
 
 export interface NewGameOptions {
@@ -31,7 +31,8 @@ export function newGame(opts: NewGameOptions = {}): GameState {
   }
 
   const rng = mulberry32(seed);
-  const deck = shuffle(SHARED_DECK.map(c => c.id), rng);
+  // Dominance cards are shuffled into the shared deck; players draw and play them from hand.
+  const deck = shuffle([...SHARED_DECK, ...DOMINANCE_CARDS].map(c => c.id), rng);
 
   const hands: Record<Faction, CardId[]> = {
     marquise: [], eyrie: [], alliance: [], vagabond: [],
@@ -73,7 +74,7 @@ export function newGame(opts: NewGameOptions = {}): GameState {
     itemSupply,
     scores: { marquise: 0, eyrie: 0, alliance: 0, vagabond: 0 },
     pendingPrompts: [],
-    dominanceAvailable: DOMINANCE_CARDS.map(c => c.id),
+    dominanceAvailable: [],
     log: [{ turn: 1, faction: 'system', message: `New game (seed ${seed})` }],
   };
 
@@ -88,6 +89,8 @@ import { marquiseReducer } from './factions/marquise/reducer';
 import { eyrieReducer } from './factions/eyrie/reducer';
 import { allianceReducer } from './factions/alliance/reducer';
 import { vagabondReducer } from './factions/vagabond/reducer';
+import { cardEffectsReducer } from './card-effects';
+import type { CardAction } from './card-effects';
 
 export function reduce(state: GameState, action: Action): GameState {
   if (state.winner) return state;
@@ -101,11 +104,13 @@ export function reduce(state: GameState, action: Action): GameState {
       return produce(state, draft => {
         if (draft.dominance) return; // already claimed
         if ((draft.scores[action.faction] ?? 0) < 10) return;
-        const idx = draft.dominanceAvailable.indexOf(action.cardId);
-        if (idx < 0) return;
         const card = getCard(action.cardId);
         if (card.category !== 'dominance') return;
-        draft.dominanceAvailable.splice(idx, 1);
+        // Card must be in the player's hand.
+        const handIdx = draft.hands[action.faction].indexOf(action.cardId);
+        if (handIdx < 0) return;
+        draft.hands[action.faction].splice(handIdx, 1);
+        draft.discard.push(action.cardId);
         draft.dominance = { faction: action.faction, suit: card.suit };
         // The faction abandons their VP track when chasing dominance.
         draft.scores[action.faction] = 0;
@@ -130,6 +135,10 @@ export function reduce(state: GameState, action: Action): GameState {
       return resolveAmbushPrompt(state, { playedCard: action.cardId });
     }
     case 'combat.skipAmbush': {
+      const micePrompt = state.pendingPrompts.find(p => p.kind === 'combat.miceCancel');
+      if (micePrompt && micePrompt.faction === action.faction) {
+        return resolveMiceCancelPrompt(state, { cancel: false });
+      }
       const prompt = state.pendingPrompts.find(p => p.kind === 'combat.defenderAmbush');
       if (!prompt || prompt.faction !== action.faction) return state;
       return resolveAmbushPrompt(state, {});
@@ -138,6 +147,7 @@ export function reduce(state: GameState, action: Action): GameState {
       // Generic prompt response — faction reducers handle their own.
       return state;
     default:
+      if (action.kind.startsWith('card.'))    return cardEffectsReducer(state, action as CardAction);
       if (action.kind.startsWith('marquise.')) return marquiseReducer(state, action);
       if (action.kind.startsWith('eyrie.'))    return eyrieReducer(state, action);
       if (action.kind.startsWith('alliance.')) return allianceReducer(state, action);

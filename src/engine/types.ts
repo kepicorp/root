@@ -22,6 +22,7 @@ import type { MarquiseAction } from './factions/marquise/actions';
 import type { EyrieAction }    from './factions/eyrie/actions';
 import type { AllianceAction } from './factions/alliance/actions';
 import type { VagabondAction } from './factions/vagabond/actions';
+import type { CardAction }     from './card-effects';
 
 export type Suit = 'fox' | 'mouse' | 'rabbit';
 export type CardSuit = Suit | 'bird';
@@ -39,6 +40,7 @@ export interface Clearing {
   suit: Suit;
   buildingSlots: number;
   hasRuin: boolean;
+  hasRiver?: boolean;
   x: number;
   y: number;
 }
@@ -133,6 +135,12 @@ export interface GameState {
   dominance?: { faction: Faction; suit: CardSuit };
   winner?: WinResult;
   log: LogEntry[];
+  /** Clearing a faction most recently moved into (cleared at phase end). */
+  lastMoveClearing?: ClearingId;
+  /** Clearing of the most recent battle (cleared at phase end). */
+  lastBattleClearing?: ClearingId;
+  /** Friend of X: this hand card counts as any suit for one action this turn. */
+  wildCard?: CardId;
 }
 
 export type ItemKind = 'sword' | 'hammer' | 'crossbow' | 'boots' | 'bag' | 'tea' | 'coin' | 'torch';
@@ -156,6 +164,7 @@ export type Action =
   | SystemAction
   | CombatAction
   | PromptAction
+  | CardAction
   | MarquiseAction
   | EyrieAction
   | AllianceAction

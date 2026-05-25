@@ -1,13 +1,7 @@
 services:
   root:
-    build:
-      context: .
-      # Use the host's network during build so `npm ci` can reach the
-      # registry through firewalled or NAT'd Docker bridge networks. This
-      # only affects build time — the running container still uses Docker's
-      # default bridge.
-      network: host
-    image: root-game:latest
+    image: docker.kepi.site/root-game:latest
+    pull_policy: always
     container_name: root-game
     restart: unless-stopped
     ports:
@@ -18,13 +12,14 @@ services:
       PORT: 8787
       DATA_DIR: /app/data/rooms
       MAX_ROOM_AGE_DAYS: 90
-      # Admin password. Leave unset/empty to disable /admin.
-      # You can either:
-      #   1. Uncomment + set it inline (NOT recommended for committed files).
-      #   2. Define it in a local .env (docker compose loads it automatically).
-      #   3. Pass it on the command line:
-      #        ADMIN_PASSWORD=secret docker compose up
-      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-}"
+    # Admin password and other secrets: put them in a .env file next to this
+    # file (never commit that file). Example .env contents:
+    #   ADMIN_PASSWORD=mysecret
+    # docker compose loads .env automatically; env_file below injects the
+    # variables directly into the container so no shell interpolation needed.
+    env_file:
+      - path: .env
+        required: false
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8787/healthz"]
       interval: 30s

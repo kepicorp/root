@@ -42,18 +42,21 @@ export function Hand({ state, faction }: HandProps) {
           return (
             <div
               key={id}
-              className="card"
+              className={`card${art ? ' card-has-art' : ''}`}
               style={{ borderColor: SUIT_COLOR[c.suit] }}
               title={`${c.name} · ${c.category}`}
               onMouseEnter={() => art && setZoomed(art)}
               onMouseLeave={() => setZoomed(null)}
             >
-              {art && <img src={art} alt="" className="card-art-bg" />}
-              <div className="card-body">
-                <div className="card-name">{c.name}</div>
-                <CardIcon card={c} size={36} />
-                <CardDetails card={c} />
-              </div>
+              {art ? (
+                <img src={art} alt={c.name} className="card-art-bg" />
+              ) : (
+                <div className="card-body">
+                  <div className="card-name">{c.name}</div>
+                  <CardIcon card={c} size={36} />
+                  <CardDetails card={c} />
+                </div>
+              )}
             </div>
           );
         })}

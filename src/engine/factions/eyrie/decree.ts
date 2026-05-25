@@ -12,19 +12,20 @@ import { getCard } from '../../cards';
 import { AUTUMN_MAP, getAdjacent } from '../../map';
 import type { DecreeSlot } from './state';
 
+/** Lords of the Forest (§7.2.2): Eyrie rule when tied for most warriors+buildings.
+ *  Tokens do not count toward rule (§2.5). */
 export function eyrieRules(state: GameState, clearing: ClearingId): boolean {
   const cl = state.map.clearings[clearing];
   if (!cl) return false;
   const counts: Record<string, number> = {};
   for (const [f, w] of Object.entries(cl.warriors)) counts[f] = (counts[f] ?? 0) + (w ?? 0);
   for (const b of cl.buildings) counts[b.faction] = (counts[b.faction] ?? 0) + 1;
-  for (const t of cl.tokens) counts[t.faction] = (counts[t.faction] ?? 0) + 1;
   const mine = counts.eyrie ?? 0;
   let topOther = 0;
   for (const [f, n] of Object.entries(counts)) {
     if (f !== 'eyrie' && n > topOther) topOther = n;
   }
-  return mine > 0 && mine > topOther;
+  return mine > 0 && mine >= topOther;
 }
 
 export function suitMatches(cardSuit: string, clearingSuit: string): boolean {
@@ -57,6 +58,7 @@ export function findSlotTarget(state: GameState, slot: DecreeSlot, cardId: CardI
       }
     } else if (slot === 'build') {
       if (!eyrieRules(state, c.id)) continue;
+      if (cl.buildings.some(b => b.faction === 'eyrie' && b.kind === 'roost')) continue;
       const usedSlots = cl.buildings.length + cl.tokens.filter(t => t.kind === 'keep').length;
       if (usedSlots < c.buildingSlots && (state.factions.eyrie?.roosts.length ?? 0) < 7) return c.id;
     }

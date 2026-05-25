@@ -23,6 +23,16 @@ import { mulberry32, rollDie, mixSeed } from './rng';
 import { getCard, type CardId } from './cards';
 import { AUTUMN_MAP } from './map';
 
+export interface CombatModifiers {
+  extraAttackerHits?: number;          // Brutal Tactics, Bold Leadership: +1 uncapped hit to attacker
+  extraDefenderHits?: number;          // Sappers: +1 uncapped hit to defender
+  ignoreAttackerRolledHits?: boolean;  // Armorers on attacker: zero out attacker's rolled hits
+  ignoreDefenderRolledHits?: boolean;  // Armorers on defender: zero out defender's rolled hits
+  guerrillaWar?: boolean;              // Alliance defender gets the higher die, attacker the lower
+  brutalTacticsActive?: boolean;       // Attacker has Brutal Tactics (for VP note in outcome)
+  defenderBonusWarriors?: number;      // Lookouts: defender places N warriors before roll
+}
+
 export interface CombatParams {
   clearing: ClearingId;
   attacker: Faction;
@@ -45,6 +55,8 @@ export interface CombatOutcome {
   ambushCancelled: boolean;
   ambushedByDefender: boolean;
   ambushedByAttacker: boolean;
+  brutalTacticsUsed?: boolean;
+  guerrillaWarUsed?: boolean;
 }
 
 /** Compute the outcome from a *snapshot* clearing — no state mutation. */
@@ -55,9 +67,10 @@ export function computeCombatOutcome(
   dice: [number, number],
   attackerAmbush: boolean,
   defenderAmbush: boolean,
+  modifiers: CombatModifiers = {},
 ): CombatOutcome {
   const attWarriorsStart = clearing.warriors[attacker] ?? 0;
-  const defWarriorsStart = clearing.warriors[defender] ?? 0;
+  const defWarriorsStart = (clearing.warriors[defender] ?? 0) + (modifiers.defenderBonusWarriors ?? 0);
 
   let ambushCancelled = false;
   let attackerHitsFromAmbush = 0;
@@ -79,13 +92,23 @@ export function computeCombatOutcome(
 
   if (attWarriorsAfterAmbush > 0) {
     const [d1, d2] = dice;
-    let attRoll = Math.max(d1, d2);
-    let defRoll = Math.min(d1, d2);
+    // Guerrilla War: Alliance defender gets the higher die, attacker gets the lower.
+    let attRoll = modifiers.guerrillaWar ? Math.min(d1, d2) : Math.max(d1, d2);
+    let defRoll = modifiers.guerrillaWar ? Math.max(d1, d2) : Math.min(d1, d2);
     if (defenderDefenseless) attRoll += 1;
     // Caps: a side can only deal as many hits as it has warriors in the clearing.
-    attackerHits += Math.min(attRoll, attWarriorsAfterAmbush);
-    defenderHits += Math.min(defRoll, defWarriorsAfterAmbush);
+    let attRolledHits = Math.min(attRoll, attWarriorsAfterAmbush);
+    let defRolledHits = Math.min(defRoll, defWarriorsAfterAmbush);
+    // Armorers: zero out own rolled hits (ambush hits are not rolled hits).
+    if (modifiers.ignoreAttackerRolledHits) attRolledHits = 0;
+    if (modifiers.ignoreDefenderRolledHits) defRolledHits = 0;
+    attackerHits += attRolledHits;
+    defenderHits += defRolledHits;
   }
+
+  // Extra uncapped hits from crafted persistents.
+  if (modifiers.extraAttackerHits) attackerHits += modifiers.extraAttackerHits;
+  if (modifiers.extraDefenderHits) defenderHits += modifiers.extraDefenderHits;
 
   // Apply hits — warriors first, then buildings/tokens. Each removed enemy
   // building/token scores 1 VP for the remover.
@@ -120,6 +143,8 @@ export function computeCombatOutcome(
     ambushCancelled,
     ambushedByDefender: defenderAmbush && !ambushCancelled,
     ambushedByAttacker: attackerAmbush && !ambushCancelled,
+    brutalTacticsUsed: modifiers.brutalTacticsActive ?? false,
+    guerrillaWarUsed: modifiers.guerrillaWar ?? false,
   };
 }
 
@@ -154,6 +179,39 @@ function applyHits(
   return { warriorsRemoved, buildingsRemoved, tokensRemoved };
 }
 
+// ─── Crafted-persistent helpers ───────────────────────────────────────────────
+
+/** Return the cardId of a crafted persistent matching `cardName` for `faction`,
+ *  or null if they don't have it. */
+export function hasCraftedPersistent(
+  state: GameState, faction: Faction, cardName: string,
+): string | null {
+  const entry = state.craftedPersistents.find(
+    e => e.faction === faction && getCard(e.cardId).name === cardName,
+  );
+  return entry?.cardId ?? null;
+}
+
+/** Remove a crafted persistent by cardId from the play area and return it to
+ *  the owner's hand. */
+export function returnCraftedToHand(draft: GameState, faction: Faction, cardId: string): void {
+  const idx = draft.craftedPersistents.findIndex(e => e.cardId === cardId && e.faction === faction);
+  if (idx >= 0) {
+    draft.craftedPersistents.splice(idx, 1);
+    draft.hands[faction].push(cardId);
+  }
+}
+
+/** Remove a crafted persistent by cardId from the play area and push it to
+ *  the discard pile. */
+function discardCraftedPersistentById(draft: GameState, cardId: string): void {
+  const idx = draft.craftedPersistents.findIndex(e => e.cardId === cardId);
+  if (idx >= 0) {
+    draft.craftedPersistents.splice(idx, 1);
+    draft.discard.push(cardId);
+  }
+}
+
 /** Full reducer entry point for resolving a combat. */
 export function resolveCombat(state: GameState, params: CombatParams): GameState {
   const rng = mulberry32(mixSeed(state.seed, state.rngStep + 1));
@@ -162,18 +220,70 @@ export function resolveCombat(state: GameState, params: CombatParams): GameState
   const clearing = state.map.clearings[params.clearing];
   if (!clearing) throw new Error(`Bad clearing: ${params.clearing}`);
 
-  const outcome = computeCombatOutcome(
-    clearing,
-    params.attacker,
-    params.defender,
-    dice,
-    !!params.attackerAmbush,
-    !!params.defenderAmbush,
+  // ── Detect crafted persistents that affect this combat ────────────────────
+  const brutalTacticsId    = hasCraftedPersistent(state, params.attacker, 'Brutal Tactics');
+  const sappersId          = hasCraftedPersistent(state, params.defender, 'Sappers');
+  const boldLeadershipId   = hasCraftedPersistent(state, params.attacker, 'Bold Leadership');
+  const lookoutsId         = hasCraftedPersistent(state, params.defender, 'Lookouts');
+  // Alliance Guerrilla War is a faction ability, not a card.
+  const guerrillaWar       = params.defender === 'alliance' && !!state.factions.alliance;
+  const attackerArmorersId = hasCraftedPersistent(state, params.attacker, 'Armorers');
+  const defenderArmorersId = hasCraftedPersistent(state, params.defender, 'Armorers');
+
+  // Lookouts: auto-place up to 3 warriors from the defender's supply before rolling.
+  let lookoutsWarriors = 0;
+  if (lookoutsId) {
+    if (params.defender === 'marquise') lookoutsWarriors = Math.min(3, state.factions.marquise?.warriorSupply ?? 0);
+    else if (params.defender === 'eyrie') lookoutsWarriors = Math.min(3, state.factions.eyrie?.warriorSupply ?? 0);
+    else if (params.defender === 'alliance') lookoutsWarriors = Math.min(3, state.factions.alliance?.warriorSupply ?? 0);
+  }
+
+  const baseModifiers: CombatModifiers = {
+    extraAttackerHits: (brutalTacticsId ? 1 : 0) + (boldLeadershipId ? 1 : 0),
+    extraDefenderHits: sappersId ? 1 : 0,
+    guerrillaWar,
+    brutalTacticsActive: !!brutalTacticsId,
+    defenderBonusWarriors: lookoutsWarriors,
+  };
+
+  // Preliminary pass without Armorers so we can tell if each side actually
+  // takes rolled hits before deciding to spend the card.
+  const prelim = computeCombatOutcome(
+    clearing, params.attacker, params.defender, dice,
+    !!params.attackerAmbush, !!params.defenderAmbush,
+    baseModifiers,
   );
+
+  // Armorers: only spend if the faction actually takes rolled hits
+  // (ambush hits are not rolled hits, so subtract them when checking).
+  const attAmbushHits = (!!params.defenderAmbush && !(!!params.attackerAmbush && !!params.defenderAmbush)) ? 2 : 0;
+  const defAmbushHits = (!!params.attackerAmbush && !(!!params.attackerAmbush && !!params.defenderAmbush)) ? 2 : 0;
+  const useAttackerArmorers = !!attackerArmorersId && prelim.defenderHits > attAmbushHits;
+  const useDefenderArmorers = !!defenderArmorersId && prelim.attackerHits > defAmbushHits;
+
+  const outcome = (useAttackerArmorers || useDefenderArmorers)
+    ? computeCombatOutcome(
+        clearing, params.attacker, params.defender, dice,
+        !!params.attackerAmbush, !!params.defenderAmbush,
+        {
+          ...baseModifiers,
+          ignoreAttackerRolledHits: useAttackerArmorers,
+          ignoreDefenderRolledHits: useDefenderArmorers,
+        },
+      )
+    : prelim;
 
   return produce(state, draft => {
     draft.rngStep += 1;
     const cl = draft.map.clearings[params.clearing]!;
+
+    // Lookouts: physically place warriors before casualties are applied.
+    if (lookoutsId && lookoutsWarriors > 0) {
+      cl.warriors[params.defender] = (cl.warriors[params.defender] ?? 0) + lookoutsWarriors;
+      if (params.defender === 'marquise' && draft.factions.marquise) draft.factions.marquise.warriorSupply -= lookoutsWarriors;
+      else if (params.defender === 'eyrie' && draft.factions.eyrie) draft.factions.eyrie.warriorSupply -= lookoutsWarriors;
+      else if (params.defender === 'alliance' && draft.factions.alliance) draft.factions.alliance.warriorSupply -= lookoutsWarriors;
+    }
 
     // Remove warriors.
     cl.warriors[params.attacker] =
@@ -191,6 +301,11 @@ export function resolveCombat(state: GameState, params: CombatParams): GameState
     // Score VP from removed enemy cardboard.
     draft.scores[params.attacker] = (draft.scores[params.attacker] ?? 0) + outcome.attackerVp;
     draft.scores[params.defender] = (draft.scores[params.defender] ?? 0) + outcome.defenderVp;
+
+    // Brutal Tactics: defender scores 1 extra VP (penalty for the attacker).
+    if (brutalTacticsId) {
+      draft.scores[params.defender] = (draft.scores[params.defender] ?? 0) + 1;
+    }
 
     // Return removed warriors to their owners' supplies. Vagabond has no
     // warrior supply — they take item damage instead, handled in Phase 5.
@@ -233,6 +348,32 @@ export function resolveCombat(state: GameState, params: CombatParams): GameState
       }
     }
 
+    // Discard spent crafted persistents; return one-time-per-combat cards to hand.
+    const cardNotes: string[] = [];
+    if (boldLeadershipId) {
+      returnCraftedToHand(draft, params.attacker, boldLeadershipId);
+      cardNotes.push('Bold Leadership');
+    }
+    if (lookoutsId && lookoutsWarriors > 0) {
+      returnCraftedToHand(draft, params.defender, lookoutsId);
+      cardNotes.push('Lookouts');
+    }
+    if (sappersId) {
+      discardCraftedPersistentById(draft, sappersId);
+      cardNotes.push('Sappers');
+    }
+    if (useAttackerArmorers && attackerArmorersId) {
+      discardCraftedPersistentById(draft, attackerArmorersId);
+      cardNotes.push(`Armorers (${params.attacker})`);
+    }
+    if (useDefenderArmorers && defenderArmorersId) {
+      discardCraftedPersistentById(draft, defenderArmorersId);
+      cardNotes.push(`Armorers (${params.defender})`);
+    }
+    if (brutalTacticsId) {
+      cardNotes.push('Brutal Tactics');
+    }
+
     // Log.
     const tag = outcome.defenderDefenseless ? ' (defenseless)' : '';
     const ambushNote = outcome.ambushCancelled
@@ -242,15 +383,24 @@ export function resolveCombat(state: GameState, params: CombatParams): GameState
         : outcome.ambushedByAttacker
           ? ' [attacker ambushed]'
           : '';
+    const gwNote = outcome.guerrillaWarUsed ? ' [Guerrilla War]' : '';
+    const cardNote = cardNotes.length ? ` [${cardNotes.join(', ')}]` : '';
     draft.log.push({
       turn: draft.turn,
       faction: params.attacker,
       message:
-        `Battle in clearing ${params.clearing}${tag}${ambushNote}: ` +
+        `Battle in clearing ${params.clearing}${tag}${ambushNote}${gwNote}${cardNote}: ` +
         `${params.attacker} dealt ${outcome.attackerHits} hits, ` +
         `${params.defender} dealt ${outcome.defenderHits} hits ` +
         `(dice ${outcome.dice[0]}/${outcome.dice[1]})`,
     });
+    if (brutalTacticsId) {
+      draft.log.push({
+        turn: draft.turn,
+        faction: params.defender,
+        message: `Brutal Tactics! ${params.defender} scores 1 VP.`,
+      });
+    }
   });
 }
 
@@ -301,16 +451,34 @@ export function defenderAmbushOptions(state: GameState, clearing: ClearingId, de
   });
 }
 
-/** Battle entry point used by every faction's battle/strike action. If the
- *  defender has a matching ambush in hand, queues a pending prompt so they
- *  can decide whether to play it; otherwise resolves combat immediately. */
+/** Battle entry point used by every faction's battle/strike action. Queues
+ *  pending prompts for Mice-in-a-Bush (cancel) and defender ambush in turn.
+ *  If the attacker has Scouting Party crafted, the ambush prompt is skipped. */
 export function declareBattle(state: GameState, params: CombatParams): GameState {
-  if (state.pendingPrompts.some(p => p.kind === 'combat.defenderAmbush')) {
-    // Already mid-prompt — shouldn't happen, but guard against re-entry.
-    return state;
+  if (state.pendingPrompts.some(p =>
+    p.kind === 'combat.defenderAmbush' || p.kind === 'combat.miceCancel',
+  )) {
+    return state; // Already mid-prompt.
+  }
+  // Mice-in-a-Bush: defender may cancel this battle by discarding the card.
+  const miceId = hasCraftedPersistent(state, params.defender, 'Mice-in-a-Bush');
+  if (miceId) {
+    return produce(state, draft => {
+      draft.pendingPrompts.push({
+        id: `miceCancel-${draft.turn}-${params.clearing}`,
+        kind: 'combat.miceCancel',
+        faction: params.defender,
+        payload: { ...params, miceId },
+      });
+      draft.log.push({
+        turn: draft.turn, faction: 'system',
+        message: `${params.defender} may cancel the battle with Mice-in-a-Bush.`,
+      });
+    });
   }
   const ambushes = defenderAmbushOptions(state, params.clearing, params.defender);
-  if (ambushes.length === 0) {
+  const scoutingId = hasCraftedPersistent(state, params.attacker, 'Scouting Party');
+  if (scoutingId || ambushes.length === 0) {
     return resolveCombat(state, params);
   }
   return produce(state, draft => {
@@ -326,6 +494,32 @@ export function declareBattle(state: GameState, params: CombatParams): GameState
       message: `${params.defender} may play an ambush against ${params.attacker}'s battle in clearing ${params.clearing}.`,
     });
   });
+}
+
+/** Resolve a Mice-in-a-Bush cancel prompt. */
+export function resolveMiceCancelPrompt(
+  state: GameState,
+  options: { cancel: boolean },
+): GameState {
+  const prompt = state.pendingPrompts.find(p => p.kind === 'combat.miceCancel');
+  if (!prompt) return state;
+  const payload = prompt.payload as CombatParams & { miceId: string };
+  // Remove the prompt first.
+  const after = produce(state, draft => {
+    draft.pendingPrompts = draft.pendingPrompts.filter(p => p.id !== prompt.id);
+  });
+  if (options.cancel) {
+    // Discard Mice-in-a-Bush and cancel the battle.
+    return produce(after, draft => {
+      discardCraftedPersistentById(draft, payload.miceId);
+      draft.log.push({
+        turn: draft.turn, faction: payload.defender,
+        message: `Mice-in-a-Bush: cancelled battle in clearing ${payload.clearing}.`,
+      });
+    });
+  }
+  // Proceed: continue to ambush check.
+  return declareBattle(after, payload);
 }
 
 /** Resolve a queued ambush prompt — the defender either plays their card

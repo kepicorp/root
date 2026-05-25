@@ -21,21 +21,18 @@ function matchesSuit(cardId: CardId, suit: 'fox' | 'mouse' | 'rabbit'): boolean 
   return s === suit || s === 'bird';
 }
 
-/** Alliance rules a clearing when its warriors + sympathy + bases beat
- *  every other faction's pieces there. Mirrors the rule used elsewhere
- *  for movement legality. */
+/** Alliance rules a clearing when its warriors + bases beat every other faction's
+ *  warriors + buildings. Per §2.5: tokens (incl. sympathy) do not count toward rule. */
 function allianceRules(state: GameState, clearing: ClearingId): boolean {
   const cl = state.map.clearings[clearing];
   if (!cl) return false;
   const al = state.factions.alliance;
   if (!al) return false;
   const mine = (cl.warriors.alliance ?? 0)
-    + cl.tokens.filter(t => t.faction === 'alliance').length
     + cl.buildings.filter(b => b.faction === 'alliance').length;
   if (mine <= 0) return false;
   for (const f of ['marquise', 'eyrie', 'vagabond'] as const) {
     const theirs = (cl.warriors[f] ?? 0)
-      + cl.tokens.filter(t => t.faction === f).length
       + cl.buildings.filter(b => b.faction === f).length;
     if (theirs >= mine) return false;
   }
@@ -159,6 +156,7 @@ export function allianceReducer(state: GameState, action: Action): GameState {
       if (al.daylightActionsLeft <= 0) return state;
       const pre = produce(state, draft => {
         draft.factions.alliance!.daylightActionsLeft -= 1;
+        draft.lastBattleClearing = a.clearing;
       });
       return declareBattle(pre, { clearing: a.clearing, attacker: 'alliance', defender: a.defender });
     }
@@ -178,6 +176,7 @@ export function allianceReducer(state: GameState, action: Action): GameState {
         fromCl.warriors.alliance = have - n;
         toCl.warriors.alliance = (toCl.warriors.alliance ?? 0) + n;
         al.daylightActionsLeft -= 1;
+        draft.lastMoveClearing = a.to;
         draft.log.push({ turn: draft.turn, faction: 'alliance', message: `Moved ${n} from ${a.from} → ${a.to}.` });
       });
 
@@ -288,6 +287,9 @@ export function allianceLegalActions(state: GameState): Action[] {
     // Try to spread sympathy
     for (const c of AUTUMN_MAP.clearings) {
       if (al.sympathy.includes(c.id)) continue;
+      const cl = state.map.clearings[c.id]!;
+      // Cannot spread sympathy to a clearing containing the Marquise keep.
+      if (cl.tokens.some(t => t.kind === 'keep')) continue;
       const matching = al.supporters.filter(id => matchesSuit(id, c.suit));
       const need = SYMPATHY_COST[Math.min(al.sympathy.length, SYMPATHY_COST.length - 1)] ?? 4;
       if (matching.length >= need) {

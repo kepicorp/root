@@ -132,6 +132,25 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
   const [repairPicking, setRepairPicking] = useState(false);
   const [trainPicking, setTrainPicking] = useState(false);
   const [dominancePicking, setDominancePicking] = useState(false);
+  const [royalClaimPicking, setRoyalClaimPicking] = useState(false);
+  const [standAndDeliverPicking, setStandAndDeliverPicking] = useState(false);
+  const [betterBurrowBankPicking, setBetterBurrowBankPicking] = useState(false);
+  const [taxCollectorPicking, setTaxCollectorPicking] = useState(false);
+  const [commandWarrenPicking, setCommandWarrenPicking] = useState(false);
+  const [cobblerPicking, setCobblerPicking] = useState(false);
+  const [hiddenWarrensPicking, setHiddenWarrensPicking] = useState(false);
+  const [featherRufflersPicking, setFeatherRufflersPicking] = useState(false);
+  const [supplyTrainPicking, setSupplyTrainPicking] = useState(false);
+  const [raidingPartyPicking, setRaidingPartyPicking] = useState(false);
+  const [standardBearerPicking, setStandardBearerPicking] = useState(false);
+  const [tacticianPicking, setTacticianPicking] = useState(false);
+  const [squiresPicking, setSquiresPicking] = useState(false);
+  const [friendWildcardPicking, setFriendWildcardPicking] = useState(false);
+  const [spyNetworkPicking, setSpyNetworkPicking] = useState(false);
+  const [shadowCouncilPicking, setShadowCouncilPicking] = useState(false);
+  const [apprenticePicking, setApprenticePicking] = useState(false);
+  const [silverTonguePicking, setSilverTonguePicking] = useState(false);
+  const [brazenDemagogPicking, setBrazenDemagogPicking] = useState(false);
   function closeAllPickers(): void {
     setOverworkPicking(false);
     setMobilizePicking(false);
@@ -141,6 +160,25 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
     setRepairPicking(false);
     setTrainPicking(false);
     setDominancePicking(false);
+    setRoyalClaimPicking(false);
+    setStandAndDeliverPicking(false);
+    setBetterBurrowBankPicking(false);
+    setTaxCollectorPicking(false);
+    setCommandWarrenPicking(false);
+    setCobblerPicking(false);
+    setHiddenWarrensPicking(false);
+    setFeatherRufflersPicking(false);
+    setSupplyTrainPicking(false);
+    setRaidingPartyPicking(false);
+    setStandardBearerPicking(false);
+    setTacticianPicking(false);
+    setSquiresPicking(false);
+    setFriendWildcardPicking(false);
+    setSpyNetworkPicking(false);
+    setShadowCouncilPicking(false);
+    setApprenticePicking(false);
+    setSilverTonguePicking(false);
+    setBrazenDemagogPicking(false);
   }
   useEffect(() => {
     function onKey(ev: KeyboardEvent) {
@@ -223,6 +261,27 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
   const aidLegals: Array<{ cardId: string; faction: Exclude<Faction, 'vagabond'> }> = [];
   // Vagabond can repair (per damaged item kind).
   const repairItems = new Set<string>();
+  // Persistent card effects (any faction).
+  const royalClaimActions: Array<{ cardId: string }> = [];
+  const standAndDeliverActions: Array<{ cardId: string; target: Faction }> = [];
+  const betterBurrowBankActions: Array<{ cardId: string; target: Faction }> = [];
+  const taxCollectorActions: Array<{ cardId: string; clearing: number }> = [];
+  const commandWarrenActions: Array<{ cardId: string; clearing: number; defender: Faction }> = [];
+  const cobblerActions: Array<{ cardId: string; from: number; to: number; count: number }> = [];
+  const hiddenWarrensActions: Array<{ cardId: string; from: number; to: number; count: number }> = [];
+  const featherRufflersActions: Array<{ cardId: string; clearing: number }> = [];
+  const riversteadsActions: Array<{ cardId: string }> = [];
+  const supplyTrainActions: Array<{ cardId: string; from: number; to: number; count: number }> = [];
+  const raidingPartyActions: Array<{ cardId: string; clearing: number; defender: string }> = [];
+  const standardBearerActions: Array<{ cardId: string; clearing: number; defender: string }> = [];
+  const tacticianActions: Array<{ cardId: string; from: number; to: number; count: number }> = [];
+  const squiresActions: Array<{ cardId: string; spendCard: string }> = [];
+  const friendWildcardActions: Array<{ cardId: string; targetCard: string }> = [];
+  const spyNetworkActions: Array<{ cardId: string; giveCard: string; target: string; takeCardId: string }> = [];
+  const shadowCouncilActions: Array<{ cardId: string; spendCard: string; clearing: number; forceDefender: string }> = [];
+  const apprenticeActions: Array<{ cardId: string; craftCardId: string }> = [];
+  const silverTongueActions: Array<{ cardId: string; from: number; to: number; count: number }> = [];
+  const brazenDemagogActions: Array<{ cardId: string; spendCard: string; takeDominance: string }> = [];
   let canSpreadSympathy = false;
   let canRevolt = false;
   let canOrganize = false;
@@ -251,6 +310,26 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
     else if (a.kind === 'vagabond.craft')             craftCards.add(a.cardId);
     else if (a.kind === 'vagabond.aid')               aidLegals.push({ cardId: a.cardId, faction: a.faction });
     else if (a.kind === 'vagabond.repair')            repairItems.add(a.itemKind);
+    else if (a.kind === 'card.royalClaim')            royalClaimActions.push({ cardId: a.cardId });
+    else if (a.kind === 'card.standAndDeliver')       standAndDeliverActions.push({ cardId: a.cardId, target: a.target });
+    else if (a.kind === 'card.betterBurrowBank')      betterBurrowBankActions.push({ cardId: a.cardId, target: a.target });
+    else if (a.kind === 'card.taxCollector')          taxCollectorActions.push({ cardId: a.cardId, clearing: a.clearing });
+    else if (a.kind === 'card.commandWarren')         commandWarrenActions.push({ cardId: a.cardId, clearing: a.clearing, defender: a.defender });
+    else if (a.kind === 'card.cobbler')               cobblerActions.push({ cardId: a.cardId, from: a.from, to: a.to, count: a.count });
+    else if (a.kind === 'card.hiddenWarrens')         hiddenWarrensActions.push({ cardId: a.cardId, from: a.from, to: a.to, count: a.count });
+    else if (a.kind === 'card.featherRufflers')       featherRufflersActions.push({ cardId: a.cardId, clearing: a.clearing });
+    else if (a.kind === 'card.riversteads')           riversteadsActions.push({ cardId: a.cardId });
+    else if (a.kind === 'card.supplyTrain')           supplyTrainActions.push({ cardId: a.cardId, from: a.from, to: a.to, count: a.count });
+    else if (a.kind === 'card.raidingParty')          raidingPartyActions.push({ cardId: a.cardId, clearing: a.clearing, defender: a.defender });
+    else if (a.kind === 'card.standardBearer')        standardBearerActions.push({ cardId: a.cardId, clearing: a.clearing, defender: a.defender });
+    else if (a.kind === 'card.tactician')             tacticianActions.push({ cardId: a.cardId, from: a.from, to: a.to, count: a.count });
+    else if (a.kind === 'card.squires')               squiresActions.push({ cardId: a.cardId, spendCard: a.spendCard });
+    else if (a.kind === 'card.friendWildcard')        friendWildcardActions.push({ cardId: a.cardId, targetCard: a.targetCard });
+    else if (a.kind === 'card.spyNetwork')            spyNetworkActions.push({ cardId: a.cardId, giveCard: a.giveCard, target: a.target, takeCardId: a.takeCardId });
+    else if (a.kind === 'card.shadowCouncil')         shadowCouncilActions.push({ cardId: a.cardId, spendCard: a.spendCard, clearing: a.clearing, forceDefender: a.forceDefender });
+    else if (a.kind === 'card.apprenticeCraft')       apprenticeActions.push({ cardId: a.cardId, craftCardId: a.craftCardId });
+    else if (a.kind === 'card.silverTongue')          silverTongueActions.push({ cardId: a.cardId, from: a.from, to: a.to, count: a.count });
+    else if (a.kind === 'card.brazenDemagogue')       brazenDemagogActions.push({ cardId: a.cardId, spendCard: a.spendCard, takeDominance: a.takeDominance });
   }
   // canEyrieMove drives only the map hint; movement is map-driven via the
   // existing source→destination click flow, not an explicit button.
@@ -353,17 +432,46 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
         const showTrain = g === 'main' && trainOfficerCards.size > 0;
         // Dominance card may be played during the player's birdsong once
         // they're at 10+ VP and a card is still in the supply.
+        const dominanceHandCards = active != null
+          ? (state.hands[active] ?? []).filter(id => getCard(id).category === 'dominance')
+          : [];
         const dominanceEligible = isHuman
           && state.phase === 'birdsong'
           && active != null && active !== 'vagabond'
           && (state.scores[active] ?? 0) >= 10
           && state.dominance == null
-          && state.dominanceAvailable.length > 0;
+          && dominanceHandCards.length > 0;
         const showDominance = g === 'birdsong' && dominanceEligible;
+        const showRoyalClaim       = g === 'birdsong' && royalClaimActions.length > 0;
+        const showStandAndDeliver  = g === 'birdsong' && standAndDeliverActions.length > 0;
+        const showBetterBurrowBank = g === 'birdsong' && betterBurrowBankActions.length > 0;
+        const showTaxCollector     = g === 'main'     && taxCollectorActions.length > 0;
+        const showCommandWarren    = g === 'main'     && commandWarrenActions.length > 0;
+        const showCobbler          = g === 'end'      && cobblerActions.length > 0;
+        const showHiddenWarrens    = g === 'birdsong' && hiddenWarrensActions.length > 0;
+        const showFeatherRufflers  = g === 'main'     && featherRufflersActions.length > 0;
+        const showRiversteads      = g === 'birdsong' && riversteadsActions.length > 0;
+        const showSupplyTrain      = supplyTrainActions.length > 0;
+        const showRaidingParty     = raidingPartyActions.length > 0;
+        const showStandardBearer   = standardBearerActions.length > 0;
+        const showTactician        = tacticianActions.length > 0;
+        const showSquires          = g === 'main'     && squiresActions.length > 0;
+        const showFriendWildcard   = friendWildcardActions.length > 0;
+        const showSpyNetwork       = g === 'main'     && spyNetworkActions.length > 0;
+        const showShadowCouncil    = g === 'birdsong' && shadowCouncilActions.length > 0;
+        const showApprentice       = g === 'birdsong' && apprenticeActions.length > 0;
+        const showSilverTongue     = silverTongueActions.length > 0;
+        const showBrazenDemagog    = g === 'end'      && brazenDemagogActions.length > 0;
         if (list.length === 0 && ibs.length === 0
             && !showOverwork && !showMobilize && !showCraft
             && !showSpendBird && !showAid && !showRepair && !showTrain
-            && !showDominance) return null;
+            && !showDominance
+            && !showRoyalClaim && !showStandAndDeliver && !showBetterBurrowBank
+            && !showTaxCollector && !showCommandWarren && !showCobbler
+            && !showHiddenWarrens && !showFeatherRufflers
+            && !showRiversteads && !showSupplyTrain && !showRaidingParty && !showStandardBearer
+            && !showTactician && !showSquires && !showFriendWildcard && !showSpyNetwork
+            && !showShadowCouncil && !showApprentice && !showSilverTongue && !showBrazenDemagog) return null;
         const overworkArmed = mapIntent?.kind === 'marquise.overwork';
         return (
           <div key={g} className={`action-group action-group-${g}`}>
@@ -454,7 +562,214 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                   {dominancePicking && <span className="action-detail">pick a card below</span>}
                 </button>
               )}
-              {list.slice(0, 20).map((a, i) => {
+              {showRoyalClaim && (
+                royalClaimActions.length === 1
+                  ? <button
+                      className={`btn action-btn faction-${active}`}
+                      onClick={() => dispatch({ kind: 'card.royalClaim', faction: active!, cardId: royalClaimActions[0]!.cardId })}
+                      title="Score 1 VP per clearing you rule"
+                    >
+                      <span className="action-label">Royal Claim</span>
+                    </button>
+                  : <button
+                      className={`btn action-btn ${royalClaimPicking ? 'armed' : ''} faction-${active}`}
+                      onClick={() => setRoyalClaimPicking(p => !p)}
+                      title="Score 1 VP per clearing you rule"
+                    >
+                      <span className="action-label">Royal Claim</span>
+                      {royalClaimPicking && <span className="action-detail">pick a card below</span>}
+                    </button>
+              )}
+              {showStandAndDeliver && (
+                <button
+                  className={`btn action-btn ${standAndDeliverPicking ? 'armed' : ''} faction-${active}`}
+                  onClick={() => setStandAndDeliverPicking(p => !p)}
+                  title="Take a random card from a faction; they score 1 VP"
+                >
+                  <span className="action-label">Stand and Deliver!</span>
+                  {standAndDeliverPicking && <span className="action-detail">pick a target below</span>}
+                </button>
+              )}
+              {showBetterBurrowBank && (
+                <button
+                  className={`btn action-btn ${betterBurrowBankPicking ? 'armed' : ''} faction-${active}`}
+                  onClick={() => setBetterBurrowBankPicking(p => !p)}
+                  title="You and another faction each draw a card"
+                >
+                  <span className="action-label">Better Burrow Bank</span>
+                  {betterBurrowBankPicking && <span className="action-detail">pick a faction below</span>}
+                </button>
+              )}
+              {showTaxCollector && (
+                <button
+                  className={`btn action-btn ${taxCollectorPicking ? 'armed' : ''} faction-${active}`}
+                  onClick={() => setTaxCollectorPicking(p => !p)}
+                  title="Remove one warrior to draw a card"
+                >
+                  <span className="action-label">Tax Collector</span>
+                  {taxCollectorPicking && <span className="action-detail">pick a clearing below</span>}
+                </button>
+              )}
+              {showCommandWarren && (
+                <button
+                  className={`btn action-btn ${commandWarrenPicking ? 'armed' : ''} faction-${active}`}
+                  onClick={() => setCommandWarrenPicking(p => !p)}
+                  title="Initiate a free battle"
+                >
+                  <span className="action-label">Command Warren</span>
+                  {commandWarrenPicking && <span className="action-detail">pick a battle below</span>}
+                </button>
+              )}
+              {showCobbler && (
+                <button
+                  className={`btn action-btn ${cobblerPicking ? 'armed' : ''} faction-${active}`}
+                  onClick={() => setCobblerPicking(p => !p)}
+                  title="Free move: move warriors to an adjacent clearing"
+                >
+                  <span className="action-label">Cobbler</span>
+                  {cobblerPicking && <span className="action-detail">pick a move below</span>}
+                </button>
+              )}
+              {showHiddenWarrens && (
+                <button
+                  className={`btn action-btn ${hiddenWarrensPicking ? 'armed' : ''} faction-${active}`}
+                  onClick={() => setHiddenWarrensPicking(p => !p)}
+                  title="Free move ignoring rule; card returns to hand"
+                >
+                  <span className="action-label">Hidden Warrens</span>
+                  {hiddenWarrensPicking && <span className="action-detail">pick a move below</span>}
+                </button>
+              )}
+              {showFeatherRufflers && (
+                <button
+                  className={`btn action-btn ${featherRufflersPicking ? 'armed' : ''} faction-${active}`}
+                  onClick={() => setFeatherRufflersPicking(p => !p)}
+                  title="Place 2 warriors in a clearing you rule; then discard"
+                >
+                  <span className="action-label">Feather Rufflers</span>
+                  {featherRufflersPicking && <span className="action-detail">pick a clearing below</span>}
+                </button>
+              )}
+              {showRiversteads && (
+                <button
+                  className={`btn action-btn faction-${active}`}
+                  onClick={() => { const a = riversteadsActions[0]!; dispatch({ kind: 'card.riversteads', faction: active!, cardId: a.cardId }); }}
+                  title="Draw 1 card per river clearing with your warriors; discard"
+                >
+                  <span className="action-label">Riversteads</span>
+                </button>
+              )}
+              {showSupplyTrain && (
+                <button
+                  className={`btn action-btn ${supplyTrainPicking ? 'armed' : ''} faction-${active}`}
+                  onClick={() => setSupplyTrainPicking(p => !p)}
+                  title="Extra move to/from last destination; return to hand"
+                >
+                  <span className="action-label">Supply Train</span>
+                  {supplyTrainPicking && <span className="action-detail">pick a move below</span>}
+                </button>
+              )}
+              {showRaidingParty && (
+                <button
+                  className={`btn action-btn ${raidingPartyPicking ? 'armed' : ''} faction-${active}`}
+                  onClick={() => setRaidingPartyPicking(p => !p)}
+                  title="Battle at last move destination; return to hand"
+                >
+                  <span className="action-label">Raiding Party</span>
+                  {raidingPartyPicking && <span className="action-detail">pick a battle below</span>}
+                </button>
+              )}
+              {showStandardBearer && (
+                <button
+                  className={`btn action-btn ${standardBearerPicking ? 'armed' : ''} faction-${active}`}
+                  onClick={() => setStandardBearerPicking(p => !p)}
+                  title="Battle in the same clearing again; return to hand"
+                >
+                  <span className="action-label">Standard Bearer</span>
+                  {standardBearerPicking && <span className="action-detail">pick a battle below</span>}
+                </button>
+              )}
+              {showTactician && (
+                <button
+                  className={`btn action-btn ${tacticianPicking ? 'armed' : ''} faction-${active}`}
+                  onClick={() => setTacticianPicking(p => !p)}
+                  title="Move warriors to battle clearing; return to hand"
+                >
+                  <span className="action-label">Tactician</span>
+                  {tacticianPicking && <span className="action-detail">pick a move below</span>}
+                </button>
+              )}
+              {showSquires && (
+                <button
+                  className={`btn action-btn ${squiresPicking ? 'armed' : ''} faction-${active}`}
+                  onClick={() => setSquiresPicking(p => !p)}
+                  title="Spend squires or a matching-suit card for +1 action"
+                >
+                  <span className="action-label">Squires</span>
+                  {squiresPicking && <span className="action-detail">pick a card to spend below</span>}
+                </button>
+              )}
+              {showFriendWildcard && (
+                <button
+                  className={`btn action-btn ${friendWildcardPicking ? 'armed' : ''} faction-${active}`}
+                  onClick={() => setFriendWildcardPicking(p => !p)}
+                  title="Treat one matching-suit card as any suit this turn"
+                >
+                  <span className="action-label">Friend of...</span>
+                  {friendWildcardPicking && <span className="action-detail">pick a card below</span>}
+                </button>
+              )}
+              {showSpyNetwork && (
+                <button
+                  className={`btn action-btn ${spyNetworkPicking ? 'armed' : ''} faction-${active}`}
+                  onClick={() => setSpyNetworkPicking(p => !p)}
+                  title="Give a card, take an enemy's crafted persistent"
+                >
+                  <span className="action-label">Spy Network</span>
+                  {spyNetworkPicking && <span className="action-detail">pick a trade below</span>}
+                </button>
+              )}
+              {showShadowCouncil && (
+                <button
+                  className={`btn action-btn ${shadowCouncilPicking ? 'armed' : ''} faction-${active}`}
+                  onClick={() => setShadowCouncilPicking(p => !p)}
+                  title="Spend a card to force an enemy to battle in a clearing you rule"
+                >
+                  <span className="action-label">Shadow Council</span>
+                  {shadowCouncilPicking && <span className="action-detail">pick below</span>}
+                </button>
+              )}
+              {showApprentice && (
+                <button
+                  className={`btn action-btn ${apprenticePicking ? 'armed' : ''} faction-${active}`}
+                  onClick={() => setApprenticePicking(p => !p)}
+                  title="Craft a card for free; draw a card"
+                >
+                  <span className="action-label">Apprentice</span>
+                  {apprenticePicking && <span className="action-detail">pick a card to craft below</span>}
+                </button>
+              )}
+              {showSilverTongue && (
+                <button
+                  className={`btn action-btn ${silverTonguePicking ? 'armed' : ''} faction-${active}`}
+                  onClick={() => setSilverTonguePicking(p => !p)}
+                  title="Free move up to 2 warriors; return to hand"
+                >
+                  <span className="action-label">Silver-Tongue</span>
+                  {silverTonguePicking && <span className="action-detail">pick a move below</span>}
+                </button>
+              )}
+              {showBrazenDemagog && (
+                <button
+                  className={`btn action-btn ${brazenDemagogPicking ? 'armed' : ''} faction-${active}`}
+                  onClick={() => setBrazenDemagogPicking(p => !p)}
+                  title="Discard a fox card, take a dominance card"
+                >
+                  <span className="action-label">Brazen Demagogue</span>
+                  {brazenDemagogPicking && <span className="action-detail">pick a card to spend below</span>}
+                </button>
+              )}
+              {list.filter(a => !a.kind.startsWith('card.')).slice(0, 20).map((a, i) => {
                 const meta = ACTION_META[a.kind];
                 const label = meta?.label ?? a.kind.split('.')[1];
                 const detail = actionDetail(a);
@@ -664,7 +979,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                   <button className="btn ghost small" onClick={() => setDominancePicking(false)} aria-label="Cancel">×</button>
                 </div>
                 <div className="action-card-picker-list">
-                  {state.dominanceAvailable.map(id => {
+                  {dominanceHandCards.map(id => {
                     const c = getCard(id);
                     return (
                       <button
@@ -680,6 +995,283 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                         <span className="action-card-pick-name">{c.name}</span>
                       </button>
                     );
+                  })}
+                </div>
+              </div>
+            )}
+            {showRoyalClaim && royalClaimPicking && (
+              <div className="action-card-picker">
+                <div className="action-card-picker-title">
+                  Royal Claim — pick a card
+                  <button className="btn ghost small" onClick={() => setRoyalClaimPicking(false)} aria-label="Cancel">×</button>
+                </div>
+                <div className="action-card-picker-list">
+                  {royalClaimActions.map(({ cardId }, i) => {
+                    const c = getCard(cardId);
+                    return (
+                      <button key={`${cardId}-${i}`} className="action-card-pick"
+                        style={{ borderColor: SUIT_COLOR[c.suit] }}
+                        onClick={() => { dispatch({ kind: 'card.royalClaim', faction: active!, cardId }); setRoyalClaimPicking(false); }}
+                      >
+                        <span className="action-card-pick-suit" style={{ background: SUIT_COLOR[c.suit] }} />
+                        <span className="action-card-pick-name">{c.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {showStandAndDeliver && standAndDeliverPicking && (
+              <div className="action-card-picker">
+                <div className="action-card-picker-title">
+                  Stand and Deliver! — pick a target
+                  <button className="btn ghost small" onClick={() => setStandAndDeliverPicking(false)} aria-label="Cancel">×</button>
+                </div>
+                <div className="action-card-picker-list">
+                  {[...new Set(standAndDeliverActions.map(a => a.target))].map(target => {
+                    const first = standAndDeliverActions.find(a => a.target === target)!;
+                    return (
+                      <button key={target} className="action-card-pick"
+                        onClick={() => { dispatch({ kind: 'card.standAndDeliver', faction: active!, cardId: first.cardId, target }); setStandAndDeliverPicking(false); }}
+                      >
+                        <span className="action-card-pick-name">→ <strong>{FACTION_LABEL[target]}</strong></span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {showBetterBurrowBank && betterBurrowBankPicking && (
+              <div className="action-card-picker">
+                <div className="action-card-picker-title">
+                  Better Burrow Bank — pick a faction
+                  <button className="btn ghost small" onClick={() => setBetterBurrowBankPicking(false)} aria-label="Cancel">×</button>
+                </div>
+                <div className="action-card-picker-list">
+                  {[...new Set(betterBurrowBankActions.map(a => a.target))].map(target => {
+                    const first = betterBurrowBankActions.find(a => a.target === target)!;
+                    return (
+                      <button key={target} className="action-card-pick"
+                        onClick={() => { dispatch({ kind: 'card.betterBurrowBank', faction: active!, cardId: first.cardId, target }); setBetterBurrowBankPicking(false); }}
+                      >
+                        <span className="action-card-pick-name">{FACTION_LABEL[target]}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {showTaxCollector && taxCollectorPicking && (
+              <div className="action-card-picker">
+                <div className="action-card-picker-title">
+                  Tax Collector — pick a clearing
+                  <button className="btn ghost small" onClick={() => setTaxCollectorPicking(false)} aria-label="Cancel">×</button>
+                </div>
+                <div className="action-card-picker-list">
+                  {[...new Map(taxCollectorActions.map(a => [a.clearing, a])).values()].map(a => (
+                    <button key={a.clearing} className="action-card-pick"
+                      onClick={() => { dispatch({ kind: 'card.taxCollector', faction: active!, cardId: a.cardId, clearing: a.clearing }); setTaxCollectorPicking(false); }}
+                    >
+                      <span className="action-card-pick-name">Clearing {a.clearing}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {showCommandWarren && commandWarrenPicking && (
+              <div className="action-card-picker">
+                <div className="action-card-picker-title">
+                  Command Warren — pick a battle
+                  <button className="btn ghost small" onClick={() => setCommandWarrenPicking(false)} aria-label="Cancel">×</button>
+                </div>
+                <div className="action-card-picker-list">
+                  {commandWarrenActions.map((a, i) => (
+                    <button key={i} className="action-card-pick"
+                      onClick={() => { dispatch({ kind: 'card.commandWarren', faction: active!, cardId: a.cardId, clearing: a.clearing, defender: a.defender }); setCommandWarrenPicking(false); }}
+                    >
+                      <span className="action-card-pick-name">Attack {FACTION_LABEL[a.defender]} at Clearing {a.clearing}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {showCobbler && cobblerPicking && (
+              <div className="action-card-picker">
+                <div className="action-card-picker-title">
+                  Cobbler — pick a move
+                  <button className="btn ghost small" onClick={() => setCobblerPicking(false)} aria-label="Cancel">×</button>
+                </div>
+                <div className="action-card-picker-list">
+                  {[...new Map(cobblerActions.map(a => [`${a.from}-${a.to}`, a])).entries()].map(([key, a]) => {
+                    const max = Math.max(...cobblerActions.filter(x => x.from === a.from && x.to === a.to).map(x => x.count));
+                    const best = cobblerActions.find(x => x.from === a.from && x.to === a.to && x.count === max)!;
+                    return (
+                      <button key={key} className="action-card-pick"
+                        onClick={() => { dispatch({ kind: 'card.cobbler', faction: active!, cardId: best.cardId, from: best.from, to: best.to, count: max }); setCobblerPicking(false); }}
+                      >
+                        <span className="action-card-pick-name">Move {max} from Clearing {a.from} to Clearing {a.to}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {showHiddenWarrens && hiddenWarrensPicking && (
+              <div className="action-card-picker">
+                <div className="action-card-picker-title">
+                  Hidden Warrens — pick a move
+                  <button className="btn ghost small" onClick={() => setHiddenWarrensPicking(false)} aria-label="Cancel">×</button>
+                </div>
+                <div className="action-card-picker-list">
+                  {[...new Map(hiddenWarrensActions.map(a => [`${a.from}-${a.to}`, a])).entries()].map(([key, a]) => {
+                    const max = Math.max(...hiddenWarrensActions.filter(x => x.from === a.from && x.to === a.to).map(x => x.count));
+                    const best = hiddenWarrensActions.find(x => x.from === a.from && x.to === a.to && x.count === max)!;
+                    return (
+                      <button key={key} className="action-card-pick"
+                        onClick={() => { dispatch({ kind: 'card.hiddenWarrens', faction: active!, cardId: best.cardId, from: best.from, to: best.to, count: max }); setHiddenWarrensPicking(false); }}
+                      >
+                        <span className="action-card-pick-name">Move {max} from Clearing {a.from} to Clearing {a.to}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {showFeatherRufflers && featherRufflersPicking && (
+              <div className="action-card-picker">
+                <div className="action-card-picker-title">
+                  Feather Rufflers — pick a clearing
+                  <button className="btn ghost small" onClick={() => setFeatherRufflersPicking(false)} aria-label="Cancel">×</button>
+                </div>
+                <div className="action-card-picker-list">
+                  {featherRufflersActions.map(a => (
+                    <button key={a.clearing} className="action-card-pick"
+                      onClick={() => { dispatch({ kind: 'card.featherRufflers', faction: active!, cardId: a.cardId, clearing: a.clearing }); setFeatherRufflersPicking(false); }}
+                    >
+                      <span className="action-card-pick-name">Place in Clearing {a.clearing}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {showSupplyTrain && supplyTrainPicking && (
+              <div className="action-card-picker">
+                <div className="action-card-picker-title">Supply Train — pick a move <button className="btn ghost small" onClick={() => setSupplyTrainPicking(false)} aria-label="Cancel">×</button></div>
+                <div className="action-card-picker-list">
+                  {[...new Map(supplyTrainActions.map(a => [`${a.from}-${a.to}`, a])).entries()].map(([key, a]) => {
+                    const max = Math.max(...supplyTrainActions.filter(x => x.from === a.from && x.to === a.to).map(x => x.count));
+                    const best = supplyTrainActions.find(x => x.from === a.from && x.to === a.to && x.count === max)!;
+                    return <button key={key} className="action-card-pick" onClick={() => { dispatch({ kind: 'card.supplyTrain', faction: active!, cardId: best.cardId, from: best.from, to: best.to, count: max }); setSupplyTrainPicking(false); }}><span className="action-card-pick-name">Move {max}: {a.from} → {a.to}</span></button>;
+                  })}
+                </div>
+              </div>
+            )}
+            {showRaidingParty && raidingPartyPicking && (
+              <div className="action-card-picker">
+                <div className="action-card-picker-title">Raiding Party — pick a battle <button className="btn ghost small" onClick={() => setRaidingPartyPicking(false)} aria-label="Cancel">×</button></div>
+                <div className="action-card-picker-list">
+                  {[...new Map(raidingPartyActions.map(a => [`${a.clearing}-${a.defender}`, a])).entries()].map(([key, a]) => (
+                    <button key={key} className="action-card-pick" onClick={() => { dispatch({ kind: 'card.raidingParty', faction: active!, cardId: a.cardId, clearing: a.clearing, defender: a.defender as any }); setRaidingPartyPicking(false); }}><span className="action-card-pick-name">Battle {a.defender} in {a.clearing}</span></button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {showStandardBearer && standardBearerPicking && (
+              <div className="action-card-picker">
+                <div className="action-card-picker-title">Standard Bearer — battle again <button className="btn ghost small" onClick={() => setStandardBearerPicking(false)} aria-label="Cancel">×</button></div>
+                <div className="action-card-picker-list">
+                  {[...new Map(standardBearerActions.map(a => [`${a.clearing}-${a.defender}`, a])).entries()].map(([key, a]) => (
+                    <button key={key} className="action-card-pick" onClick={() => { dispatch({ kind: 'card.standardBearer', faction: active!, cardId: a.cardId, clearing: a.clearing, defender: a.defender as any }); setStandardBearerPicking(false); }}><span className="action-card-pick-name">Battle {a.defender} in {a.clearing}</span></button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {showTactician && tacticianPicking && (
+              <div className="action-card-picker">
+                <div className="action-card-picker-title">Tactician — move to battle clearing <button className="btn ghost small" onClick={() => setTacticianPicking(false)} aria-label="Cancel">×</button></div>
+                <div className="action-card-picker-list">
+                  {[...new Map(tacticianActions.map(a => [`${a.from}-${a.to}`, a])).entries()].map(([key, a]) => {
+                    const max = Math.max(...tacticianActions.filter(x => x.from === a.from && x.to === a.to).map(x => x.count));
+                    const best = tacticianActions.find(x => x.from === a.from && x.to === a.to && x.count === max)!;
+                    return <button key={key} className="action-card-pick" onClick={() => { dispatch({ kind: 'card.tactician', faction: active!, cardId: best.cardId, from: best.from, to: best.to, count: max }); setTacticianPicking(false); }}><span className="action-card-pick-name">Move {max}: {a.from} → {a.to}</span></button>;
+                  })}
+                </div>
+              </div>
+            )}
+            {showSquires && squiresPicking && (
+              <div className="action-card-picker">
+                <div className="action-card-picker-title">Squires — pick a card to spend <button className="btn ghost small" onClick={() => setSquiresPicking(false)} aria-label="Cancel">×</button></div>
+                <div className="action-card-picker-list">
+                  {[...new Map(squiresActions.map(a => [`${a.cardId}-${a.spendCard}`, a])).entries()].map(([key, a]) => {
+                    const sc = getCard(a.spendCard);
+                    return <button key={key} className="action-card-pick" style={{ borderColor: SUIT_COLOR[sc.suit] }} onClick={() => { dispatch({ kind: 'card.squires', faction: active!, cardId: a.cardId, spendCard: a.spendCard }); setSquiresPicking(false); }}><span className="action-card-pick-suit" style={{ background: SUIT_COLOR[sc.suit] }} /><span className="action-card-pick-name">{a.spendCard === a.cardId ? getCard(a.cardId).name : sc.name}</span></button>;
+                  })}
+                </div>
+              </div>
+            )}
+            {showFriendWildcard && friendWildcardPicking && (
+              <div className="action-card-picker">
+                <div className="action-card-picker-title">Friend — pick card to treat as any suit <button className="btn ghost small" onClick={() => setFriendWildcardPicking(false)} aria-label="Cancel">×</button></div>
+                <div className="action-card-picker-list">
+                  {[...new Map(friendWildcardActions.map(a => [`${a.cardId}-${a.targetCard}`, a])).entries()].map(([key, a]) => {
+                    const tc = getCard(a.targetCard);
+                    return <button key={key} className="action-card-pick" style={{ borderColor: SUIT_COLOR[tc.suit] }} onClick={() => { dispatch({ kind: 'card.friendWildcard', faction: active!, cardId: a.cardId, targetCard: a.targetCard }); setFriendWildcardPicking(false); }}><span className="action-card-pick-suit" style={{ background: SUIT_COLOR[tc.suit] }} /><span className="action-card-pick-name">{tc.name}</span></button>;
+                  })}
+                </div>
+              </div>
+            )}
+            {showSpyNetwork && spyNetworkPicking && (
+              <div className="action-card-picker">
+                <div className="action-card-picker-title">Spy Network — give card, take persistent <button className="btn ghost small" onClick={() => setSpyNetworkPicking(false)} aria-label="Cancel">×</button></div>
+                <div className="action-card-picker-list">
+                  {[...new Map(spyNetworkActions.map(a => [`${a.giveCard}-${a.takeCardId}`, a])).entries()].map(([key, a]) => {
+                    const gc = getCard(a.giveCard); const tc = getCard(a.takeCardId);
+                    return <button key={key} className="action-card-pick" onClick={() => { dispatch({ kind: 'card.spyNetwork', faction: active!, cardId: a.cardId, giveCard: a.giveCard, target: a.target as any, takeCardId: a.takeCardId }); setSpyNetworkPicking(false); }}><span className="action-card-pick-name">Give {gc.name} → take {a.target}'s {tc.name}</span></button>;
+                  })}
+                </div>
+              </div>
+            )}
+            {showShadowCouncil && shadowCouncilPicking && (
+              <div className="action-card-picker">
+                <div className="action-card-picker-title">Shadow Council — force a battle <button className="btn ghost small" onClick={() => setShadowCouncilPicking(false)} aria-label="Cancel">×</button></div>
+                <div className="action-card-picker-list">
+                  {[...new Map(shadowCouncilActions.map(a => [`${a.spendCard}-${a.clearing}-${a.forceDefender}`, a])).entries()].map(([key, a]) => {
+                    const sc = getCard(a.spendCard);
+                    return <button key={key} className="action-card-pick" style={{ borderColor: SUIT_COLOR[sc.suit] }} onClick={() => { dispatch({ kind: 'card.shadowCouncil', faction: active!, cardId: a.cardId, spendCard: a.spendCard, clearing: a.clearing, forceDefender: a.forceDefender as any }); setShadowCouncilPicking(false); }}><span className="action-card-pick-name">Spend {sc.name}: force {a.forceDefender} in clearing {a.clearing}</span></button>;
+                  })}
+                </div>
+              </div>
+            )}
+            {showApprentice && apprenticePicking && (
+              <div className="action-card-picker">
+                <div className="action-card-picker-title">Apprentice — craft for free <button className="btn ghost small" onClick={() => setApprenticePicking(false)} aria-label="Cancel">×</button></div>
+                <div className="action-card-picker-list">
+                  {[...new Map(apprenticeActions.map(a => [`${a.craftCardId}`, a])).entries()].map(([key, a]) => {
+                    const cc = getCard(a.craftCardId);
+                    return <button key={key} className="action-card-pick" style={{ borderColor: SUIT_COLOR[cc.suit] }} onClick={() => { dispatch({ kind: 'card.apprenticeCraft', faction: active!, cardId: a.cardId, craftCardId: a.craftCardId }); setApprenticePicking(false); }}><span className="action-card-pick-suit" style={{ background: SUIT_COLOR[cc.suit] }} /><span className="action-card-pick-name">{cc.name}</span></button>;
+                  })}
+                </div>
+              </div>
+            )}
+            {showSilverTongue && silverTonguePicking && (
+              <div className="action-card-picker">
+                <div className="action-card-picker-title">Silver-Tongue — free move (≤2 warriors) <button className="btn ghost small" onClick={() => setSilverTonguePicking(false)} aria-label="Cancel">×</button></div>
+                <div className="action-card-picker-list">
+                  {[...new Map(silverTongueActions.map(a => [`${a.from}-${a.to}`, a])).entries()].map(([key, a]) => {
+                    const max = Math.min(2, Math.max(...silverTongueActions.filter(x => x.from === a.from && x.to === a.to).map(x => x.count)));
+                    const best = silverTongueActions.find(x => x.from === a.from && x.to === a.to && x.count === max)!;
+                    return <button key={key} className="action-card-pick" onClick={() => { dispatch({ kind: 'card.silverTongue', faction: active!, cardId: best.cardId, from: best.from, to: best.to, count: max }); setSilverTonguePicking(false); }}><span className="action-card-pick-name">Move {max}: {a.from} → {a.to}</span></button>;
+                  })}
+                </div>
+              </div>
+            )}
+            {showBrazenDemagog && brazenDemagogPicking && (
+              <div className="action-card-picker">
+                <div className="action-card-picker-title">Brazen Demagogue — discard fox card, take dominance <button className="btn ghost small" onClick={() => setBrazenDemagogPicking(false)} aria-label="Cancel">×</button></div>
+                <div className="action-card-picker-list">
+                  {[...new Map(brazenDemagogActions.map(a => [`${a.spendCard}`, a])).entries()].map(([key, a]) => {
+                    const sc = getCard(a.spendCard);
+                    return <button key={key} className="action-card-pick" style={{ borderColor: SUIT_COLOR[sc.suit] }} onClick={() => { dispatch({ kind: 'card.brazenDemagogue', faction: active!, cardId: a.cardId, spendCard: a.spendCard, takeDominance: a.takeDominance }); setBrazenDemagogPicking(false); }}><span className="action-card-pick-suit" style={{ background: SUIT_COLOR[sc.suit] }} /><span className="action-card-pick-name">{sc.name}</span></button>;
                   })}
                 </div>
               </div>

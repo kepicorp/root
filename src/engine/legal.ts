@@ -8,14 +8,20 @@ import { marquiseLegalActions } from './factions/marquise/reducer';
 import { eyrieLegalActions } from './factions/eyrie/reducer';
 import { allianceLegalActions } from './factions/alliance/reducer';
 import { vagabondLegalActions } from './factions/vagabond/reducer';
-import { defenderAmbushOptions } from './combat';
+import { defenderAmbushOptions, type CombatParams } from './combat';
+import { cardEffectLegalActions } from './card-effects';
 
 export function getLegalActions(state: GameState): Action[] {
   if (state.phase === 'setup' || state.phase === 'gameOver') return [];
 
-  // When a prompt is pending, the respondent's response is the only legal
-  // action — the game is paused until they answer.
+  // When a prompt is pending, the respondent's response is the only legal action.
   const prompt = state.pendingPrompts[0];
+  if (prompt && prompt.kind === 'combat.miceCancel') {
+    return [
+      { kind: 'combat.skipAmbush', faction: prompt.faction },
+      { kind: 'card.miceInABush', faction: prompt.faction, cardId: (prompt.payload as CombatParams & { miceId: string }).miceId },
+    ] as Action[];
+  }
   if (prompt && prompt.kind === 'combat.defenderAmbush') {
     const payload = prompt.payload as { clearing: number };
     const ambushes = defenderAmbushOptions(state, payload.clearing, prompt.faction);
@@ -38,5 +44,6 @@ export function getLegalActions(state: GameState): Action[] {
     { kind: 'system.advancePhase' },
     { kind: 'system.endTurn' },
     ...factionActions,
+    ...cardEffectLegalActions(state),
   ];
 }

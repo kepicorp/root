@@ -2,13 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { SHARED_DECK, DOMINANCE_CARDS, getCard } from '../cards';
 
 describe('shared deck', () => {
-  it('has exactly 54 cards', () => {
-    expect(SHARED_DECK.length).toBe(54);
+  it('has exactly 64 cards (October 2025 edition, §2.1.2)', () => {
+    expect(SHARED_DECK.length).toBe(64);
   });
 
-  it('has 4 ambush cards, one per suit', () => {
+  it('has 5 ambush cards: 1 fox, 1 mouse, 1 rabbit, 2 bird (§2.1.2)', () => {
     const ambushes = SHARED_DECK.filter(c => c.category === 'ambush');
-    expect(ambushes.length).toBe(4);
+    expect(ambushes.length).toBe(5);
+    const birdCount = ambushes.filter(a => a.suit === 'bird').length;
+    expect(birdCount).toBe(2);
     const suits = new Set(ambushes.map(a => a.suit));
     expect(suits).toEqual(new Set(['fox', 'mouse', 'rabbit', 'bird']));
   });

@@ -144,6 +144,8 @@ function runOneAIAction(): void {
   }
   const action = pickAction(state);
   if (!action) return;
+  // Safety: never dispatch a faction-prefixed action for the human player's faction.
+  if (playerFaction && action.kind.startsWith(`${playerFaction}.`)) return;
   let next = reduce(state, action);
   if (next === state) {
     // Reducer rejected — force phase advance.

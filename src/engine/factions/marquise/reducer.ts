@@ -2,6 +2,7 @@ import { produce } from 'immer';
 import type { GameState, Action, ClearingId, Faction } from '../../types';
 import type { CardId } from '../../cards';
 import { getCard } from '../../cards';
+import type { CardSuit } from '../../types';
 import { AUTUMN_MAP, getAdjacent } from '../../map';
 import { declareBattle } from '../../combat';
 import { applyFavor } from '../../effects';
@@ -15,7 +16,8 @@ function isMarquiseTurn(state: GameState): boolean {
   return state.factionOrder[state.activeIndex] === ACTIVE;
 }
 
-/** Marquise rules a clearing iff they have the most pieces, or own the keep. */
+/** Marquise rules a clearing iff they have the most warriors+buildings, or own the keep.
+ *  Per §2.5: tokens do not count toward rule. Keep is a Marquise faction ability (§6.2.1). */
 function rules(state: GameState, clearing: ClearingId): boolean {
   const cl = state.map.clearings[clearing];
   if (!cl) return false;
@@ -24,13 +26,12 @@ function rules(state: GameState, clearing: ClearingId): boolean {
   const counts: Record<string, number> = {};
   for (const [f, w] of Object.entries(cl.warriors)) counts[f] = (counts[f] ?? 0) + (w ?? 0);
   for (const b of cl.buildings) counts[b.faction] = (counts[b.faction] ?? 0) + 1;
-  for (const t of cl.tokens) counts[t.faction] = (counts[t.faction] ?? 0) + 1;
   const mine = counts.marquise ?? 0;
   let topOther = 0;
   for (const [f, n] of Object.entries(counts)) {
     if (f !== 'marquise' && n > topOther) topOther = n;
   }
-  return mine > 0 && mine >= topOther;
+  return mine > 0 && mine > topOther;
 }
 
 /** Wood reachable from `clearing` via Marquise-ruled clearings, returns clearing ids holding wood. */
@@ -196,6 +197,7 @@ export function marquiseReducer(state: GameState, action: Action): GameState {
         from.warriors.marquise = have - n;
         to.warriors.marquise = (to.warriors.marquise ?? 0) + n;
         m.marchMovesLeft -= 1;
+        draft.lastMoveClearing = a.to;
         draft.log.push({ turn: draft.turn, faction: 'marquise', message: `Marched ${n} from ${a.from} to ${a.to}.` });
       });
     }
@@ -214,6 +216,7 @@ export function marquiseReducer(state: GameState, action: Action): GameState {
       // immediately or queues a defender-ambush prompt.
       const pre = produce(state, draft => {
         draft.factions.marquise!.daylightActionsLeft -= 1;
+        draft.lastBattleClearing = a.clearing;
       });
       return declareBattle(pre, { clearing: a.clearing, attacker: 'marquise', defender: a.defender });
     }
@@ -377,6 +380,23 @@ export function marquiseLegalActions(state: GameState): Action[] {
           if ((cl.warriors[f] ?? 0) > 0 || cl.buildings.some(b => b.faction === f) || cl.tokens.some(t => t.faction === f)) {
             out.push({ kind: 'marquise.battle', clearing: c.id, defender: f });
           }
+        }
+      }
+      // Craft — using workshop power (workshops in each suit clearing)
+      if (m.buildings.workshop > 0) {
+        const power: Partial<Record<CardSuit, number>> = {};
+        for (const c of AUTUMN_MAP.clearings) {
+          const cl = state.map.clearings[c.id]!;
+          const ws = cl.buildings.filter(b => b.faction === 'marquise' && b.kind === 'workshop').length;
+          if (ws > 0) power[c.suit] = (power[c.suit] ?? 0) + ws;
+        }
+        for (const cardId of state.hands.marquise) {
+          const card = getCard(cardId);
+          if (card.category !== 'item' && card.category !== 'persistent' && card.category !== 'favor') continue;
+          const cost = card.craftCost;
+          if (!cost || Object.keys(cost).length === 0) continue;
+          const canCraft = Object.entries(cost).every(([s, n]) => (power[s as CardSuit] ?? 0) >= (n ?? 0));
+          if (canCraft) out.push({ kind: 'marquise.craft', cardId });
         }
       }
       // Bird card for extra action

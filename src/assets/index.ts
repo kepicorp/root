@@ -1,6 +1,6 @@
 // Asset loader. Drops in your private Root scans from `src/assets/raw/` and
-// the UI uses them automatically. Missing files fall back to text/shape
-// rendering, so the app keeps working without any art.
+// the UI uses them automatically. Missing files fall back to Leder Games CDN
+// card images, then to text/shape rendering so the app works without any art.
 //
 // Naming convention (case-insensitive, lower-kebab):
 //
@@ -14,6 +14,86 @@
 //   src/assets/raw/dominance/<suit>.png              → 'fox', 'mouse', etc.
 
 import type { Faction, ItemKind, Suit } from '../engine/types';
+
+// ─── Leder Games CDN ────────────────────────────────────────────────────────
+// Official card images served by Leder Games at cards.ledergames.com.
+// Priority: raw/ (private scans) → CDN → builtin/ SVGs.
+
+const CDN = 'https://ledercards.netlify.app/cards/root/en-US';
+
+// Maps our engine card names to CDN filenames (without .webp extension).
+// Only base-game shared-deck cards are included; unmapped cards fall through
+// to builtin SVGs (text-only rendering).
+const CDN_CARD_MAP: Readonly<Record<string, string>> = {
+  // Ambushes
+  'Ambush! (fox)':          'card-ambushfox',
+  'Ambush! (mouse)':        'card-ambushmouse',
+  'Ambush! (rabbit)':       'card-ambushbunny',
+  'Ambush! (bird)':         'card-ambushbird',
+  // Persistents
+  'Armorers':               'card-armorers',
+  'Brutal Tactics':         'card-brutaltactics',
+  'Royal Claim':            'card-royalclaim',
+  'Sappers':                'card-sappers',
+  'Scouting Party':         'card-scoutingparty',
+  'Codebreakers':           'card-codebreakers',
+  'Tax Collector':          'card-taxcollector',
+  'Cobbler':                'card-cobbler',
+  'Command Warren':         'card-commandwarren',
+  'Better Burrow Bank':     'card-betterburrowbank',
+  'Stand and Deliver!':     'card-standanddeliver',
+  // Favors
+  'Favor of the Foxes':     'card-favorofthefoxes',
+  'Favor of the Mice':      'card-favorofthemice',
+  'Favor of the Rabbits':   'card-favoroftherabbits',
+  // Item cards
+  'Foxfolk Steel':          'card-foxfolksteel',
+  'Arms Trader':            'card-armstrader',
+  'Sword':                  'card-sword',
+  'Crossbow':               'card-crossbowbird',
+  'A Visit to Friends':     'card-avisittofriends',
+  'Travel Gear':            'card-travelgearfox',
+  'Gently Used Knapsack':   'card-gentlyusedknapsack',
+  'Root Tea':               'card-rootteabunny',
+  'Anvil':                  'card-anvil',
+  'Investments':            'card-investments',
+  'Mouse-in-a-Sack':        'card-mouseinasack',
+  // Eyrie Emigre (Eyrie faction card sometimes shuffled in)
+  'Eyrie Emigre':           'card-eyrieemigre',
+  // Dominance cards (separate deck, but rendered the same way)
+  'Dominance · Foxes':      'card-dominancefox',
+  'Dominance · Mice':       'card-dominancemouse',
+  'Dominance · Rabbits':    'card-dominancebunny',
+  'Dominance · Birds':      'card-dominancebird',
+  // October 2025 new persistent cards
+  'Apprentice':             'card-apprentice',
+  'Bold Leadership':        'card-boldleadership',
+  'Brazen Demagogue':       'card-brazendemagogue',
+  'Feather Rufflers':       'card-featherrufflers',
+  'Fox Squires':            'card-foxsquires',
+  'Friend of the Foxes':    'card-friendofthefoxes',
+  'Friend of the Mice':     'card-friendofthemice',
+  'Friend of the Rabbits':  'card-friendoftherabbits',
+  'Hidden Warrens':         'card-hiddenwarrens',
+  'Lookouts':               'card-lookouts',
+  'Mice-in-a-Bush':         'card-miceinabush',
+  'Mouse Squires':          'card-mousesquires',
+  'Rabbit Squires':         'card-rabbitsquires',
+  'Raiding Party':          'card-raidingparty',
+  'Riversteads':            'card-riversteads',
+  'Shadow Council':         'card-shadowcouncil',
+  'Silver-Tongue':          'card-silvertongue',
+  'Spy Network':            'card-spynetwork',
+  'Standard Bearer':        'card-standardbearer',
+  'Supply Train':           'card-supplytrain',
+  'Tactician':              'card-tactician',
+  'Smithy':                 'card-smithy',
+};
+
+function cdnCardUrl(cardName: string): string | null {
+  const file = CDN_CARD_MAP[cardName];
+  return file ? `${CDN}/${file}.webp` : null;
+}
 
 // Vite glob imports — `as: 'url'` returns a string URL per file.
 //
@@ -67,9 +147,13 @@ export function boardArt(): string | null {
   return lookup(rawBoardFiles, './raw/board/', builtinBoardFiles, './builtin/board/', 'autumn');
 }
 
-/** Card art by exact card name (e.g., "Mousefolk Sword"). */
+/** Card art by exact card name (e.g., "Armorers"). Priority: raw/ → CDN → builtin/. */
 export function cardArt(cardName: string): string | null {
-  return lookup(rawCardFiles, './raw/cards/', builtinCardFiles, './builtin/cards/', slug(cardName));
+  return (
+    lookupIn(rawCardFiles, './raw/cards/', slug(cardName)) ??
+    cdnCardUrl(cardName) ??
+    lookupIn(builtinCardFiles, './builtin/cards/', slug(cardName))
+  );
 }
 
 /** Generic card back. */

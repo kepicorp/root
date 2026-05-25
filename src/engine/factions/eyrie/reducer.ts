@@ -188,6 +188,7 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
         fromCl.warriors.eyrie = (fromCl.warriors.eyrie ?? 0) - 1;
         toCl.warriors.eyrie = (toCl.warriors.eyrie ?? 0) + 1;
         e.resolutionLeft!.move -= 1;
+        draft.lastMoveClearing = a.to;
         draft.log.push({ turn: draft.turn, faction: 'eyrie', message: `Moved 1 from ${a.from} → ${a.to}.` });
         maybeFinishResolution(draft);
       });
@@ -215,6 +216,7 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
       let s = resolveCombat(pre, { clearing: a.clearing, attacker: 'eyrie', defender: a.defender });
       s = produce(s, draft => {
         draft.factions.eyrie!.resolutionLeft!.battle -= 1;
+        draft.lastBattleClearing = a.clearing;
         maybeFinishResolution(draft);
       });
       return s;
@@ -233,6 +235,7 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
         if (!meta || !suitMatches(getCard(cardId).suit, meta.suit)) return;
         if (!eyrieRules(draft, a.clearing)) return;
         const cl = draft.map.clearings[a.clearing]!;
+        if (cl.buildings.some(b => b.faction === 'eyrie' && b.kind === 'roost')) return;
         const used = cl.buildings.length + cl.tokens.filter(t => t.kind === 'keep').length;
         if (used >= meta.buildingSlots) return;
         if (e.roosts.length >= 7) return;
@@ -428,6 +431,7 @@ export function eyrieLegalActions(state: GameState): Action[] {
           }
         } else if (slot === 'build') {
           if (!eyrieRules(state, cm.id)) continue;
+          if (cl.buildings.some(b => b.faction === 'eyrie' && b.kind === 'roost')) continue;
           const used = cl.buildings.length + cl.tokens.filter(t => t.kind === 'keep').length;
           if (used < cm.buildingSlots && e.roosts.length < 7) {
             out.push({ kind: 'eyrie.executeBuild', clearing: cm.id });

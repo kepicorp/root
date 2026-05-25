@@ -79,6 +79,10 @@ export function activeFaction(state: GameState) {
  *  base rules: if their hand is empty, draw 1 card before they have to
  *  add to the Decree). */
 export function onEnterBirdsong(draft: GameState): void {
+  // Clear per-turn context tracking at the top of each new turn.
+  delete draft.lastMoveClearing;
+  delete draft.lastBattleClearing;
+  delete draft.wildCard;
   const active = draft.factionOrder[draft.activeIndex];
   if (active === 'eyrie' && draft.factions.eyrie && draft.hands.eyrie.length === 0) {
     const c = draft.deck.pop();
@@ -137,15 +141,14 @@ function factionMeetsDominance(state: GameState, faction: Faction, suit: CardSui
   return matching.filter(id => ruled.has(id)).length >= 3;
 }
 
-/** Generic "X rules clearing C" — warriors + buildings + tokens of X must
- *  beat every other faction's total there. */
+/** Generic "X rules clearing C" — warriors + buildings of X must beat every other
+ *  faction's total there. Per §2.5: tokens and pawns do not count toward rule. */
 function factionRules(state: GameState, faction: Faction, clearing: number): boolean {
   const cl = state.map.clearings[clearing];
   if (!cl) return false;
   const score = (f: string) =>
     ((cl.warriors as Record<string, number | undefined>)[f] ?? 0)
-    + cl.buildings.filter(b => b.faction === f).length
-    + cl.tokens.filter(t => t.faction === f).length;
+    + cl.buildings.filter(b => b.faction === f).length;
   const mine = score(faction);
   if (mine <= 0) return false;
   for (const other of ['marquise', 'eyrie', 'alliance', 'vagabond'] as const) {

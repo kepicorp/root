@@ -542,6 +542,14 @@ body { background: var(--bg); color: var(--paper); }
   opacity: 0.18;
   pointer-events: none;
 }
+/* When real card artwork fills the card, show it at full opacity and drop
+   the dark background — the printed text on the card image is the UI. */
+.card-has-art {
+  background: #000;
+}
+.card-has-art .card-art-bg {
+  opacity: 1;
+}
 .card-body {
   position: relative;
   display: flex;
