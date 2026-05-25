@@ -26,11 +26,13 @@ interface BeginOptions {
 interface Store {
   state: GameState;
   playerFaction: Faction | null;
+  history: GameState[];
   /** Index of the last log entry that should be highlighted as new (for animations). */
   lastLogLen: number;
   /** Logical "tick" counter for score animations (incremented when scores change). */
   scoreTick: Record<Faction, number>;
   dispatch: (action: Action) => void;
+  undo: () => void;
   reset: (seed?: number) => void;
   begin: (faction: Faction, opts?: BeginOptions) => void;
   loadSaved: () => boolean;
@@ -73,6 +75,7 @@ const ZERO_TICK: Record<Faction, number> = { marquise: 0, eyrie: 0, alliance: 0,
 export const useGame = create<Store>((set, get) => ({
   state: initial,
   playerFaction: null,
+  history: [],
   lastLogLen: 0,
   scoreTick: ZERO_TICK,
 
@@ -80,14 +83,26 @@ export const useGame = create<Store>((set, get) => ({
     const before = get().state;
     const after = reduce(before, action);
     const post = postAction(before, after, get().scoreTick);
-    set({ state: post.state, scoreTick: post.scoreTick });
+    const prevHistory = get().history;
+    const newHistory = [...prevHistory, before].slice(-20);
+    set({ state: post.state, scoreTick: post.scoreTick, history: newHistory });
     saveToStorage(post.state, get().playerFaction);
+    scheduleAITurn();
+  },
+
+  undo: () => {
+    const { history, playerFaction } = get();
+    if (history.length === 0) return;
+    const prev = history[history.length - 1]!;
+    const newHistory = history.slice(0, -1);
+    set({ state: prev, history: newHistory });
+    saveToStorage(prev, playerFaction);
     scheduleAITurn();
   },
 
   reset: (seed) => {
     clearStorage();
-    set({ state: newGame({ seed }), playerFaction: null, scoreTick: ZERO_TICK });
+    set({ state: newGame({ seed }), playerFaction: null, scoreTick: ZERO_TICK, history: [] });
   },
 
   begin: (faction, opts) => {
@@ -105,7 +120,7 @@ export const useGame = create<Store>((set, get) => ({
       });
     }
     const started = startGame(performSetup(base));
-    set({ state: started, playerFaction: faction, scoreTick: ZERO_TICK });
+    set({ state: started, playerFaction: faction, scoreTick: ZERO_TICK, history: [] });
     saveToStorage(started, faction);
     scheduleAITurn();
   },

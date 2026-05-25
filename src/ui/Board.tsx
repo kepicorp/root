@@ -252,9 +252,11 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
   // current clearing (one click each), and — when already in a forest —
   // which clearings can be exited to.
   const forestEnter: Map<string, Action> = new Map();
+  const forestSlip: Map<string, Action> = new Map();
   const forestExit: Map<ClearingId, Action> = new Map();
   for (const a of legals) {
     if (a.kind === 'vagabond.enterForest') forestEnter.set(a.forestId, a);
+    else if (a.kind === 'vagabond.slipToForest') forestSlip.set(a.forestId, a);
     else if (a.kind === 'vagabond.exitForest') forestExit.set(a.to, a);
   }
   const vagabondInForest = state.factions.vagabond?.inForest;
@@ -414,7 +416,7 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
       {/* Forest tiles — sit between clearings. Vagabond-only space. */}
       <g className="forests" style={{ pointerEvents: 'auto' }}>
         {AUTUMN_MAP.forests.map(f => {
-          const enterable = forestEnter.has(f.id);
+          const enterable = forestEnter.has(f.id) || forestSlip.has(f.id);
           const occupied = vagabondInForest === f.id;
           const dimmed = mapIntent != null && !occupied;
           const strokeColor = occupied ? '#f0c060'
@@ -423,16 +425,15 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
           const strokeWidth = (occupied || enterable) ? 5 : 2;
           const fill = occupied ? '#2a3a20' : '#1d2812';
           const enterAction = forestEnter.get(f.id);
+          const slipAction = forestSlip.get(f.id);
           return (
             <g
               key={f.id}
               transform={`translate(${f.x}, ${f.y})`}
               onClick={() => {
                 if (!isHuman) return;
-                if (enterAction) {
-                  dispatch(enterAction);
-                  return;
-                }
+                if (enterAction) { dispatch(enterAction); return; }
+                if (slipAction)  { dispatch(slipAction); return; }
               }}
               style={{ cursor: enterable ? 'pointer' : 'default', opacity: dimmed ? 0.4 : 1 }}
               role={enterable ? 'button' : undefined}

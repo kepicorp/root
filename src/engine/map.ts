@@ -90,4 +90,12 @@ export function forestsAtClearing(map: RootMap, c: ClearingId): ForestId[] {
   return map.forests.filter(f => f.clearings.includes(c)).map(f => f.id);
 }
 
+/** Adjacent forests share ≥2 clearings (edge neighbours, not diagonal). */
+export function adjacentForests(map: RootMap, id: ForestId): ForestId[] {
+  const f = getForest(map, id);
+  return map.forests
+    .filter(g => g.id !== id && g.clearings.filter(c => f.clearings.includes(c)).length >= 2)
+    .map(g => g.id);
+}
+
 export const CORNER_CLEARINGS: readonly ClearingId[] = [1, 4, 9, 12];

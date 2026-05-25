@@ -1,7 +1,7 @@
 import { produce } from 'immer';
 import type { GameState, Action, ClearingId, Faction, ItemKind } from '../../types';
 import { getCard } from '../../cards';
-import { AUTUMN_MAP, getAdjacent, getForest, forestsAtClearing } from '../../map';
+import { AUTUMN_MAP, getAdjacent, getForest, forestsAtClearing, adjacentForests } from '../../map';
 import { applyFavor } from '../../effects';
 import { onEnterBirdsong } from '../../loop';
 import type { VagabondAction } from './actions';
@@ -58,16 +58,33 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
         v.slipped = true;
       });
 
+    case 'vagabond.slipToForest':
+      return produce(state, draft => {
+        if (draft.phase !== 'birdsong') return;
+        const v = draft.factions.vagabond!;
+        if (v.inForest) return;
+        if (!forestsAtClearing(AUTUMN_MAP, v.clearing).includes(a.forestId)) return;
+        draft.map.clearings[v.clearing]!.vagabondHere = false;
+        v.inForest = a.forestId;
+        v.slipped = true;
+        draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Slipped into forest ${a.forestId}.` });
+      });
+
     case 'vagabond.enterForest':
       return produce(state, draft => {
         if (draft.phase !== 'daylight') return;
         const v = draft.factions.vagabond!;
         if (v.daylightActionsLeft <= 0) return;
-        if (v.inForest) return;
-        if (!forestsAtClearing(AUTUMN_MAP, v.clearing).includes(a.forestId)) return;
-        if (!exhaustItem(v.items, 'boots')) return;
-        draft.map.clearings[v.clearing]!.vagabondHere = false;
-        v.inForest = a.forestId;
+        if (v.inForest) {
+          if (!adjacentForests(AUTUMN_MAP, v.inForest).includes(a.forestId)) return;
+          if (!exhaustItem(v.items, 'boots')) return;
+          v.inForest = a.forestId;
+        } else {
+          if (!forestsAtClearing(AUTUMN_MAP, v.clearing).includes(a.forestId)) return;
+          if (!exhaustItem(v.items, 'boots')) return;
+          draft.map.clearings[v.clearing]!.vagabondHere = false;
+          v.inForest = a.forestId;
+        }
         v.daylightActionsLeft -= 1;
         draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Entered forest ${a.forestId}.` });
       });
@@ -338,6 +355,9 @@ export function vagabondLegalActions(state: GameState): Action[] {
       for (const nb of getAdjacent(AUTUMN_MAP, v.clearing)) {
         out.push({ kind: 'vagabond.slip', to: nb });
       }
+      for (const fid of forestsAtClearing(AUTUMN_MAP, v.clearing)) {
+        out.push({ kind: 'vagabond.slipToForest', forestId: fid });
+      }
     }
   }
   if (state.phase === 'daylight' && v.daylightActionsLeft > 0) {
@@ -347,6 +367,9 @@ export function vagabondLegalActions(state: GameState): Action[] {
       if (findItem(v.items, 'boots')) {
         const f = getForest(AUTUMN_MAP, v.inForest);
         for (const cid of f.clearings) out.push({ kind: 'vagabond.exitForest', to: cid });
+        for (const fid of adjacentForests(AUTUMN_MAP, v.inForest)) {
+          out.push({ kind: 'vagabond.enterForest', forestId: fid });
+        }
       }
     } else {
       if (findItem(v.items, 'boots')) {

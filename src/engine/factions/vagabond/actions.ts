@@ -3,6 +3,7 @@ import type { ClearingId, Faction, ItemKind, ForestId } from '../../types';
 
 export type VagabondAction =
   | { kind: 'vagabond.slip'; to: ClearingId }
+  | { kind: 'vagabond.slipToForest'; forestId: ForestId }
   | { kind: 'vagabond.move'; to: ClearingId }
   | { kind: 'vagabond.enterForest'; forestId: ForestId }
   | { kind: 'vagabond.exitForest'; to: ClearingId }

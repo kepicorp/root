@@ -31,6 +31,8 @@ export function App() {
   const localState = useGame((s) => s.state);
   const localPlayerFaction = useGame((s) => s.playerFaction);
   const localDispatch = useGame((s) => s.dispatch);
+  const undo = useGame((s) => s.undo);
+  const canUndo = useGame((s) => s.history.length > 0);
   const begin = useGame((s) => s.begin);
   const reset = useGame((s) => s.reset);
 
@@ -132,6 +134,8 @@ export function App() {
           onBegin={begin}
           mapIntent={mapIntent}
           setMapIntent={setMapIntent}
+          onUndo={online ? undefined : undo}
+          canUndo={!online && canUndo}
         />
         <div className="faction-panels">
           {ALL_FACTIONS.filter((f) => state.factions[f]).map((f) => {

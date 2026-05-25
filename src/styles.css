@@ -1228,6 +1228,8 @@ circle.pulse {
   border-left: 3px solid #9bbd58;
 }
 
+.undo-btn { margin-bottom: 6px; align-self: flex-start; }
+
 .action-system-row {
   margin-top: 4px;
   display: flex;

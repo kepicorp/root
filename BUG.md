@@ -9,6 +9,8 @@ The are sorted by either global mechanics or faction.
 - [x] Card suit indicators (fox/rabbit/mouse/bird) were inconsistent — hard to distinguish colored dots in pickers and no indicator on art cards.
   - Fixed: all card pickers (ActionBar + Eyrie decree) now show a colored suit name label next to the dot; art cards in Hand now show a small colored badge in the corner.
   - Fixed: added a safety guard in `runOneAIAction` — the bot now explicitly refuses to dispatch any action whose kind prefix matches the human player's faction (e.g. `marquise.*` actions can never be auto-dispatched when the human plays Marquise). The root cause could not be reproduced from static analysis but this guard prevents it regardless.
+- [ ] Give the power of a card like better burrow bank even if I have not bought it.
+- [ ] I would like to see the list of each player bought card and power like better burrow banks or brutal tactics if they bought the card 
 
 ## Dominance
 

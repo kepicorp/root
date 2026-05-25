@@ -17,6 +17,8 @@ interface ActionBarProps {
   onBegin: (f: Faction) => void;
   mapIntent: MapIntent | null;
   setMapIntent: (intent: MapIntent | null) => void;
+  onUndo?: () => void;
+  canUndo?: boolean;
 }
 
 const FACTIONS: Faction[] = ['marquise', 'eyrie', 'alliance', 'vagabond'];
@@ -41,6 +43,7 @@ const MAP_DRIVEN: ReadonlySet<string> = new Set([
   'alliance.trainOfficer',
   'vagabond.move',
   'vagabond.slip',
+  'vagabond.slipToForest',
   'vagabond.strike',
   'vagabond.aid',
   'vagabond.repair',
@@ -122,7 +125,7 @@ function actionDetail(a: Action): string {
   return parts.join(' · ');
 }
 
-export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, setMapIntent }: ActionBarProps) {
+export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, setMapIntent, onUndo, canUndo }: ActionBarProps) {
   // Two-step intents like Overwork / Mobilize / Craft ("pick a card, then
   // go") use tiny local picker states. Esc dismisses any open picker.
   const [overworkPicking, setOverworkPicking] = useState(false);
@@ -417,6 +420,10 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
       <div className="actionbar-title">
         Your turn <span className="dim">({state.phase})</span>
       </div>
+
+      {canUndo && onUndo && (
+        <button className="btn ghost small undo-btn" onClick={onUndo}>↩ Undo</button>
+      )}
 
       {marchMovesLeft > 0 && (
         <div className="actionbar-hint map-hint" style={{ borderColor: '#f0c060', color: '#f0e2c2' }}>
