@@ -9,8 +9,10 @@ The are sorted by either global mechanics or faction.
 - [x] Card suit indicators (fox/rabbit/mouse/bird) were inconsistent — hard to distinguish colored dots in pickers and no indicator on art cards.
   - Fixed: all card pickers (ActionBar + Eyrie decree) now show a colored suit name label next to the dot; art cards in Hand now show a small colored badge in the corner.
   - Fixed: added a safety guard in `runOneAIAction` — the bot now explicitly refuses to dispatch any action whose kind prefix matches the human player's faction (e.g. `marquise.*` actions can never be auto-dispatched when the human plays Marquise). The root cause could not be reproduced from static analysis but this guard prevents it regardless.
-- [ ] Give the power of a card like better burrow bank even if I have not bought it.
-- [ ] I would like to see the list of each player bought card and power like better burrow banks or brutal tactics if they bought the card 
+- [x] Give the power of a card like better burrow bank even if I have not bought it.
+  - Fixed: Better Burrow Bank (and other persistent cards) can now be activated from `craftedPersistents` — once crafted it stays in play and can be used each birdsong without discarding. Hand-play version still discards as before.
+- [x] I would like to see the list of each player bought card and power like better burrow banks or brutal tactics if they bought the card
+  - Fixed: all four faction panels now show a "Crafted cards" section listing every persistent card the faction has crafted, with suit colour indicators.
 
 ## Dominance
 
@@ -21,7 +23,8 @@ The are sorted by either global mechanics or faction.
 
 - [x] You are not supposed to be able to spread alliance on a clearing with the marquise keep on it.
   - Fixed: `allianceLegalActions` now skips clearings with a keep token.
-- [ ] Add a wood counter to know how much wood I can spend.
+- [x] Add a wood counter to know how much wood I can spend.
+  - Fixed: Marquise panel now shows both "Wood supply" (tokens not yet placed) and "Wood on board" (placed tokens spendable for building). Note: this is a Marquise mechanic; Alliance does not use wood.
 
 ## Eyrie
 

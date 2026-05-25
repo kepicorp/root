@@ -166,12 +166,14 @@ export function cardEffectsReducer(state: GameState, action: CardAction): GameSt
     // ── Better Burrow Bank (birdsong) ─────────────────────────────────────────
     case 'card.betterBurrowBank': {
       if (state.phase !== 'birdsong') return state;
-      if (!hasCard(state, faction, action.cardId)) return state;
+      const inHand = hasCard(state, faction, action.cardId);
+      const isCrafted = state.craftedPersistents.some(e => e.cardId === action.cardId && e.faction === faction);
+      if (!inHand && !isCrafted) return state;
       if (getCard(action.cardId).name !== 'Better Burrow Bank') return state;
       const target = action.target;
       if (target === faction) return state;
       return produce(state, draft => {
-        discard(draft, faction, action.cardId);
+        if (inHand) discard(draft, faction, action.cardId); // hand version: discard after use
         drawCard(draft, faction);
         drawCard(draft, target);
         draft.log.push({
@@ -697,6 +699,15 @@ export function cardEffectLegalActions(state: GameState): Action[] {
   }
 
   // ── Crafted-persistent activations ─────────────────────────────────────────
+
+  // Better Burrow Bank (crafted): reusable each birdsong — stays in play.
+  if (state.phase === 'birdsong') {
+    const bbbId = hasCraftedPersistent(state, faction, 'Better Burrow Bank');
+    if (bbbId) {
+      for (const target of others)
+        out.push({ kind: 'card.betterBurrowBank', faction, cardId: bbbId as CardId, target });
+    }
+  }
 
   // Hidden Warrens: free move in birdsong; card returns to hand after use.
   if (state.phase === 'birdsong') {

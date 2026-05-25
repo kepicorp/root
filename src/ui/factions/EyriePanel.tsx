@@ -9,6 +9,7 @@ import type { GameState, Action, CardSuit } from '../../engine/types';
 import { getCard } from '../../engine/cards';
 import { activeFaction } from '../../engine/loop';
 import type { DecreeSlot, EyrieLeader } from '../../engine/factions/eyrie/state';
+import { CraftedCards } from './CraftedCards';
 
 const LEADERS: EyrieLeader[] = ['despot', 'commander', 'charismatic', 'builder'];
 
@@ -207,6 +208,7 @@ export function EyriePanel({ state, isHuman, dispatch }: Props) {
           </div>
         </div>
       )}
+      <CraftedCards state={state} faction="eyrie" />
     </div>
   );
 }

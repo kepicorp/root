@@ -3,6 +3,7 @@
 
 import type { GameState, Action, CardSuit } from '../../engine/types';
 import { getCard } from '../../engine/cards';
+import { CraftedCards } from './CraftedCards';
 
 interface Props {
   state: GameState;
@@ -39,6 +40,7 @@ export function AlliancePanel({ state, isHuman }: Props) {
           })}
         </ul>
       )}
+      <CraftedCards state={state} faction="alliance" />
     </div>
   );
 }

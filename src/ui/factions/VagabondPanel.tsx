@@ -1,5 +1,6 @@
 import type { GameState, Action } from '../../engine/types';
 import { itemArt } from '../../assets';
+import { CraftedCards } from './CraftedCards';
 
 interface Props {
   state: GameState;
@@ -49,6 +50,7 @@ export function VagabondPanel({ state }: Props) {
           </span>
         ))}
       </div>
+      <CraftedCards state={state} faction="vagabond" />
     </div>
   );
 }
