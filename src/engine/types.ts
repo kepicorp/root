@@ -88,6 +88,7 @@ export interface MapState {
 // ─── Game state ─────────────────────────────────────────────────────────────
 
 export type Phase = 'setup' | 'birdsong' | 'daylight' | 'evening' | 'gameOver';
+export type DeckVariant = 'base' | 'squires';
 
 export interface PendingPrompt {
   id: string;
@@ -114,6 +115,7 @@ export interface FactionsState {
 
 export interface GameState {
   seed: number;
+  deckVariant: DeckVariant;
   rngStep: number;           // monotonic counter mixed into the per-action sub-seed
   turn: number;
   phase: Phase;

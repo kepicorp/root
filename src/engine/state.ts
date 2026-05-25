@@ -2,10 +2,10 @@
 
 import { produce } from 'immer';
 import { AUTUMN_MAP } from './map';
-import { SHARED_DECK, DOMINANCE_CARDS, getCard, type CardId } from './cards';
+import { BASE_SHARED_DECK, SD_SHARED_DECK, DOMINANCE_CARDS, getCard, type CardId } from './cards';
 import { mulberry32, shuffle } from './rng';
 import type {
-  GameState, Faction, ClearingState, ItemKind, Action, ALL_FACTIONS as _F,
+  GameState, Faction, ClearingState, ItemKind, Action, DeckVariant, ALL_FACTIONS as _F,
 } from './types';
 import { ALL_FACTIONS } from './types';
 import { INITIAL_MARQUISE_STATE } from './factions/marquise/state';
@@ -18,11 +18,13 @@ import { advancePhase, endTurn } from './loop';
 export interface NewGameOptions {
   seed?: number;
   factions?: readonly Faction[];   // factions present (default: all 4)
+  deckVariant?: DeckVariant;       // card deck to use (default: 'base')
 }
 
 export function newGame(opts: NewGameOptions = {}): GameState {
   const seed = opts.seed ?? Math.floor(Math.random() * 2 ** 31);
   const factions = opts.factions ?? ALL_FACTIONS;
+  const deckVariant: DeckVariant = opts.deckVariant ?? 'base';
 
   // Empty clearings.
   const clearings: Record<number, ClearingState> = {};
@@ -31,8 +33,9 @@ export function newGame(opts: NewGameOptions = {}): GameState {
   }
 
   const rng = mulberry32(seed);
+  const sharedDeck = deckVariant === 'squires' ? SD_SHARED_DECK : BASE_SHARED_DECK;
   // Dominance cards are shuffled into the shared deck; players draw and play them from hand.
-  const deck = shuffle([...SHARED_DECK, ...DOMINANCE_CARDS].map(c => c.id), rng);
+  const deck = shuffle([...sharedDeck, ...DOMINANCE_CARDS].map(c => c.id), rng);
 
   const hands: Record<Faction, CardId[]> = {
     marquise: [], eyrie: [], alliance: [], vagabond: [],
@@ -55,6 +58,7 @@ export function newGame(opts: NewGameOptions = {}): GameState {
 
   const state: GameState = {
     seed,
+    deckVariant,
     rngStep: 0,
     turn: 1,
     phase: 'setup',

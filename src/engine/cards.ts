@@ -95,10 +95,10 @@ const items: Card[] = [
   card('Investments',          'fox',    'item', { fox:    1 }, { item: 'torch',    craftVp: 1 }),
 ];
 
-// ─── Persistent effect cards ───────────────────────────────────────────────────
-// Held in hand; the owner activates the effect at the specified phase.
+// ─── Persistent effect cards — Base game ──────────────────────────────────────
+// These are the confirmed base game persistent cards.
 
-const persistents: Card[] = [
+const basePersistents: Card[] = [
   // ── Combat modifiers ──────────────────────────────────────────────────────
   card('Armorers',           'bird',   'persistent', { rabbit: 1 }),   // ×1
   card('Sappers',            'bird',   'persistent', { rabbit: 1 }),   // ×1
@@ -114,8 +114,6 @@ const persistents: Card[] = [
   card('Better Burrow Bank', 'rabbit', 'persistent', { rabbit: 2 }),
   card('Stand and Deliver!', 'fox',    'persistent', { mouse:  3 }),   // ×2
   card('Stand and Deliver!', 'fox',    'persistent', { mouse:  3 }),
-  card('Hidden Warrens',     'rabbit', 'persistent', { rabbit: 1 }),   // ×1
-  card('Riversteads',        'bird',   'persistent', { bird:   2 }),   // ×1
 
   // ── Daylight actions ──────────────────────────────────────────────────────
   card('Tax Collector',      'fox',    'persistent', { fox: 1, mouse: 1, rabbit: 1 }), // ×2
@@ -125,45 +123,97 @@ const persistents: Card[] = [
 
   // ── Evening action ────────────────────────────────────────────────────────
   card('Cobbler',            'rabbit', 'persistent', { rabbit: 2 }),   // ×1
-
-  // ── Movement helpers (return-to-hand) ─────────────────────────────────────
-  card('Supply Train',       'fox',    'persistent', { fox:    1 }),   // ×1
-  card('Raiding Party',      'fox',    'persistent', { fox:    2 }),   // ×1
-  card('Standard Bearer',    'fox',    'persistent', { fox:    2 }),   // ×1
-  card('Tactician',          'fox',    'persistent', { fox:    1 }),   // ×1
-
-  // ── Combat helpers (return-to-hand) ───────────────────────────────────────
-  card('Bold Leadership',    'bird',   'persistent', { bird:   2 }),   // ×1
-  card('Lookouts',           'rabbit', 'persistent', { rabbit: 1 }),   // ×1
-  card('Mice-in-a-Bush',     'rabbit', 'persistent', { rabbit: 1 }),   // ×1
-
-  // ── Suit helpers ──────────────────────────────────────────────────────────
-  card('Fox Squires',        'fox',    'persistent', { fox:    1 }),   // ×1
-  card('Mouse Squires',      'mouse',  'persistent', { mouse:  1 }),   // ×1
-  card('Rabbit Squires',     'rabbit', 'persistent', { rabbit: 1 }),   // ×1
-  card('Friend of the Foxes',   'fox',    'persistent', { fox: 2 }),   // ×1
-  card('Friend of the Mice',    'mouse',  'persistent', { mouse: 2 }), // ×1
-  card('Friend of the Rabbits', 'rabbit', 'persistent', { rabbit: 2 }),// ×1
-
-  // ── Card economy ──────────────────────────────────────────────────────────
-  card('Spy Network',        'fox',    'persistent', { fox:    2 }),   // ×1
-  card('Shadow Council',     'fox',    'persistent', { fox:    3 }),   // ×1
-  card('Apprentice',         'bird',   'persistent', { bird:   1 }),   // ×1
-
-  // ── Special ───────────────────────────────────────────────────────────────
-  card('Silver-Tongue',      'fox',    'persistent', { fox:    1 }),   // ×1
-  card('Feather Rufflers',   'fox',    'persistent', { fox:    1 }),   // ×1
-  card('Brazen Demagogue',   'fox',    'persistent', { fox:    2 }),   // ×1
 ];
 
-// ─── Shared deck ─────────────────────────────────────────────────────────────
+// ─── Persistent effect cards — Squires & Disciples deck ───────────────────────
+// Replacement persistent cards for the S&D alternate deck.
+// Suits and names match the published Squires & Disciples deck.
+// Cards kept in byId so old saved games with legacy IDs still resolve.
 
-export const SHARED_DECK: readonly Card[] = [
+const legacyPersistents: Card[] = [
+  // These had wrong suits in the original mixed deck — kept for save-game compat.
+  card('Hidden Warrens',     'rabbit', 'persistent', { rabbit: 1 }),
+  card('Riversteads',        'bird',   'persistent', { bird:   2 }),
+  card('Supply Train',       'fox',    'persistent', { fox:    1 }),
+  card('Raiding Party',      'fox',    'persistent', { fox:    2 }),
+  card('Standard Bearer',    'fox',    'persistent', { fox:    2 }),
+  card('Tactician',          'fox',    'persistent', { fox:    1 }),
+  card('Bold Leadership',    'bird',   'persistent', { bird:   2 }),
+  card('Lookouts',           'rabbit', 'persistent', { rabbit: 1 }),
+  card('Mice-in-a-Bush',     'rabbit', 'persistent', { rabbit: 1 }),
+  card('Fox Squires',        'fox',    'persistent', { fox:    1 }),
+  card('Mouse Squires',      'mouse',  'persistent', { mouse:  1 }),
+  card('Rabbit Squires',     'rabbit', 'persistent', { rabbit: 1 }),
+  card('Friend of the Foxes',   'fox',    'persistent', { fox: 2 }),
+  card('Friend of the Mice',    'mouse',  'persistent', { mouse: 2 }),
+  card('Friend of the Rabbits', 'rabbit', 'persistent', { rabbit: 2 }),
+  card('Spy Network',        'fox',    'persistent', { fox:    2 }),
+  card('Shadow Council',     'fox',    'persistent', { fox:    3 }),
+  card('Apprentice',         'bird',   'persistent', { bird:   1 }),
+  card('Silver-Tongue',      'fox',    'persistent', { fox:    1 }),
+  card('Feather Rufflers',   'fox',    'persistent', { fox:    1 }),
+  card('Brazen Demagogue',   'fox',    'persistent', { fox:    2 }),
+];
+
+const sdPersistents: Card[] = [
+  // ── Bird ──────────────────────────────────────────────────────────────────
+  card('Silver-Tongue',      'bird',   'persistent', { bird:   1 }),   // ×1
+  card('Shadow Council',     'bird',   'persistent', { bird:   2 }),   // ×1
+  card('Feather Rufflers',   'bird',   'persistent', { bird:   1 }),   // ×2
+  card('Feather Rufflers',   'bird',   'persistent', { bird:   1 }),
+  card('Spy Network',        'bird',   'persistent', { bird:   2 }),   // ×1
+  card('Sky Couriers',       'bird',   'persistent', { bird:   1 }),   // ×2
+  card('Sky Couriers',       'bird',   'persistent', { bird:   1 }),
+  // ── Fox ───────────────────────────────────────────────────────────────────
+  card('Bold Leadership',    'fox',    'persistent', { fox:    2 }),   // ×1
+  card('Fox Squires',        'fox',    'persistent', { fox:    1 }),   // ×1
+  card('Apprentice',         'fox',    'persistent', { fox:    1 }),   // ×1
+  card('Tactician',          'fox',    'persistent', { fox:    1 }),   // ×1
+  card('Supply Train',       'fox',    'persistent', { fox:    1 }),   // ×1
+  card('Friend of the Foxes','fox',    'persistent', { fox:    2 }),   // ×1
+  card('Protection Racket',  'fox',    'persistent', { mouse:  3 }),   // ×1
+  // ── Rabbit ────────────────────────────────────────────────────────────────
+  card('Riversteads',        'rabbit', 'persistent', { bird:   2 }),   // ×1
+  card('The Faithful',       'rabbit', 'persistent', { rabbit: 1 }),   // ×1
+  card('Hidden Warrens',     'rabbit', 'persistent', { rabbit: 1 }),   // ×1
+  card('Lookouts',           'rabbit', 'persistent', { rabbit: 1 }),   // ×1
+  card('Rabbit Squires',     'rabbit', 'persistent', { rabbit: 1 }),   // ×1
+  card('Friend of the Rabbits','rabbit','persistent', { rabbit: 2 }),  // ×1
+  card('Standard Bearer',    'rabbit', 'persistent', { rabbit: 2 }),   // ×1
+  card('Bake Sale',          'rabbit', 'persistent', { rabbit: 1 }),   // ×1
+  card("Smuggler's Trail",   'rabbit', 'persistent', { rabbit: 2 }),   // ×1
+  // ── Mouse ─────────────────────────────────────────────────────────────────
+  card('Brazen Demagogue',   'mouse',  'persistent', { fox:    2 }),   // ×1
+  card('Raiding Party',      'mouse',  'persistent', { fox:    2 }),   // ×1
+  card('Friend of the Mice', 'mouse',  'persistent', { mouse:  2 }),   // ×1
+  card('Mice-in-a-Bush',     'mouse',  'persistent', { rabbit: 1 }),   // ×1
+  card('Mouse Squires',      'mouse',  'persistent', { mouse:  1 }),   // ×1
+];
+
+// Kept for reference; all cards are registered in byId via BASE_SHARED_DECK / SD_SHARED_DECK.
+void [...basePersistents, ...legacyPersistents];
+
+// ─── Shared decks ────────────────────────────────────────────────────────────
+
+/** Base game deck (default). */
+export const BASE_SHARED_DECK: readonly Card[] = [
   ...ambushes,
   ...favors,
   ...items,
-  ...persistents,
+  ...basePersistents,
 ];
+
+/** Squires & Disciples alternate deck — same ambush/favor/item cards,
+ *  persistent cards replaced with the S&D set (corrected suits). */
+export const SD_SHARED_DECK: readonly Card[] = [
+  ...ambushes,
+  ...favors,
+  ...items,
+  ...sdPersistents,
+];
+
+/** Default export — base game deck. */
+export const SHARED_DECK: readonly Card[] = BASE_SHARED_DECK;
 
 // ─── Dominance cards (separate pile, not shuffled into the deck) ──────────────
 
@@ -177,7 +227,7 @@ export const DOMINANCE_CARDS: readonly Card[] = [
 // ─── Lookups ─────────────────────────────────────────────────────────────────
 
 const byId = new Map<CardId, Card>();
-for (const k of [...SHARED_DECK, ...DOMINANCE_CARDS]) byId.set(k.id, k);
+for (const k of [...BASE_SHARED_DECK, ...SD_SHARED_DECK, ...DOMINANCE_CARDS]) byId.set(k.id, k);
 
 export function getCard(id: CardId): Card {
   const k = byId.get(id);

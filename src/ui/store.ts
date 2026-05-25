@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { produce } from 'immer';
-import type { GameState, Action, Faction } from '../engine/types';
+import type { GameState, Action, Faction, DeckVariant } from '../engine/types';
 import { newGame, reduce } from '../engine/state';
 import { startGame, checkVictory } from '../engine/loop';
 import { performSetup } from '../engine/setup';
@@ -20,6 +20,7 @@ interface SavedGame {
 
 interface BeginOptions {
   vagabondCharacter?: VagabondCharacter;
+  deckVariant?: DeckVariant;
 }
 
 interface Store {
@@ -90,7 +91,8 @@ export const useGame = create<Store>((set, get) => ({
   },
 
   begin: (faction, opts) => {
-    let base = get().state;
+    // Recreate the game with the chosen deck variant so the deck is correct before setup.
+    let base = newGame({ seed: get().state.seed, deckVariant: opts?.deckVariant ?? 'base' });
     if (opts?.vagabondCharacter) {
       base = produce(base, draft => {
         if (draft.factions.vagabond) {

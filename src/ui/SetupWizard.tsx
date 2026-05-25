@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Faction } from '../engine/types';
+import type { Faction, DeckVariant } from '../engine/types';
 import type { VagabondCharacter } from '../engine/factions/vagabond/state';
 import { useGame } from './store';
 
@@ -19,12 +19,22 @@ const CHAR_DESC: Record<VagabondCharacter, string> = {
   ranger: 'Starts with torch, boots, sword, crossbow. Hide in forests to repair items.',
 };
 
+const DECK_LABEL: Record<DeckVariant, string> = {
+  base:    'Base game deck',
+  squires: 'Squires & Disciples deck',
+};
+const DECK_DESC: Record<DeckVariant, string> = {
+  base:    'The standard 54-card deck included with the base game.',
+  squires: 'Alternate deck with different persistent cards (new suits and abilities).',
+};
+
 export function SetupWizard() {
   const begin = useGame((s) => s.begin);
   const loadSaved = useGame((s) => s.loadSaved);
   const hasSaved = useGame((s) => s.hasSavedGame());
   const [picked, setPicked] = useState<Faction | null>(null);
   const [character, setCharacter] = useState<VagabondCharacter>('thief');
+  const [deckVariant, setDeckVariant] = useState<DeckVariant>('base');
 
   return (
     <div className="setup-wizard">
@@ -65,12 +75,30 @@ export function SetupWizard() {
           ))}
         </div>
       )}
+      <h2>Choose card deck</h2>
+      <div className="faction-grid">
+        {(['base', 'squires'] as DeckVariant[]).map((v) => (
+          <button
+            key={v}
+            className={`faction-card ${deckVariant === v ? 'selected' : ''}`}
+            onClick={() => setDeckVariant(v)}
+            aria-pressed={deckVariant === v}
+          >
+            <div className="faction-card-name">{DECK_LABEL[v]}</div>
+            <div className="faction-card-desc">{DECK_DESC[v]}</div>
+          </button>
+        ))}
+      </div>
+
       {picked && (
         <button
           className="btn primary"
-          onClick={() => begin(picked, picked === 'vagabond' ? { vagabondCharacter: character } : undefined)}
+          onClick={() => begin(picked, {
+            ...(picked === 'vagabond' ? { vagabondCharacter: character } : {}),
+            deckVariant,
+          })}
         >
-          Begin game as {picked}{picked === 'vagabond' ? ` (${character})` : ''}
+          Begin game as {picked}{picked === 'vagabond' ? ` (${character})` : ''} · {DECK_LABEL[deckVariant]}
         </button>
       )}
     </div>
