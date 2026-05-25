@@ -24,12 +24,10 @@ Open <http://localhost:5173>. On the landing page click **Play solo**, then pick
 ### 2. Hosted multi-room (Docker, recommended)
 
 ```bash
-docker compose up --build       # modern Docker (v2 plugin)
-# — or, on older installs / Linux distros with only the v1 binary:
-docker-compose up --build
+docker compose pull && docker compose up -d
 ```
 
-Builds the production bundle and starts the multi-room server. Everything is on **port 8787**:
+Pulls the pre-built image from `docker.kepi.site` and starts the multi-room server. Everything is on **port 8787**:
 
 - `http://localhost:8787/` — landing page (Create / Join / Solo)
 - `http://localhost:8787/r/<id>` — a specific room (shareable link)
@@ -239,7 +237,7 @@ CLAUDE.md           project guide for future Claude sessions
 | `npm run typecheck`    | `tsc -b --noEmit`                                             |
 | `npm run prune-stale`  | One-shot stale-room cleanup (`--days N`, `--dry-run`)         |
 
-Plus `docker compose up --build` (or `docker-compose up --build` on older installs) for the containerized deployment.
+Plus `docker compose pull && docker compose up -d` for the containerized deployment.
 
 ## Environment variables
 

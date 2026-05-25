@@ -49,7 +49,7 @@ scripts/           Node CLI helpers (asset listing, stale-room pruning)
 - `npm run server` — server only (expects `./dist`)
 - `npm test` — Vitest; 47 tests across engine + property + sim
 - `npm run typecheck` — `tsc -b --noEmit`
-- `docker compose up --build` — production deploy on port 8787
+- `docker compose pull && docker compose up -d` — production deploy on port 8787 (image pulled from `docker.kepi.site`)
 - `npm run prune-stale [-- --days N] [-- --dry-run]` — one-shot cleanup
 
 ## Conventions
