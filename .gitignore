@@ -19,6 +19,9 @@ src/assets/raw/*
 !src/assets/raw/.gitkeep
 !src/assets/raw/README.md
 
+# Rule PDFs — reference only, not part of the source
+rules/
+
 # Secrets and runtime state
 .env
 .env.*
