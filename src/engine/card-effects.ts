@@ -122,12 +122,10 @@ export function cardEffectsReducer(state: GameState, action: CardAction): GameSt
     // ── Royal Claim (birdsong) ────────────────────────────────────────────────
     case 'card.royalClaim': {
       if (state.phase !== 'birdsong') return state;
-      if (!hasCard(state, faction, action.cardId)) return state;
-      if (getCard(action.cardId).name !== 'Royal Claim') return state;
+      if (!hasCraftedPersistent(state, faction, 'Royal Claim')) return state;
       const ruled = Object.keys(state.map.clearings)
         .filter(id => factionRules(state, faction, Number(id))).length;
       return produce(state, draft => {
-        discard(draft, faction, action.cardId);
         draft.scores[faction] = (draft.scores[faction] ?? 0) + ruled;
         draft.log.push({
           turn: draft.turn, faction,
@@ -139,8 +137,7 @@ export function cardEffectsReducer(state: GameState, action: CardAction): GameSt
     // ── Stand and Deliver! (birdsong) ─────────────────────────────────────────
     case 'card.standAndDeliver': {
       if (state.phase !== 'birdsong') return state;
-      if (!hasCard(state, faction, action.cardId)) return state;
-      if (getCard(action.cardId).name !== 'Stand and Deliver!') return state;
+      if (!hasCraftedPersistent(state, faction, 'Stand and Deliver!')) return state;
       const target = action.target;
       if (target === faction) return state;
       const targetHand = state.hands[target] ?? [];
@@ -150,7 +147,6 @@ export function cardEffectsReducer(state: GameState, action: CardAction): GameSt
       const pickedCard = targetHand[Math.floor(rng() * targetHand.length)]!;
       return produce(state, draft => {
         draft.rngStep++;
-        discard(draft, faction, action.cardId);
         const tHand = draft.hands[target];
         const idx = tHand.indexOf(pickedCard);
         if (idx >= 0) tHand.splice(idx, 1);
@@ -166,14 +162,10 @@ export function cardEffectsReducer(state: GameState, action: CardAction): GameSt
     // ── Better Burrow Bank (birdsong) ─────────────────────────────────────────
     case 'card.betterBurrowBank': {
       if (state.phase !== 'birdsong') return state;
-      const inHand = hasCard(state, faction, action.cardId);
-      const isCrafted = state.craftedPersistents.some(e => e.cardId === action.cardId && e.faction === faction);
-      if (!inHand && !isCrafted) return state;
-      if (getCard(action.cardId).name !== 'Better Burrow Bank') return state;
+      if (!hasCraftedPersistent(state, faction, 'Better Burrow Bank')) return state;
       const target = action.target;
       if (target === faction) return state;
       return produce(state, draft => {
-        if (inHand) discard(draft, faction, action.cardId); // hand version: discard after use
         drawCard(draft, faction);
         drawCard(draft, target);
         draft.log.push({
@@ -186,8 +178,7 @@ export function cardEffectsReducer(state: GameState, action: CardAction): GameSt
     // ── Tax Collector (daylight) ──────────────────────────────────────────────
     case 'card.taxCollector': {
       if (state.phase !== 'daylight') return state;
-      if (!hasCard(state, faction, action.cardId)) return state;
-      if (getCard(action.cardId).name !== 'Tax Collector') return state;
+      if (!hasCraftedPersistent(state, faction, 'Tax Collector')) return state;
       const cl = state.map.clearings[action.clearing];
       if (!cl || (cl.warriors[faction] ?? 0) <= 0) return state;
       return produce(state, draft => {
@@ -197,7 +188,6 @@ export function cardEffectsReducer(state: GameState, action: CardAction): GameSt
         if (w[faction] === 0) delete w[faction];
         const fs = draft.factions[faction];
         if (fs && 'warriorSupply' in fs) (fs as { warriorSupply: number }).warriorSupply++;
-        discard(draft, faction, action.cardId);
         drawCard(draft, faction);
         draft.log.push({
           turn: draft.turn, faction,
@@ -210,11 +200,8 @@ export function cardEffectsReducer(state: GameState, action: CardAction): GameSt
     // Gives one extra free battle (doesn't cost a daylight action).
     case 'card.commandWarren': {
       if (state.phase !== 'daylight') return state;
-      if (!hasCard(state, faction, action.cardId)) return state;
-      if (getCard(action.cardId).name !== 'Command Warren') return state;
-      // Discard the card, then initiate the battle.
+      if (!hasCraftedPersistent(state, faction, 'Command Warren')) return state;
       const next = produce(state, draft => {
-        discard(draft, faction, action.cardId);
         draft.log.push({
           turn: draft.turn, faction,
           message: `Command Warren: initiating a free battle in clearing ${action.clearing}.`,
@@ -229,15 +216,13 @@ export function cardEffectsReducer(state: GameState, action: CardAction): GameSt
 
     // ── Codebreakers (daylight) ───────────────────────────────────────────────
     // Peek at a target faction's hand. No hidden information in our pure engine,
-    // so we just log the action and discard.
+    // so we just log the action.
     case 'card.codebreakers': {
       if (state.phase !== 'daylight') return state;
-      if (!hasCard(state, faction, action.cardId)) return state;
-      if (getCard(action.cardId).name !== 'Codebreakers') return state;
+      if (!hasCraftedPersistent(state, faction, 'Codebreakers')) return state;
       const target = action.target;
       if (target === faction) return state;
       return produce(state, draft => {
-        discard(draft, faction, action.cardId);
         draft.log.push({
           turn: draft.turn, faction,
           message: `Codebreakers: peeked at ${target}'s hand.`,
@@ -246,18 +231,16 @@ export function cardEffectsReducer(state: GameState, action: CardAction): GameSt
     }
 
     // ── Cobbler (evening) ─────────────────────────────────────────────────────
-    // Free move at start of evening: discard, move `count` warriors from→to.
+    // Free move at start of evening; stays in play (crafted persistent).
     case 'card.cobbler': {
       if (state.phase !== 'evening') return state;
-      if (!hasCard(state, faction, action.cardId)) return state;
-      if (getCard(action.cardId).name !== 'Cobbler') return state;
+      if (!hasCraftedPersistent(state, faction, 'Cobbler')) return state;
       const { from, to, count } = action;
       if (count <= 0) return state;
       if (!adjacent(from, to)) return state;
       const w = state.map.clearings[from]?.warriors[faction] ?? 0;
       if (w < count) return state;
       return produce(state, draft => {
-        discard(draft, faction, action.cardId);
         draft.map.clearings[from]!.warriors[faction] = w - count;
         if (draft.map.clearings[from]!.warriors[faction] === 0)
           delete draft.map.clearings[from]!.warriors[faction];
@@ -632,73 +615,29 @@ export function cardEffectLegalActions(state: GameState): Action[] {
   const others = state.factionOrder.filter(f => f !== faction);
   const out: Action[] = [];
 
-  for (const cardId of hand) {
-    const card = getCard(cardId);
+  // Persistent-category cards require crafting; they are handled in the
+  // crafted-persistent section below. No non-persistent hand cards currently
+  // generate card-effect actions, so the hand loop is intentionally empty.
+  void hand;
 
-    // ── Birdsong ──────────────────────────────────────────────────────────────
-    if (state.phase === 'birdsong') {
-      if (card.name === 'Royal Claim') {
-        out.push({ kind: 'card.royalClaim', faction, cardId });
-      }
-      if (card.name === 'Stand and Deliver!' && others.some(f => (state.hands[f]?.length ?? 0) > 0)) {
-        for (const target of others) {
-          if ((state.hands[target]?.length ?? 0) > 0)
-            out.push({ kind: 'card.standAndDeliver', faction, cardId, target });
-        }
-      }
-      if (card.name === 'Better Burrow Bank') {
-        for (const target of others)
-          out.push({ kind: 'card.betterBurrowBank', faction, cardId, target });
-      }
-    }
+  // ── Crafted-persistent activations ─────────────────────────────────────────
 
-    // ── Daylight ──────────────────────────────────────────────────────────────
-    if (state.phase === 'daylight') {
-      if (card.name === 'Tax Collector') {
-        for (const [id, cl] of Object.entries(state.map.clearings)) {
-          if ((cl.warriors[faction] ?? 0) > 0)
-            out.push({ kind: 'card.taxCollector', faction, cardId, clearing: Number(id) });
-        }
-      }
-      if (card.name === 'Command Warren') {
-        // One action per possible battle (each adjacent enemy with warriors).
-        for (const cl of AUTUMN_MAP.clearings) {
-          const cs = state.map.clearings[cl.id];
-          if (!cs) continue;
-          if ((cs.warriors[faction] ?? 0) === 0) continue; // must have warriors here
-          for (const defender of others) {
-            const defPieces =
-              (cs.warriors[defender] ?? 0)
-              + cs.buildings.filter(b => b.faction === defender).length
-              + cs.tokens.filter(t => t.faction === defender).length;
-            if (defPieces > 0)
-              out.push({ kind: 'card.commandWarren', faction, cardId, clearing: cl.id, defender });
-          }
-        }
-      }
-      if (card.name === 'Codebreakers') {
-        for (const target of others)
-          out.push({ kind: 'card.codebreakers', faction, cardId, target });
-      }
-    }
+  // Royal Claim (crafted, birdsong): score VP equal to clearings you rule; stays in play.
+  if (state.phase === 'birdsong') {
+    const rcId = hasCraftedPersistent(state, faction, 'Royal Claim');
+    if (rcId) out.push({ kind: 'card.royalClaim', faction, cardId: rcId as CardId });
+  }
 
-    // ── Evening ───────────────────────────────────────────────────────────────
-    if (state.phase === 'evening' && card.name === 'Cobbler') {
-      for (const cl of AUTUMN_MAP.clearings) {
-        const w = state.map.clearings[cl.id]?.warriors[faction] ?? 0;
-        if (w === 0) continue;
-        for (const adj of AUTUMN_MAP.paths) {
-          const other = adj[0] === cl.id ? adj[1] : adj[1] === cl.id ? adj[0] : null;
-          if (other == null) continue;
-          for (let cnt = 1; cnt <= w; cnt++) {
-            out.push({ kind: 'card.cobbler', faction, cardId, from: cl.id, to: other, count: cnt });
-          }
-        }
+  // Stand and Deliver! (crafted, birdsong): steal a random card from a target faction.
+  if (state.phase === 'birdsong') {
+    const sdId = hasCraftedPersistent(state, faction, 'Stand and Deliver!');
+    if (sdId && others.some(f => (state.hands[f]?.length ?? 0) > 0)) {
+      for (const target of others) {
+        if ((state.hands[target]?.length ?? 0) > 0)
+          out.push({ kind: 'card.standAndDeliver', faction, cardId: sdId as CardId, target });
       }
     }
   }
-
-  // ── Crafted-persistent activations ─────────────────────────────────────────
 
   // Better Burrow Bank (crafted): reusable each birdsong — stays in play.
   if (state.phase === 'birdsong') {
@@ -706,6 +645,63 @@ export function cardEffectLegalActions(state: GameState): Action[] {
     if (bbbId) {
       for (const target of others)
         out.push({ kind: 'card.betterBurrowBank', faction, cardId: bbbId as CardId, target });
+    }
+  }
+
+  // Tax Collector (crafted, daylight): remove one own warrior, draw a card; stays in play.
+  if (state.phase === 'daylight') {
+    const tcId = hasCraftedPersistent(state, faction, 'Tax Collector');
+    if (tcId) {
+      for (const [id, cl] of Object.entries(state.map.clearings)) {
+        if ((cl.warriors[faction] ?? 0) > 0)
+          out.push({ kind: 'card.taxCollector', faction, cardId: tcId as CardId, clearing: Number(id) });
+      }
+    }
+  }
+
+  // Command Warren (crafted, daylight): initiate a free battle; stays in play.
+  if (state.phase === 'daylight') {
+    const cwId = hasCraftedPersistent(state, faction, 'Command Warren');
+    if (cwId) {
+      for (const cl of AUTUMN_MAP.clearings) {
+        const cs = state.map.clearings[cl.id];
+        if (!cs) continue;
+        if ((cs.warriors[faction] ?? 0) === 0) continue;
+        for (const defender of others) {
+          const defPieces =
+            (cs.warriors[defender] ?? 0)
+            + cs.buildings.filter(b => b.faction === defender).length
+            + cs.tokens.filter(t => t.faction === defender).length;
+          if (defPieces > 0)
+            out.push({ kind: 'card.commandWarren', faction, cardId: cwId as CardId, clearing: cl.id, defender });
+        }
+      }
+    }
+  }
+
+  // Codebreakers (crafted, daylight): peek at a target's hand; stays in play.
+  if (state.phase === 'daylight') {
+    const cbId = hasCraftedPersistent(state, faction, 'Codebreakers');
+    if (cbId) {
+      for (const target of others)
+        out.push({ kind: 'card.codebreakers', faction, cardId: cbId as CardId, target });
+    }
+  }
+
+  // Cobbler (crafted, evening): free move of warriors; stays in play.
+  if (state.phase === 'evening') {
+    const coId = hasCraftedPersistent(state, faction, 'Cobbler');
+    if (coId) {
+      for (const cl of AUTUMN_MAP.clearings) {
+        const w = state.map.clearings[cl.id]?.warriors[faction] ?? 0;
+        if (w === 0) continue;
+        for (const adj of AUTUMN_MAP.paths) {
+          const other = adj[0] === cl.id ? adj[1] : adj[1] === cl.id ? adj[0] : null;
+          if (other == null) continue;
+          for (let cnt = 1; cnt <= w; cnt++)
+            out.push({ kind: 'card.cobbler', faction, cardId: coId as CardId, from: cl.id, to: other, count: cnt });
+        }
+      }
     }
   }
 

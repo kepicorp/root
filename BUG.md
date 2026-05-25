@@ -13,6 +13,8 @@ The are sorted by either global mechanics or faction.
   - Fixed: Better Burrow Bank (and other persistent cards) can now be activated from `craftedPersistents` — once crafted it stays in play and can be used each birdsong without discarding. Hand-play version still discards as before.
 - [x] I would like to see the list of each player bought card and power like better burrow banks or brutal tactics if they bought the card
   - Fixed: all four faction panels now show a "Crafted cards" section listing every persistent card the faction has crafted, with suit colour indicators.
+- [x] Cards like Stand and Deliver, Royal Claim, Tax Collector, Command Warren, Codebreakers, Cobbler, Better Burrow Bank should only grant their power after being crafted, not just from being in hand.
+  - Fixed: all `category: 'persistent'` cards are now skipped entirely in the hand loop of `cardEffectLegalActions`. Their reducers now gate on `hasCraftedPersistent` instead of `hasCard`, and no longer discard the card on use (persistent cards stay in play).
 
 ## Dominance
 
