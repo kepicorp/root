@@ -332,7 +332,7 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
         // If the action carries a `count` (Marquise march) and there's
         // more than one warrior available, ask the player how many to
         // move instead of always shipping the maximum.
-        const max = (a.kind === 'marquise.march' || a.kind === 'alliance.move') ? a.count : 1;
+        const max = (a.kind === 'marquise.march' || a.kind === 'alliance.move' || a.kind === 'eyrie.executeMove') ? a.count : 1;
         if (max > 1) {
           setPendingMove({ from: selected, to: id, max, action: a, pick: max });
           return;
@@ -731,7 +731,7 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
               onClick={() => {
                 if (!pendingMove) return;
                 const a = pendingMove.action;
-                if (a.kind === 'marquise.march' || a.kind === 'alliance.move') {
+                if (a.kind === 'marquise.march' || a.kind === 'alliance.move' || a.kind === 'eyrie.executeMove') {
                   dispatch({ ...a, count: pendingMove.pick });
                 } else {
                   dispatch(a);

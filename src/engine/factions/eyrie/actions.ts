@@ -10,7 +10,7 @@ export type EyrieAction =
   // card in its slot (FIFO) and applies one effect with the player's
   // chosen clearing(s).
   | { kind: 'eyrie.executeRecruit'; clearing: ClearingId }
-  | { kind: 'eyrie.executeMove';    from: ClearingId; to: ClearingId }
+  | { kind: 'eyrie.executeMove';    from: ClearingId; to: ClearingId; count: number }
   | { kind: 'eyrie.executeBattle';  clearing: ClearingId; defender: Faction }
   | { kind: 'eyrie.executeBuild';   clearing: ClearingId }
   // Resolve everything left automatically (Turmoil if anything is stuck).

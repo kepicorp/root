@@ -184,9 +184,11 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
         if (!(eyrieRules(draft, a.from) || eyrieRules(draft, a.to))) return;
         const fromCl = draft.map.clearings[a.from]!;
         const toCl = draft.map.clearings[a.to]!;
-        if ((fromCl.warriors.eyrie ?? 0) <= 0) return;
-        fromCl.warriors.eyrie = (fromCl.warriors.eyrie ?? 0) - 1;
-        toCl.warriors.eyrie = (toCl.warriors.eyrie ?? 0) + 1;
+        const available = fromCl.warriors.eyrie ?? 0;
+        if (available <= 0) return;
+        const moving = Math.max(1, Math.min(a.count, available));
+        fromCl.warriors.eyrie = available - moving;
+        toCl.warriors.eyrie = (toCl.warriors.eyrie ?? 0) + moving;
         e.resolutionLeft!.move -= 1;
         draft.lastMoveClearing = a.to;
         draft.log.push({ turn: draft.turn, faction: 'eyrie', message: `Moved 1 from ${a.from} → ${a.to}.` });
@@ -414,10 +416,11 @@ export function eyrieLegalActions(state: GameState): Action[] {
             out.push({ kind: 'eyrie.executeRecruit', clearing: cm.id });
           }
         } else if (slot === 'move') {
-          if ((cl.warriors.eyrie ?? 0) <= 0) continue;
+          const warriors = cl.warriors.eyrie ?? 0;
+          if (warriors <= 0) continue;
           for (const nb of getAdjacent(AUTUMN_MAP, cm.id)) {
             if (eyrieRules(state, cm.id) || eyrieRules(state, nb)) {
-              out.push({ kind: 'eyrie.executeMove', from: cm.id, to: nb });
+              out.push({ kind: 'eyrie.executeMove', from: cm.id, to: nb, count: warriors });
             }
           }
         } else if (slot === 'battle') {
