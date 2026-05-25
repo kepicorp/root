@@ -22,6 +22,8 @@ The are sorted by either global mechanics or faction.
 
 - [x] Verify the rules but I don't think you can build two roost in the same clearing
   - Fixed: `executeBuild`, `eyrieLegalActions`, and `findSlotTarget` all now block building a roost in a clearing that already has one.
+- [x] It seems that I can't add a bird card to a decree.
+  - Fixed: `canAdd` in EyriePanel now also requires `!e.needsLeaderChoice && e.cardsAddedThisBirdsong === 0`. Previously the decree slot buttons were enabled even when the leader hadn't been confirmed or a card was already added, so the action dispatched but the reducer silently rejected it. The leader picker visibility now uses a separate `isEyrieBirdsong` flag so it still appears when leader confirmation is required.
 
 ## Marquise
 

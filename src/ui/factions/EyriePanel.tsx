@@ -60,7 +60,9 @@ export function EyriePanel({ state, isHuman, dispatch }: Props) {
 
   if (!e) return null;
   const active = activeFaction(state);
-  const canAdd = isHuman && active === 'eyrie' && state.phase === 'birdsong';
+  const isEyrieBirdsong = isHuman && active === 'eyrie' && state.phase === 'birdsong';
+  // canAdd requires: it's Eyrie birdsong, leader has been confirmed, and no card added yet this turn.
+  const canAdd = isEyrieBirdsong && !e.needsLeaderChoice && e.cardsAddedThisBirdsong === 0;
   const hand = state.hands.eyrie ?? [];
 
   function pipsForSlot(slot: DecreeSlot): Record<CardSuit, number> {
@@ -78,7 +80,7 @@ export function EyriePanel({ state, isHuman, dispatch }: Props) {
         <span>Leader: <strong>{e.leader}</strong></span>
       </div>
 
-      {canAdd && e!.needsLeaderChoice && (
+      {isEyrieBirdsong && e!.needsLeaderChoice && (
         <div className="eyrie-leader-picker eyrie-leader-required">
           <div className="eyrie-leader-picker-label">
             <strong>Choose your leader</strong> before adding to the Decree:
@@ -166,7 +168,7 @@ export function EyriePanel({ state, isHuman, dispatch }: Props) {
         </div>
       )}
 
-      {e.cardsAddedThisBirdsong > 0 && canAdd && (
+      {e.cardsAddedThisBirdsong > 0 && isEyrieBirdsong && (
         <div className="dim eyrie-progress">
           Added {e.cardsAddedThisBirdsong} card{e.cardsAddedThisBirdsong === 1 ? '' : 's'} this birdsong.
         </div>
