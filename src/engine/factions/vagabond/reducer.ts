@@ -126,6 +126,7 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
             toRefresh -= 1;
           }
         }
+        v.daylightActionsLeft = 6;
         draft.phase = 'daylight';
       });
 
