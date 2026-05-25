@@ -2,7 +2,7 @@
 # image that serves the bundle + the WebSocket server on a single port.
 
 # ── Build stage ──────────────────────────────────────────────────────────────
-FROM node:20-alpine AS builder
+FROM --platform=$BUILDPLATFORM node:20-alpine AS builder
 
 WORKDIR /app
 
