@@ -760,6 +760,22 @@ body { background: var(--bg); color: var(--paper); }
 .rel-hostile { background: #5a1f1a; }
 .rel-allied { background: #2f4a2a; }
 
+/* ── Vagabond quest display ───────────────────────────────────────────────── */
+.quest-display { margin-top: 8px; border-top: 1px solid var(--rule); padding-top: 6px; }
+.quest-display-title { font-size: 10px; font-weight: 700; letter-spacing: 0.5px; color: #b8a37a; margin-bottom: 6px; text-transform: uppercase; }
+.quest-card { border: 1px solid var(--rule); border-radius: 4px; padding: 5px 7px; margin-bottom: 5px; background: #1a1510; }
+.quest-card.completable { background: #1f2010; }
+.quest-card-header { display: flex; align-items: center; gap: 5px; font-size: 11px; margin-bottom: 4px; }
+.quest-suit-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.quest-suit-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; }
+.quest-name { font-weight: 600; flex: 1; }
+.quest-vp { font-size: 10px; }
+.quest-items { display: flex; align-items: center; gap: 5px; margin-bottom: 4px; }
+.quest-item-icon { width: 18px; height: 18px; }
+.quest-item-text { font-size: 10px; color: #b8a37a; background: #2a2015; padding: 1px 4px; border-radius: 3px; }
+.quest-items-sep { font-size: 10px; color: #6a5a40; }
+.quest-complete-btn { margin-top: 2px; width: 100%; }
+
 .faction-panels {
   display: flex;
   flex-direction: column;

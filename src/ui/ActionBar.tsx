@@ -48,6 +48,7 @@ const MAP_DRIVEN: ReadonlySet<string> = new Set([
   'vagabond.aid',
   'vagabond.repair',
   'vagabond.craft',
+  'vagabond.completeQuest',
   'eyrie.addToDecree',
   'eyrie.executeRecruit',
   'eyrie.executeMove',
