@@ -550,6 +550,21 @@ body { background: var(--bg); color: var(--paper); }
 .card-has-art .card-art-bg {
   opacity: 1;
 }
+.card-suit-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: capitalize;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.72);
+  line-height: 1.4;
+  pointer-events: none;
+  z-index: 1;
+  border: 1.5px solid currentColor;
+}
 .card-body {
   position: relative;
   display: flex;
@@ -873,7 +888,8 @@ body { background: var(--bg); color: var(--paper); }
   cursor: pointer;
 }
 .decree-pick-card:hover { background: #322516; }
-.decree-pick-suit { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+.decree-pick-suit { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.decree-pick-suit-label { font-size: 9px; text-transform: capitalize; opacity: 0.7; white-space: nowrap; flex-shrink: 0; }
 .decree-pick-name { flex: 1; }
 .eyrie-progress { margin-top: 6px; font-size: 11px; }
 .eyrie-leader-picker { margin-top: 6px; font-size: 11px; color: #cfc2a8; }
@@ -1195,7 +1211,8 @@ circle.pulse {
   cursor: pointer;
 }
 .action-card-pick:hover { background: #322516; }
-.action-card-pick-suit { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+.action-card-pick-suit { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.action-card-pick-suit-label { font-size: 9px; text-transform: capitalize; opacity: 0.7; white-space: nowrap; flex-shrink: 0; }
 .action-card-pick-name { flex: 1; }
 .action-label { font-weight: 600; }
 .action-detail { font-size: 10px; opacity: 0.7; }

@@ -822,6 +822,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                         }}
                       >
                         <span className="action-card-pick-suit" style={{ background: SUIT_COLOR[c.suit] }} />
+                        <span className="action-card-pick-suit-label" style={{ color: SUIT_COLOR[c.suit] }}>{c.suit}</span>
                         <span className="action-card-pick-name">{c.name}</span>
                       </button>
                     );
@@ -849,6 +850,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                         }}
                       >
                         <span className="action-card-pick-suit" style={{ background: SUIT_COLOR[c.suit] }} />
+                        <span className="action-card-pick-suit-label" style={{ color: SUIT_COLOR[c.suit] }}>{c.suit}</span>
                         <span className="action-card-pick-name">{c.name}</span>
                       </button>
                     );
@@ -878,6 +880,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                         }}
                       >
                         <span className="action-card-pick-suit" style={{ background: SUIT_COLOR[c.suit] }} />
+                        <span className="action-card-pick-suit-label" style={{ color: SUIT_COLOR[c.suit] }}>{c.suit}</span>
                         <span className="action-card-pick-name">{c.name}</span>
                       </button>
                     );
@@ -905,6 +908,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                         }}
                       >
                         <span className="action-card-pick-suit" style={{ background: SUIT_COLOR[c.suit] }} />
+                        <span className="action-card-pick-suit-label" style={{ color: SUIT_COLOR[c.suit] }}>{c.suit}</span>
                         <span className="action-card-pick-name">{c.name}</span>
                       </button>
                     );
@@ -932,6 +936,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                         }}
                       >
                         <span className="action-card-pick-suit" style={{ background: SUIT_COLOR[c.suit] }} />
+                        <span className="action-card-pick-suit-label" style={{ color: SUIT_COLOR[c.suit] }}>{c.suit}</span>
                         <span className="action-card-pick-name">{c.name} → <strong>{faction}</strong></span>
                       </button>
                     );
@@ -981,6 +986,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                         }}
                       >
                         <span className="action-card-pick-suit" style={{ background: SUIT_COLOR[c.suit] }} />
+                        <span className="action-card-pick-suit-label" style={{ color: SUIT_COLOR[c.suit] }}>{c.suit}</span>
                         <span className="action-card-pick-name">{c.name}</span>
                       </button>
                     );
@@ -1008,6 +1014,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                         }}
                       >
                         <span className="action-card-pick-suit" style={{ background: SUIT_COLOR[c.suit] }} />
+                        <span className="action-card-pick-suit-label" style={{ color: SUIT_COLOR[c.suit] }}>{c.suit}</span>
                         <span className="action-card-pick-name">{c.name}</span>
                       </button>
                     );
@@ -1030,6 +1037,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                         onClick={() => { dispatch({ kind: 'card.royalClaim', faction: active!, cardId }); setRoyalClaimPicking(false); }}
                       >
                         <span className="action-card-pick-suit" style={{ background: SUIT_COLOR[c.suit] }} />
+                        <span className="action-card-pick-suit-label" style={{ color: SUIT_COLOR[c.suit] }}>{c.suit}</span>
                         <span className="action-card-pick-name">{c.name}</span>
                       </button>
                     );
@@ -1220,7 +1228,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                 <div className="action-card-picker-list">
                   {[...new Map(squiresActions.map(a => [`${a.cardId}-${a.spendCard}`, a])).entries()].map(([key, a]) => {
                     const sc = getCard(a.spendCard);
-                    return <button key={key} className="action-card-pick" style={{ borderColor: SUIT_COLOR[sc.suit] }} onClick={() => { dispatch({ kind: 'card.squires', faction: active!, cardId: a.cardId, spendCard: a.spendCard }); setSquiresPicking(false); }}><span className="action-card-pick-suit" style={{ background: SUIT_COLOR[sc.suit] }} /><span className="action-card-pick-name">{a.spendCard === a.cardId ? getCard(a.cardId).name : sc.name}</span></button>;
+                    return <button key={key} className="action-card-pick" style={{ borderColor: SUIT_COLOR[sc.suit] }} onClick={() => { dispatch({ kind: 'card.squires', faction: active!, cardId: a.cardId, spendCard: a.spendCard }); setSquiresPicking(false); }}><span className="action-card-pick-suit" style={{ background: SUIT_COLOR[sc.suit] }} /><span className="action-card-pick-suit-label" style={{ color: SUIT_COLOR[sc.suit] }}>{sc.suit}</span><span className="action-card-pick-name">{a.spendCard === a.cardId ? getCard(a.cardId).name : sc.name}</span></button>;
                   })}
                 </div>
               </div>
@@ -1231,7 +1239,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                 <div className="action-card-picker-list">
                   {[...new Map(friendWildcardActions.map(a => [`${a.cardId}-${a.targetCard}`, a])).entries()].map(([key, a]) => {
                     const tc = getCard(a.targetCard);
-                    return <button key={key} className="action-card-pick" style={{ borderColor: SUIT_COLOR[tc.suit] }} onClick={() => { dispatch({ kind: 'card.friendWildcard', faction: active!, cardId: a.cardId, targetCard: a.targetCard }); setFriendWildcardPicking(false); }}><span className="action-card-pick-suit" style={{ background: SUIT_COLOR[tc.suit] }} /><span className="action-card-pick-name">{tc.name}</span></button>;
+                    return <button key={key} className="action-card-pick" style={{ borderColor: SUIT_COLOR[tc.suit] }} onClick={() => { dispatch({ kind: 'card.friendWildcard', faction: active!, cardId: a.cardId, targetCard: a.targetCard }); setFriendWildcardPicking(false); }}><span className="action-card-pick-suit" style={{ background: SUIT_COLOR[tc.suit] }} /><span className="action-card-pick-suit-label" style={{ color: SUIT_COLOR[tc.suit] }}>{tc.suit}</span><span className="action-card-pick-name">{tc.name}</span></button>;
                   })}
                 </div>
               </div>
@@ -1264,7 +1272,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                 <div className="action-card-picker-list">
                   {[...new Map(apprenticeActions.map(a => [`${a.craftCardId}`, a])).entries()].map(([key, a]) => {
                     const cc = getCard(a.craftCardId);
-                    return <button key={key} className="action-card-pick" style={{ borderColor: SUIT_COLOR[cc.suit] }} onClick={() => { dispatch({ kind: 'card.apprenticeCraft', faction: active!, cardId: a.cardId, craftCardId: a.craftCardId }); setApprenticePicking(false); }}><span className="action-card-pick-suit" style={{ background: SUIT_COLOR[cc.suit] }} /><span className="action-card-pick-name">{cc.name}</span></button>;
+                    return <button key={key} className="action-card-pick" style={{ borderColor: SUIT_COLOR[cc.suit] }} onClick={() => { dispatch({ kind: 'card.apprenticeCraft', faction: active!, cardId: a.cardId, craftCardId: a.craftCardId }); setApprenticePicking(false); }}><span className="action-card-pick-suit" style={{ background: SUIT_COLOR[cc.suit] }} /><span className="action-card-pick-suit-label" style={{ color: SUIT_COLOR[cc.suit] }}>{cc.suit}</span><span className="action-card-pick-name">{cc.name}</span></button>;
                   })}
                 </div>
               </div>
@@ -1310,7 +1318,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                 <div className="action-card-picker-list">
                   {[...new Map(brazenDemagogActions.map(a => [`${a.spendCard}`, a])).entries()].map(([key, a]) => {
                     const sc = getCard(a.spendCard);
-                    return <button key={key} className="action-card-pick" style={{ borderColor: SUIT_COLOR[sc.suit] }} onClick={() => { dispatch({ kind: 'card.brazenDemagogue', faction: active!, cardId: a.cardId, spendCard: a.spendCard, takeDominance: a.takeDominance }); setBrazenDemagogPicking(false); }}><span className="action-card-pick-suit" style={{ background: SUIT_COLOR[sc.suit] }} /><span className="action-card-pick-name">{sc.name}</span></button>;
+                    return <button key={key} className="action-card-pick" style={{ borderColor: SUIT_COLOR[sc.suit] }} onClick={() => { dispatch({ kind: 'card.brazenDemagogue', faction: active!, cardId: a.cardId, spendCard: a.spendCard, takeDominance: a.takeDominance }); setBrazenDemagogPicking(false); }}><span className="action-card-pick-suit" style={{ background: SUIT_COLOR[sc.suit] }} /><span className="action-card-pick-suit-label" style={{ color: SUIT_COLOR[sc.suit] }}>{sc.suit}</span><span className="action-card-pick-name">{sc.name}</span></button>;
                   })}
                 </div>
               </div>

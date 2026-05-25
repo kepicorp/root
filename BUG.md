@@ -6,6 +6,8 @@ The are sorted by either global mechanics or faction.
 ## General
 
 - [x] When playing as a human it seems that there are still actions that are taken automatically. I should pick every actions.
+- [x] Card suit indicators (fox/rabbit/mouse/bird) were inconsistent — hard to distinguish colored dots in pickers and no indicator on art cards.
+  - Fixed: all card pickers (ActionBar + Eyrie decree) now show a colored suit name label next to the dot; art cards in Hand now show a small colored badge in the corner.
   - Fixed: added a safety guard in `runOneAIAction` — the bot now explicitly refuses to dispatch any action whose kind prefix matches the human player's faction (e.g. `marquise.*` actions can never be auto-dispatched when the human plays Marquise). The root cause could not be reproduced from static analysis but this guard prevents it regardless.
 
 ## Dominance
@@ -17,6 +19,7 @@ The are sorted by either global mechanics or faction.
 
 - [x] You are not supposed to be able to spread alliance on a clearing with the marquise keep on it.
   - Fixed: `allianceLegalActions` now skips clearings with a keep token.
+- [ ] Add a wood counter to know how much wood I can spend.
 
 ## Eyrie
 

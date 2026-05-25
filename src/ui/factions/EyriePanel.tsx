@@ -160,6 +160,7 @@ export function EyriePanel({ state, isHuman, dispatch }: Props) {
                   title={c.name}
                 >
                   <span className="decree-pick-suit" style={{ background: SUIT_COLOR[c.suit] }} />
+                  <span className="decree-pick-suit-label" style={{ color: SUIT_COLOR[c.suit] }}>{c.suit}</span>
                   <span className="decree-pick-name">{c.name}</span>
                 </button>
               );

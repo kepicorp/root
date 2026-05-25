@@ -49,7 +49,10 @@ export function Hand({ state, faction }: HandProps) {
               onMouseLeave={() => setZoomed(null)}
             >
               {art ? (
-                <img src={art} alt={c.name} className="card-art-bg" />
+                <>
+                  <img src={art} alt={c.name} className="card-art-bg" />
+                  <span className="card-suit-badge" style={{ color: SUIT_COLOR[c.suit] }}>{c.suit}</span>
+                </>
               ) : (
                 <div className="card-body">
                   <div className="card-name">{c.name}</div>
