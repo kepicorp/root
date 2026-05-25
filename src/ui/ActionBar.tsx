@@ -152,6 +152,9 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
   const [apprenticePicking, setApprenticePicking] = useState(false);
   const [silverTonguePicking, setSilverTonguePicking] = useState(false);
   const [brazenDemagogPicking, setBrazenDemagogPicking] = useState(false);
+  const [pendingCardMove, setPendingCardMove] = useState<{
+    kind: string; cardId: string; from: number; to: number; max: number; pick: number;
+  } | null>(null);
   function closeAllPickers(): void {
     setOverworkPicking(false);
     setMobilizePicking(false);
@@ -180,6 +183,15 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
     setApprenticePicking(false);
     setSilverTonguePicking(false);
     setBrazenDemagogPicking(false);
+    setPendingCardMove(null);
+  }
+  function pickCardMove(kind: string, cardId: string, from: number, to: number, max: number, closeFn: () => void) {
+    closeFn();
+    if (max <= 1) {
+      dispatch({ kind, faction: active!, cardId, from, to, count: 1 } as Action);
+    } else {
+      setPendingCardMove({ kind, cardId, from, to, max, pick: max });
+    }
   }
   useEffect(() => {
     function onKey(ev: KeyboardEvent) {
@@ -1111,9 +1123,9 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                     const best = cobblerActions.find(x => x.from === a.from && x.to === a.to && x.count === max)!;
                     return (
                       <button key={key} className="action-card-pick"
-                        onClick={() => { dispatch({ kind: 'card.cobbler', faction: active!, cardId: best.cardId, from: best.from, to: best.to, count: max }); setCobblerPicking(false); }}
+                        onClick={() => pickCardMove('card.cobbler', best.cardId, best.from, best.to, max, () => setCobblerPicking(false))}
                       >
-                        <span className="action-card-pick-name">Move {max} from Clearing {a.from} to Clearing {a.to}</span>
+                        <span className="action-card-pick-name">Move up to {max} from Clearing {a.from} → {a.to}</span>
                       </button>
                     );
                   })}
@@ -1132,9 +1144,9 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                     const best = hiddenWarrensActions.find(x => x.from === a.from && x.to === a.to && x.count === max)!;
                     return (
                       <button key={key} className="action-card-pick"
-                        onClick={() => { dispatch({ kind: 'card.hiddenWarrens', faction: active!, cardId: best.cardId, from: best.from, to: best.to, count: max }); setHiddenWarrensPicking(false); }}
+                        onClick={() => pickCardMove('card.hiddenWarrens', best.cardId, best.from, best.to, max, () => setHiddenWarrensPicking(false))}
                       >
-                        <span className="action-card-pick-name">Move {max} from Clearing {a.from} to Clearing {a.to}</span>
+                        <span className="action-card-pick-name">Move up to {max} from Clearing {a.from} → {a.to}</span>
                       </button>
                     );
                   })}
@@ -1165,7 +1177,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                   {[...new Map(supplyTrainActions.map(a => [`${a.from}-${a.to}`, a])).entries()].map(([key, a]) => {
                     const max = Math.max(...supplyTrainActions.filter(x => x.from === a.from && x.to === a.to).map(x => x.count));
                     const best = supplyTrainActions.find(x => x.from === a.from && x.to === a.to && x.count === max)!;
-                    return <button key={key} className="action-card-pick" onClick={() => { dispatch({ kind: 'card.supplyTrain', faction: active!, cardId: best.cardId, from: best.from, to: best.to, count: max }); setSupplyTrainPicking(false); }}><span className="action-card-pick-name">Move {max}: {a.from} → {a.to}</span></button>;
+                    return <button key={key} className="action-card-pick" onClick={() => pickCardMove('card.supplyTrain', best.cardId, best.from, best.to, max, () => setSupplyTrainPicking(false))}><span className="action-card-pick-name">Move up to {max}: {a.from} → {a.to}</span></button>;
                   })}
                 </div>
               </div>
@@ -1197,7 +1209,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                   {[...new Map(tacticianActions.map(a => [`${a.from}-${a.to}`, a])).entries()].map(([key, a]) => {
                     const max = Math.max(...tacticianActions.filter(x => x.from === a.from && x.to === a.to).map(x => x.count));
                     const best = tacticianActions.find(x => x.from === a.from && x.to === a.to && x.count === max)!;
-                    return <button key={key} className="action-card-pick" onClick={() => { dispatch({ kind: 'card.tactician', faction: active!, cardId: best.cardId, from: best.from, to: best.to, count: max }); setTacticianPicking(false); }}><span className="action-card-pick-name">Move {max}: {a.from} → {a.to}</span></button>;
+                    return <button key={key} className="action-card-pick" onClick={() => pickCardMove('card.tactician', best.cardId, best.from, best.to, max, () => setTacticianPicking(false))}><span className="action-card-pick-name">Move up to {max}: {a.from} → {a.to}</span></button>;
                   })}
                 </div>
               </div>
@@ -1264,8 +1276,31 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                   {[...new Map(silverTongueActions.map(a => [`${a.from}-${a.to}`, a])).entries()].map(([key, a]) => {
                     const max = Math.min(2, Math.max(...silverTongueActions.filter(x => x.from === a.from && x.to === a.to).map(x => x.count)));
                     const best = silverTongueActions.find(x => x.from === a.from && x.to === a.to && x.count === max)!;
-                    return <button key={key} className="action-card-pick" onClick={() => { dispatch({ kind: 'card.silverTongue', faction: active!, cardId: best.cardId, from: best.from, to: best.to, count: max }); setSilverTonguePicking(false); }}><span className="action-card-pick-name">Move {max}: {a.from} → {a.to}</span></button>;
+                    return <button key={key} className="action-card-pick" onClick={() => pickCardMove('card.silverTongue', best.cardId, best.from, best.to, max, () => setSilverTonguePicking(false))}><span className="action-card-pick-name">Move up to {max}: {a.from} → {a.to}</span></button>;
                   })}
+                </div>
+              </div>
+            )}
+            {pendingCardMove && (
+              <div className="count-picker" role="dialog" aria-label="Choose how many warriors to move">
+                <div className="count-picker-title">
+                  Move from <strong>{pendingCardMove.from}</strong> → <strong>{pendingCardMove.to}</strong>
+                </div>
+                <div className="count-picker-row">
+                  <button className="btn ghost small" onClick={() => setPendingCardMove(m => m && { ...m, pick: Math.max(1, m.pick - 1) })} disabled={pendingCardMove.pick <= 1}>−</button>
+                  <span className="count-picker-value">{pendingCardMove.pick}</span>
+                  <span className="count-picker-max">/ {pendingCardMove.max}</span>
+                  <button className="btn ghost small" onClick={() => setPendingCardMove(m => m && { ...m, pick: Math.min(m.max, m.pick + 1) })} disabled={pendingCardMove.pick >= pendingCardMove.max}>+</button>
+                  <input type="range" min={1} max={pendingCardMove.max} value={pendingCardMove.pick}
+                    onChange={e => setPendingCardMove(m => m && { ...m, pick: +e.target.value })} />
+                </div>
+                <div className="count-picker-actions">
+                  <button className="btn ghost" onClick={() => setPendingCardMove(null)}>Cancel</button>
+                  <button className="btn primary" onClick={() => {
+                    if (!pendingCardMove) return;
+                    dispatch({ kind: pendingCardMove.kind, faction: active!, cardId: pendingCardMove.cardId, from: pendingCardMove.from, to: pendingCardMove.to, count: pendingCardMove.pick } as Action);
+                    setPendingCardMove(null);
+                  }}>Move {pendingCardMove.pick}</button>
                 </div>
               </div>
             )}
