@@ -27,4 +27,9 @@ The are sorted by either global mechanics or faction.
 
 - [x] It does not seem to let me build my cards
   - Fixed: `marquiseLegalActions` now generates `marquise.craft` legal actions based on workshop crafting power vs card cost. The "Craft" button now appears in daylight when workshops are in play and matching cards are in hand.
-
+- [x] The cost of card is not taken into account, I can play a card in my hand if I don't have the workshop required. Are you sure you are taking into account the fox, rabbit and mice cost of each cards ?
+  - Fixed: `marquise.craft` reducer now verifies per-suit workshop power (minus already-used power this turn) before allowing the craft. `marquiseLegalActions` also subtracts already-consumed workshop power from `craftedThisTurn` so previously-crafted cards are accounted for.
+- [x] can you indicate the cost in wood to build a new buiilding ?
+  - Fixed: build intent buttons in ActionBar now show the wood cost, e.g. "Build Sawmill (2 wood)".
+- [x] I get the right to use bird card for extra action in spite of not having any bird cards in my hand (check bird_marquise.png screenshot)
+  - Fixed: `marquiseLegalActions` now excludes dominance cards (category `'dominance'`) from the bird-card-for-extra-action check. The Bird Dominance card drawn from the shared deck was being offered as a spendable bird card.

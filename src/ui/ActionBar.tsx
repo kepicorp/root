@@ -4,6 +4,7 @@ import { activeFaction } from '../engine/loop';
 import { getLegalActions } from '../engine/legal';
 import { getCard } from '../engine/cards';
 import type { MapIntent } from './Board';
+import { buildCost } from '../engine/factions/marquise/scoring';
 
 const SUIT_COLOR: Record<CardSuit, string> = {
   fox: '#d97a3c', mouse: '#e6c34a', rabbit: '#9bbd58', bird: '#7da3c9',
@@ -337,7 +338,10 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
   type IntentButton = { label: string; intent: MapIntent; group: 'birdsong' | 'main' };
   const intentButtons: IntentButton[] = [];
   for (const b of ['sawmill', 'workshop', 'recruiter'] as const) {
-    if (buildable.has(b)) intentButtons.push({ label: BUILDING_LABEL[b], intent: { kind: 'build', building: b }, group: 'main' });
+    if (buildable.has(b)) {
+      const cost = buildCost(state.factions.marquise?.buildings[b] ?? 0);
+      intentButtons.push({ label: `${BUILDING_LABEL[b]} (${cost} wood)`, intent: { kind: 'build', building: b }, group: 'main' });
+    }
   }
   for (const d of marquiseBattleDefenders) {
     intentButtons.push({ label: `Battle ${FACTION_LABEL[d]}`, intent: { kind: 'marquise.battle', defender: d }, group: 'main' });
