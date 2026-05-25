@@ -62,7 +62,7 @@ export function EyriePanel({ state, isHuman, dispatch }: Props) {
   const active = activeFaction(state);
   const isEyrieBirdsong = isHuman && active === 'eyrie' && state.phase === 'birdsong';
   // canAdd requires: it's Eyrie birdsong, leader has been confirmed, and no card added yet this turn.
-  const canAdd = isEyrieBirdsong && !e.needsLeaderChoice && e.cardsAddedThisBirdsong === 0;
+  const canAdd = isEyrieBirdsong && !e.needsLeaderChoice && e.cardsAddedThisBirdsong < 2;
   const hand = state.hands.eyrie ?? [];
 
   function pipsForSlot(slot: DecreeSlot): Record<CardSuit, number> {

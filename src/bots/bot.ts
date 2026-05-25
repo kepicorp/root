@@ -38,7 +38,7 @@ const PRIORITY: Record<string, number> = {
   'combat.playAmbush':               50,
   'combat.skipAmbush':                5,
   // Phase-ending fallbacks
-  'eyrie.endBirdsong':               10,
+  'eyrie.endBirdsong':               65,  // higher than addToDecree so bot adds 1 card then stops
   'marquise.endDaylight':             1,
   'alliance.endDaylight':             1,
   'vagabond.endDaylight':             1,

@@ -131,7 +131,7 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
         const e = draft.factions.eyrie!;
         if (draft.phase !== 'birdsong') return;
         if (e.needsLeaderChoice) return; // must pick leader first
-        if (e.cardsAddedThisBirdsong >= 1) return; // only 1 add per birdsong
+        if (e.cardsAddedThisBirdsong >= 2) return; // max 2 adds per birdsong
         const idx = draft.hands.eyrie.indexOf(a.cardId);
         if (idx < 0) return;
         draft.hands.eyrie.splice(idx, 1);
@@ -380,7 +380,7 @@ export function eyrieLegalActions(state: GameState): Action[] {
   if (!e) return out;
   if (state.phase === 'birdsong') {
     // Official rule: exactly one card added to the Decree per birdsong.
-    if (e.cardsAddedThisBirdsong === 0) {
+    if (!e.needsLeaderChoice && e.cardsAddedThisBirdsong < 2) {
       for (const cardId of state.hands.eyrie) {
         for (const slot of ['recruit', 'move', 'battle', 'build'] as const) {
           out.push({ kind: 'eyrie.addToDecree', slot, cardId });
