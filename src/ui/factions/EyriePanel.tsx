@@ -19,6 +19,20 @@ const LEADER_DESC: Record<EyrieLeader, string> = {
   builder:     'Viziers: Recruit + Move. When you Craft, ignore Disdain for Trade (score full VP).',
 };
 
+const LEADER_VIZIERS: Record<EyrieLeader, string> = {
+  despot:      'Move + Build',
+  commander:   'Move + Battle',
+  charismatic: 'Recruit + Battle',
+  builder:     'Recruit + Move',
+};
+
+const LEADER_ABILITY: Record<EyrieLeader, string> = {
+  despot:      'Score 1 VP per enemy building/token removed in battle.',
+  commander:   '+1 hit when attacking.',
+  charismatic: 'Recruit places 2 warriors instead of 1.',
+  builder:     'Ignore Disdain for Trade when Crafting.',
+};
+
 interface Props {
   state: GameState;
   isHuman: boolean;
@@ -77,8 +91,13 @@ export function EyriePanel({ state, isHuman, dispatch }: Props) {
       <div className="eyrie-stats">
         <span>Warriors: <strong>{e.warriorSupply}</strong></span>
         <span>Roosts: <strong>{e.roosts.length}/7</strong></span>
-        <span>Leader: <strong>{e.leader}</strong></span>
+        <span>Leader: <strong>{e.leader}</strong>
+          {e.leader && <span className="eyrie-leader-viziers"> · {LEADER_VIZIERS[e.leader]}</span>}
+        </span>
       </div>
+      {e.leader && (
+        <div className="eyrie-leader-ability">{LEADER_ABILITY[e.leader]}</div>
+      )}
 
       {isEyrieBirdsong && e!.needsLeaderChoice && (
         <div className="eyrie-leader-picker eyrie-leader-required">

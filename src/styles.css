@@ -809,8 +809,10 @@ body { background: var(--bg); color: var(--paper); }
 
 /* Eyrie Decree slots — 2x2 grid of clickable cards, each showing the slot
    icon, name, total card count, and a suit-pip breakdown. */
-.eyrie-stats { display: flex; gap: 12px; font-size: 11px; color: #cfc2a8; flex-wrap: wrap; margin-bottom: 8px; }
+.eyrie-stats { display: flex; gap: 12px; font-size: 11px; color: #cfc2a8; flex-wrap: wrap; margin-bottom: 4px; }
 .eyrie-stats strong { color: #f0e2c2; font-weight: 700; }
+.eyrie-leader-viziers { color: #7da3c9; font-size: 10px; }
+.eyrie-leader-ability { font-size: 10px; color: #b8a37a; margin-bottom: 8px; font-style: italic; }
 .decree-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
