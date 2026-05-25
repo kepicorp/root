@@ -15,9 +15,6 @@ COPY src ./src
 COPY server ./server
 RUN npm run build
 
-# Prune to production deps; add tsx for runtime use.
-RUN npm prune --omit=dev && npm install --no-save tsx
-
 # ── Runtime stage ────────────────────────────────────────────────────────────
 FROM node:20-alpine
 
@@ -28,7 +25,8 @@ ENV PORT=8787
 ENV DIST_DIR=/app/dist
 
 COPY package*.json ./
-COPY --from=builder /app/node_modules ./node_modules
+# Install production deps natively for the target platform (not copied from builder).
+RUN npm ci --omit=dev && npm install --no-save tsx
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/server ./server
 COPY --from=builder /app/src ./src
