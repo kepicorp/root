@@ -5,6 +5,7 @@ import { getLegalActions } from '../engine/legal';
 import { getCard } from '../engine/cards';
 import type { MapIntent } from './Board';
 import { buildCost } from '../engine/factions/marquise/scoring';
+import type { DecreeSlot, EyrieLeader } from '../engine/factions/eyrie/state';
 
 const SUIT_COLOR: Record<CardSuit, string> = {
   fox: '#d97a3c', mouse: '#e6c34a', rabbit: '#9bbd58', bird: '#7da3c9',
@@ -61,6 +62,7 @@ const MAP_DRIVEN: ReadonlySet<string> = new Set([
   'vagabond.acceptHostility',
   'system.resolveOutrage',
   'eyrie.addToDecree',
+  'eyrie.chooseLeader',
   'eyrie.executeRecruit',
   'eyrie.executeMove',
   'eyrie.executeBattle',
@@ -78,6 +80,16 @@ const FACTION_LABEL: Record<Faction, string> = {
   eyrie:    'Eyrie',
   alliance: 'Alliance',
   vagabond: 'Vagabond',
+};
+
+const DECREE_SLOT_ORDER: DecreeSlot[] = ['recruit', 'move', 'battle', 'build'];
+const DECREE_SLOT_LABEL: Record<DecreeSlot, string> = { recruit: 'Recruit', move: 'Move', battle: 'Battle', build: 'Build' };
+const DECREE_SLOT_GLYPH: Record<DecreeSlot, string> = { recruit: '👥', move: '➜', battle: '⚔', build: '⌂' };
+const EYRIE_LEADER_ABILITY: Record<EyrieLeader, string> = {
+  despot:      'Score 1 VP per enemy building/token removed',
+  commander:   '+1 hit when attacking',
+  charismatic: 'Recruit places 2 warriors instead of 1',
+  builder:     'Ignore Disdain for Trade when Crafting',
 };
 
 /** Per-action display metadata. */
@@ -172,6 +184,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
   const [silverTonguePicking, setSilverTonguePicking] = useState(false);
   const [brazenDemagogPicking, setBrazenDemagogPicking] = useState(false);
   const [coalitionPicking, setCoalitionPicking] = useState(false);
+  const [eyrieDecreeSlot, setEyrieDecreeSlot] = useState<DecreeSlot | null>(null);
   const [pendingCardMove, setPendingCardMove] = useState<{
     kind: string; cardId: string; from: number; to: number; max: number; pick: number;
   } | null>(null);
@@ -205,6 +218,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
     setSilverTonguePicking(false);
     setBrazenDemagogPicking(false);
     setCoalitionPicking(false);
+    setEyrieDecreeSlot(null);
     setPendingCardMove(null);
   }
   function pickCardMove(kind: string, cardId: string, from: number, to: number, max: number, closeFn: () => void) {
@@ -336,6 +350,8 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
   const eyrieBattleDefenders = new Set<Faction>();
   let canEyrieBuild = false;
   let canEyrieMove = false;
+  const eyrieDecreeLegals: Array<{ slot: DecreeSlot; cardId: string }> = [];
+  const eyrieLeaderLegals: EyrieLeader[] = [];
   for (const a of allLegals) {
     if (a.kind === 'marquise.build')           buildable.add(a.building);
     else if (a.kind === 'marquise.battle')     marquiseBattleDefenders.add(a.defender);
@@ -351,6 +367,8 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
     else if (a.kind === 'eyrie.executeMove')       canEyrieMove = true;
     else if (a.kind === 'eyrie.executeBattle')     eyrieBattleDefenders.add(a.defender);
     else if (a.kind === 'eyrie.executeBuild')      canEyrieBuild = true;
+    else if (a.kind === 'eyrie.addToDecree')       eyrieDecreeLegals.push({ slot: a.slot, cardId: a.cardId });
+    else if (a.kind === 'eyrie.chooseLeader')      eyrieLeaderLegals.push(a.leader);
     else if (a.kind === 'marquise.craft')             craftCards.add(a.cardId);
     else if (a.kind === 'marquise.spendBirdForExtra') spendBirdCards.add(a.cardId);
     else if (a.kind === 'alliance.craft')             craftCards.add(a.cardId);
@@ -507,19 +525,6 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
         </div>
       )}
 
-      {active === 'eyrie' && state.phase === 'birdsong' && (() => {
-        const e = state.factions.eyrie;
-        if (!e || e.needsLeaderChoice) return null;
-        if (e.cardsAddedThisBirdsong >= 2) return null;
-        return (
-          <div className="actionbar-hint map-hint" style={{ borderColor: '#7da3c9', color: '#c0deff' }}>
-            📜 <strong>Decree</strong> — {e.cardsAddedThisBirdsong === 0
-              ? 'Click a decree column on the right to add a card (required).'
-              : 'You may add one more card to the decree, or end birdsong.'}
-          </div>
-        );
-      })()}
-
       {marchMovesLeft > 0 && (
         <div className="actionbar-hint map-hint" style={{ borderColor: '#f0c060', color: '#f0e2c2' }}>
           ⚔ <strong>March in progress</strong> — {marchMovesLeft} move{marchMovesLeft === 1 ? '' : 's'} remaining.
@@ -586,6 +591,8 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
         const showRemoveItem       = g === 'end'      && removeItemIdxs.length > 0;
         const showPayRelationship  = g === 'main'     && (payRelCostCards.size > 0 || canAcceptHostility);
         const showOutrage          = g === 'main'     && (outragePayCards.size > 0 || outrageAutoResolve);
+        const showEyrieDecree      = g === 'birdsong' && eyrieDecreeLegals.length > 0;
+        const showEyrieLeader      = g === 'birdsong' && eyrieLeaderLegals.length > 0;
         if (list.length === 0 && ibs.length === 0
             && !showOverwork && !showMobilize && !showCraft
             && !showSpendBird && !showAid && !showRepair && !showTrain
@@ -598,6 +605,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
             && !showShadowCouncil && !showApprentice && !showSilverTongue && !showBrazenDemagog
             && !showCoalition && !showDiscard && !showRemoveItem && !showSteal
             && !showPayRelationship && !showOutrage
+            && !showEyrieDecree && !showEyrieLeader
             && greyedBuildings.length === 0) return null;
         const overworkArmed = mapIntent?.kind === 'marquise.overwork';
         return (
@@ -605,6 +613,91 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
             <div className="action-group-label">{GROUP_LABEL[g]}</div>
             <div className="actions-grid">
               {ibs.map(renderIntentButton)}
+              {showEyrieLeader && (
+                <div className="eyrie-leader-picker-bar">
+                  <span className="eyrie-leader-picker-bar-label">Choose leader:</span>
+                  {eyrieLeaderLegals.map(leader => (
+                    <button
+                      key={leader}
+                      className={`btn action-btn faction-eyrie`}
+                      title={EYRIE_LEADER_ABILITY[leader]}
+                      onClick={() => dispatch({ kind: 'eyrie.chooseLeader', leader })}
+                    >
+                      <span className="action-label">{leader}</span>
+                      <span className="action-detail">{EYRIE_LEADER_ABILITY[leader]}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {showEyrieDecree && (() => {
+                const e = state.factions.eyrie!;
+                const SUIT_ORDER_D: CardSuit[] = ['fox', 'mouse', 'rabbit', 'bird'];
+                return (
+                  <div className="eyrie-decree-bar">
+                    {DECREE_SLOT_ORDER.map(slot => {
+                      const slotLegals = eyrieDecreeLegals.filter(l => l.slot === slot);
+                      const canAddToSlot = slotLegals.length > 0;
+                      const pips: Record<CardSuit, number> = { fox: 0, mouse: 0, rabbit: 0, bird: 0 };
+                      for (const id of e.decree[slot]) { const c = getCard(id); pips[c.suit] = (pips[c.suit] ?? 0) + 1; }
+                      const armed = eyrieDecreeSlot === slot;
+                      return (
+                        <button
+                          key={slot}
+                          className={`btn decree-action-slot ${armed ? 'armed' : ''} faction-eyrie`}
+                          disabled={!canAddToSlot}
+                          onClick={() => canAddToSlot && setEyrieDecreeSlot(s => s === slot ? null : slot)}
+                          title={canAddToSlot ? `Add a card to ${DECREE_SLOT_LABEL[slot]}` : DECREE_SLOT_LABEL[slot]}
+                        >
+                          <span className="decree-action-glyph">{DECREE_SLOT_GLYPH[slot]}</span>
+                          <span className="decree-action-name">{DECREE_SLOT_LABEL[slot]}</span>
+                          <span className="decree-action-count">{e.decree[slot].length}</span>
+                          <span className="decree-action-pips">
+                            {SUIT_ORDER_D.map(s => pips[s] > 0 ? (
+                              <span key={s} style={{ display: 'inline-flex', gap: 2 }}>
+                                {Array.from({ length: pips[s] }).map((_, i) => (
+                                  <span key={i} className="decree-pip" style={{ background: SUIT_COLOR[s] }} />
+                                ))}
+                              </span>
+                            ) : null)}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+              {showEyrieDecree && eyrieDecreeSlot && (() => {
+                const slotLegals = eyrieDecreeLegals.filter(l => l.slot === eyrieDecreeSlot);
+                const uniqueCards = [...new Map(slotLegals.map(l => [l.cardId, l])).values()];
+                return (
+                  <div className="action-card-picker">
+                    <div className="action-card-picker-title">
+                      Add to <strong>{DECREE_SLOT_LABEL[eyrieDecreeSlot]}</strong>
+                      <button className="btn ghost small" onClick={() => setEyrieDecreeSlot(null)} aria-label="Cancel">×</button>
+                    </div>
+                    <div className="action-card-picker-list">
+                      {uniqueCards.map(({ cardId }) => {
+                        const c = getCard(cardId);
+                        return (
+                          <button
+                            key={cardId}
+                            className="action-card-pick"
+                            style={{ borderColor: SUIT_COLOR[c.suit] }}
+                            onClick={() => {
+                              dispatch({ kind: 'eyrie.addToDecree', slot: eyrieDecreeSlot, cardId });
+                              setEyrieDecreeSlot(null);
+                            }}
+                          >
+                            <span className="action-card-pick-suit" style={{ background: SUIT_COLOR[c.suit] }} />
+                            <span className="action-card-pick-suit-label" style={{ color: SUIT_COLOR[c.suit] }}>{c.suit}</span>
+                            <span className="action-card-pick-name">{c.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
               {showOverwork && (
                 <button
                   className={`btn action-btn ${overworkArmed || overworkPicking ? 'armed' : ''} faction-${active}`}

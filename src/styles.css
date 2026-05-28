@@ -889,20 +889,8 @@ body { background: var(--bg); color: var(--paper); }
   border: 1.5px solid rgba(125, 163, 201, 0.45);
   border-radius: 6px;
   color: #e8d6a8;
-  font-family: inherit;
   font-size: 12px;
   text-align: left;
-  cursor: pointer;
-}
-.decree-slot:disabled { cursor: default; opacity: 0.85; }
-.decree-slot:not(:disabled):hover {
-  background: #322516;
-  border-color: rgba(125, 163, 201, 0.95);
-}
-.decree-slot.armed {
-  background: #2a3a20;
-  border-color: #f0c060;
-  box-shadow: 0 0 0 2px rgba(240, 192, 96, 0.25);
 }
 .decree-slot-glyph { font-size: 18px; grid-row: 1 / span 2; }
 .decree-slot-name  { grid-column: 2; font-weight: 600; }
@@ -952,6 +940,16 @@ body { background: var(--bg); color: var(--paper); }
 .decree-pick-suit-label { font-size: 9px; text-transform: capitalize; opacity: 0.7; white-space: nowrap; flex-shrink: 0; }
 .decree-pick-name { flex: 1; }
 .eyrie-decree-hint { font-size: 11px; color: #7da3c9; background: rgba(125,163,201,0.1); border: 1px solid rgba(125,163,201,0.25); border-radius: 4px; padding: 5px 8px; margin-bottom: 6px; }
+.eyrie-choose-leader-hint { font-size: 11px; color: #7da3c9; font-style: italic; margin: 4px 0; }
+.eyrie-leader-picker-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 4px; width: 100%; }
+.eyrie-leader-picker-bar-label { font-size: 11px; color: #b8a37a; text-transform: uppercase; letter-spacing: 0.5px; }
+.eyrie-decree-bar { display: flex; gap: 6px; flex-wrap: wrap; width: 100%; }
+.decree-action-slot { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 60px; flex: 1; padding: 6px 4px; font-size: 11px; }
+.decree-action-slot:disabled { opacity: 0.45; }
+.decree-action-glyph { font-size: 16px; line-height: 1; }
+.decree-action-name { font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px; }
+.decree-action-count { font-size: 13px; font-weight: 700; }
+.decree-action-pips { display: flex; gap: 2px; flex-wrap: wrap; justify-content: center; min-height: 8px; }
 .eyrie-progress { margin-top: 6px; font-size: 11px; }
 .eyrie-leader-picker { margin-top: 6px; font-size: 11px; color: #cfc2a8; }
 .eyrie-leader-picker.eyrie-leader-required {
