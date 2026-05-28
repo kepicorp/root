@@ -126,6 +126,15 @@ export function EyriePanel({ state, isHuman, dispatch }: Props) {
         </div>
       )}
 
+      {canAdd && (
+        <div className="eyrie-decree-hint">
+          Click a decree column below to add a card from your hand.
+          {e.cardsAddedThisBirdsong === 0
+            ? ' You must add at least 1.'
+            : ' You may add one more, or end birdsong.'}
+        </div>
+      )}
+
       <div className="decree-grid">
         {SLOT_ORDER.map(slot => {
           const pips = pipsForSlot(slot);

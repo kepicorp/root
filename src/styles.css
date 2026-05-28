@@ -951,6 +951,7 @@ body { background: var(--bg); color: var(--paper); }
 .decree-pick-suit { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 .decree-pick-suit-label { font-size: 9px; text-transform: capitalize; opacity: 0.7; white-space: nowrap; flex-shrink: 0; }
 .decree-pick-name { flex: 1; }
+.eyrie-decree-hint { font-size: 11px; color: #7da3c9; background: rgba(125,163,201,0.1); border: 1px solid rgba(125,163,201,0.25); border-radius: 4px; padding: 5px 8px; margin-bottom: 6px; }
 .eyrie-progress { margin-top: 6px; font-size: 11px; }
 .eyrie-leader-picker { margin-top: 6px; font-size: 11px; color: #cfc2a8; }
 .eyrie-leader-picker.eyrie-leader-required {
