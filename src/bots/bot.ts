@@ -37,6 +37,12 @@ const PRIORITY: Record<string, number> = {
   // Combat prompts — bot ambushes when it can, otherwise skips.
   'combat.playAmbush':               50,
   'combat.skipAmbush':                5,
+  // Discard resolution — high priority so a stuck bot clears it immediately
+  'marquise.discardCard':            35,
+  'eyrie.discardCard':               35,
+  'alliance.discardCard':            35,
+  'vagabond.discardCard':            35,
+  'vagabond.removeItem':             35,
   // Phase-ending fallbacks
   'eyrie.endBirdsong':               65,  // higher than addToDecree so bot adds 1 card then stops
   'marquise.endDaylight':             1,

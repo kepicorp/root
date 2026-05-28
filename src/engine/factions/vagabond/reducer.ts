@@ -589,6 +589,22 @@ export function vagabondLegalActions(state: GameState): Action[] {
   const v = state.factions.vagabond;
   if (!v) return out;
 
+  // Pending discard / item removal gates everything else, regardless of phase
+  if (v.pendingItemRemoval > 0) {
+    v.items.forEach((item, idx) => {
+      if (item.state === 'face-down' || item.state === 'damaged') {
+        out.push({ kind: 'vagabond.removeItem', itemIdx: idx });
+      }
+    });
+    return out;
+  }
+  if (v.pendingDiscard > 0) {
+    for (const cardId of state.hands.vagabond) {
+      out.push({ kind: 'vagabond.discardCard', cardId });
+    }
+    return out;
+  }
+
   if (state.phase === 'birdsong') {
     out.push({ kind: 'vagabond.refresh' });
     if (!v.inForest) {

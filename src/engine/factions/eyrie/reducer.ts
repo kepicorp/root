@@ -389,6 +389,14 @@ export function eyrieLegalActions(state: GameState): Action[] {
   const e = state.factions.eyrie;
   if (!e) return out;
 
+  // Pending discard gates everything else, regardless of phase
+  if (e.pendingDiscard > 0) {
+    for (const cardId of state.hands.eyrie) {
+      out.push({ kind: 'eyrie.discardCard', cardId });
+    }
+    return out;
+  }
+
   // If outrage is pending for eyrie, ONLY resolve it
   if (state.pendingOutrage?.faction === 'eyrie') {
     const o = state.pendingOutrage;

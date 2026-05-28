@@ -346,6 +346,14 @@ export function marquiseLegalActions(state: GameState): Action[] {
   const m = state.factions.marquise;
   if (!m) return out;
 
+  // Pending discard gates everything else, regardless of phase
+  if (m.pendingDiscard > 0) {
+    for (const cardId of state.hands.marquise) {
+      out.push({ kind: 'marquise.discardCard', cardId });
+    }
+    return out;
+  }
+
   // If outrage is pending for marquise, ONLY resolve it
   if (state.pendingOutrage?.faction === 'marquise') {
     const o = state.pendingOutrage;

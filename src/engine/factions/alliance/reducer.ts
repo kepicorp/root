@@ -283,6 +283,14 @@ export function allianceLegalActions(state: GameState): Action[] {
   const al = state.factions.alliance;
   if (!al) return out;
 
+  // Pending discard gates everything else, regardless of phase
+  if (al.pendingDiscard > 0) {
+    for (const cardId of state.hands.alliance) {
+      out.push({ kind: 'alliance.discardCard', cardId });
+    }
+    return out;
+  }
+
   if (state.phase === 'birdsong') {
     // Try to spread sympathy
     for (const c of AUTUMN_MAP.clearings) {
