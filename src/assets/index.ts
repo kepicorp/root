@@ -14,6 +14,7 @@
 //   src/assets/raw/dominance/<suit>.png              → 'fox', 'mouse', etc.
 
 import type { Faction, ItemKind, Suit } from '../engine/types';
+import type { Card } from '../engine/cards';
 
 // ─── Leder Games CDN ────────────────────────────────────────────────────────
 // Official card images served by Leder Games at cards.ledergames.com.
@@ -50,14 +51,23 @@ const CDN_CARD_MAP: Readonly<Record<string, string>> = {
   'Foxfolk Steel':          'card-foxfolksteel',
   'Arms Trader':            'card-armstrader',
   'Sword':                  'card-sword',
-  'Crossbow':               'card-crossbowbird',
+  'Crossbow (bird)':        'card-crossbowbird',
+  'Crossbow (mouse)':       'card-crossbowmouse',
   'A Visit to Friends':     'card-avisittofriends',
-  'Travel Gear':            'card-travelgearfox',
+  'Travel Gear (fox)':      'card-travelgearfox',
+  'Travel Gear (mouse)':    'card-travelgearmouse',
   'Gently Used Knapsack':   'card-gentlyusedknapsack',
-  'Root Tea':               'card-rootteabunny',
+  'Root Tea (rabbit)':      'card-rootteabunny',
+  'Root Tea (fox)':         'card-rootteafox',
+  'Root Tea (mouse)':       'card-rootteamouse',
   'Anvil':                  'card-anvil',
   'Investments':            'card-investments',
   'Mouse-in-a-Sack':        'card-mouseinasack',
+  'Birdy Bindle':           'card-birdybindle',
+  'Smuggler\'s Trail':      'card-smugglerstrail',
+  'Bake Sale':              'card-bakesale',
+  'Protection Racket':      'card-protectionracket',
+  'Woodland Runners':       'card-woodlandrunners',
   // Eyrie Emigre (Eyrie faction card sometimes shuffled in)
   'Eyrie Emigre':           'card-eyrieemigre',
   // Dominance cards (separate deck, but rendered the same way)
@@ -147,12 +157,16 @@ export function boardArt(): string | null {
   return lookup(rawBoardFiles, './raw/board/', builtinBoardFiles, './builtin/board/', 'autumn');
 }
 
-/** Card art by exact card name (e.g., "Armorers"). Priority: raw/ → CDN → builtin/. */
-export function cardArt(cardName: string): string | null {
+/** Card art by Card object. Priority: raw/ → CDN → builtin/. */
+export function cardArt(card: Card): string | null {
+  // For cards with suit variants (Crossbow, Root Tea, Travel Gear), try looking up
+  // the variant first, then fall back to the base name.
+  const suitVariantName = `${card.name} (${card.suit})`;
   return (
-    lookupIn(rawCardFiles, './raw/cards/', slug(cardName)) ??
-    cdnCardUrl(cardName) ??
-    lookupIn(builtinCardFiles, './builtin/cards/', slug(cardName))
+    lookupIn(rawCardFiles, './raw/cards/', slug(card.name)) ??
+    cdnCardUrl(suitVariantName) ??
+    cdnCardUrl(card.name) ??
+    lookupIn(builtinCardFiles, './builtin/cards/', slug(card.name))
   );
 }
 

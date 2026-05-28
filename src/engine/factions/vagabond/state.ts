@@ -1,5 +1,6 @@
 import type { CardId } from '../../cards';
-import type { ClearingId, Faction, ItemKind, ForestId } from '../../types';
+import type { CardSuit, ClearingId, Faction, ItemKind, ForestId } from '../../types';
+export type { ClearingId };
 
 export type VagabondCharacter = 'thief' | 'tinker' | 'ranger';
 export type ItemFace = 'face-up' | 'face-down' | 'damaged';
@@ -26,11 +27,18 @@ export interface VagabondState {
   completedQuests: string[]; // ids of completed quest cards (from QUEST_DECK)
   questDeck: string[];       // face-down draw pile of QuestCard.ids
   questDisplay: string[];    // face-up available quests
-  ruinsExplored: number;
+  exploredRuins: ClearingId[];
   coalitionPartner?: Exclude<Faction, 'vagabond'>;
   slipped: boolean;
   daylightActionsLeft: number;
+  /** Ranger only: clearing where a Hideout camp token is placed. */
+  hideout?: ClearingId;
   pendingDiscard: number;
+  /** Number of satchel/damaged items the Vagabond must permanently remove during evening. */
+  pendingItemRemoval: number;
+  /** Set after a battle/strike removes pieces from a non-hostile faction.
+   *  Must be resolved (pay card or accept hostility) before further actions. */
+  pendingRelationshipCost?: { faction: Exclude<Faction, 'vagabond'>; suit: CardSuit };
 }
 
 export const INITIAL_VAGABOND_STATE: VagabondState = {
@@ -42,10 +50,11 @@ export const INITIAL_VAGABOND_STATE: VagabondState = {
   completedQuests: [],
   questDeck: [],
   questDisplay: [],
-  ruinsExplored: 0,
+  exploredRuins: [],
   slipped: false,
   daylightActionsLeft: 0,
   pendingDiscard: 0,
+  pendingItemRemoval: 0,
 };
 
 export const STARTING_ITEMS: Record<VagabondCharacter, ItemKind[]> = {

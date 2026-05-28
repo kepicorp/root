@@ -69,7 +69,7 @@ function clearStorage(): void {
   try { localStorage.removeItem(SAVE_KEY); } catch { /* ignore */ }
 }
 
-const initial = newGame({ seed: 1 });
+const initial = newGame();
 const ZERO_TICK: Record<Faction, number> = { marquise: 0, eyrie: 0, alliance: 0, vagabond: 0 };
 
 export const useGame = create<Store>((set, get) => ({

@@ -1,9 +1,10 @@
 import { produce } from 'immer';
-import type { GameState, Action, ClearingId, Faction, ItemKind } from '../../types';
+import type { GameState, Action, CardSuit, ClearingId, Faction, ItemKind } from '../../types';
 import { getCard } from '../../cards';
 import { AUTUMN_MAP, getAdjacent, getForest, forestsAtClearing, adjacentForests } from '../../map';
 import { applyFavor } from '../../effects';
 import { onEnterBirdsong } from '../../loop';
+import { mulberry32, mixSeed, rollDie } from '../../rng';
 import type { VagabondAction } from './actions';
 import type { Relationship } from './state';
 import { getQuest } from './quests';
@@ -32,6 +33,40 @@ function bumpRelationship(rel: Relationship): Relationship {
   return REL_LADDER[idx + 1]!;
 }
 
+/** VP scored when aid improves to the given relationship level. */
+function aidVpForRelationship(rel: Relationship): number {
+  if (rel === 1) return 1;
+  if (rel === 2) return 2;
+  if (rel === 3) return 3;
+  if (rel === 'allied') return 4;
+  return 0; // hostile or indifferent — no VP
+}
+
+// Items on tracks (T/X/B = Torch/Crossbow/Bag): each face-up copy gives +2 satchel capacity,
+// and each track holds at most 3 items.
+const TRACK_ITEMS: readonly ItemKind[] = ['torch', 'crossbow', 'bag'];
+const TRACK_LIMIT = 3;
+
+/** Max items allowed in satchel + damaged box. */
+function itemCapacity(items: { kind: ItemKind; state: string }[]): number {
+  const faceUpTrackCount = TRACK_ITEMS.reduce(
+    (sum, kind) => sum + items.filter(i => i.kind === kind && i.state === 'face-up').length,
+    0,
+  );
+  return 6 + 2 * faceUpTrackCount;
+}
+
+/** Count of items currently in satchel (face-down) or damaged box (damaged). */
+function satchelAndDamagedCount(items: { state: string }[]): number {
+  return items.filter(i => i.state === 'face-down' || i.state === 'damaged').length;
+}
+
+/** True if the item can be added (track items are capped at TRACK_LIMIT). */
+function canGainItem(items: { kind: ItemKind }[], kind: ItemKind): boolean {
+  if (!TRACK_ITEMS.includes(kind)) return true;
+  return items.filter(i => i.kind === kind).length < TRACK_LIMIT;
+}
+
 function returnWarriors(draft: GameState, clearing: ClearingId, faction: Faction, n: number): void {
   const cl = draft.map.clearings[clearing]!;
   cl.warriors[faction] = Math.max(0, (cl.warriors[faction] ?? 0) - n);
@@ -56,6 +91,20 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
         v.clearing = a.to;
         draft.map.clearings[a.to]!.vagabondHere = true;
         v.slipped = true;
+      });
+
+    case 'vagabond.slipToHideout':
+      return produce(state, draft => {
+        if (draft.phase !== 'birdsong') return;
+        const v = draft.factions.vagabond!;
+        if (v.character !== 'ranger') return;
+        if (!v.hideout || v.inForest) return;
+        if (v.hideout === v.clearing) return; // already there
+        draft.map.clearings[v.clearing]!.vagabondHere = false;
+        v.clearing = v.hideout;
+        draft.map.clearings[v.hideout]!.vagabondHere = true;
+        v.slipped = true;
+        draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Ranger slipped to hideout at clearing ${v.hideout}.` });
       });
 
     case 'vagabond.slipToForest':
@@ -98,13 +147,15 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
         const f = getForest(AUTUMN_MAP, v.inForest);
         if (!f.clearings.includes(a.to)) return;
         if (!exhaustItem(v.items, 'boots')) return;
-        const destCl = draft.map.clearings[a.to]!;
-        const hostilePresent = (['marquise', 'eyrie', 'alliance'] as const).some(faction => {
-          const rel = v.relationships[faction];
-          return rel !== 'allied' && (destCl.warriors[faction] ?? 0) > 0;
-        });
-        if (hostilePresent) {
-          if (!exhaustItem(v.items, 'boots')) return;
+        // Thief (Nimble) never pays extra boot for hostile destinations.
+        if (v.character !== 'thief') {
+          const destCl = draft.map.clearings[a.to]!;
+          const hostilePresent = (['marquise', 'eyrie', 'alliance'] as const).some(faction => {
+            return v.relationships[faction] === 'hostile' && (destCl.warriors[faction] ?? 0) > 0;
+          });
+          if (hostilePresent) {
+            if (!exhaustItem(v.items, 'boots')) return;
+          }
         }
         v.inForest = undefined;
         v.clearing = a.to;
@@ -116,17 +167,7 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
     case 'vagabond.refresh':
       return produce(state, draft => {
         if (draft.phase !== 'birdsong') return;
-        const v = draft.factions.vagabond!;
-        const teaCount = v.items.filter(i => i.kind === 'tea' && i.state === 'face-up').length;
-        let toRefresh = 3 + teaCount;
-        for (const it of v.items) {
-          if (toRefresh <= 0) break;
-          if (it.exhausted && it.state === 'face-up') {
-            it.exhausted = false;
-            toRefresh -= 1;
-          }
-        }
-        v.daylightActionsLeft = 6;
+        // Items were already auto-refreshed in onEnterBirdsong; this just starts daylight.
         draft.phase = 'daylight';
       });
 
@@ -137,14 +178,15 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
         if (v.daylightActionsLeft <= 0) return;
         if (!getAdjacent(AUTUMN_MAP, v.clearing).includes(a.to)) return;
         if (!exhaustItem(v.items, 'boots')) return;
-        // Hostile destination: exhaust extra boots
-        const destCl = draft.map.clearings[a.to]!;
-        const hostilePresent = (['marquise', 'eyrie', 'alliance'] as const).some(f => {
-          const rel = v.relationships[f];
-          return (rel !== 'allied') && (destCl.warriors[f] ?? 0) > 0;
-        });
-        if (hostilePresent) {
-          if (!exhaustItem(v.items, 'boots')) return;
+        // Hostile destination: exhaust extra boot — Thief (Nimble) is exempt.
+        if (v.character !== 'thief') {
+          const destCl = draft.map.clearings[a.to]!;
+          const hostilePresent = (['marquise', 'eyrie', 'alliance'] as const).some(f => {
+            return v.relationships[f] === 'hostile' && (destCl.warriors[f] ?? 0) > 0;
+          });
+          if (hostilePresent) {
+            if (!exhaustItem(v.items, 'boots')) return;
+          }
         }
         draft.map.clearings[v.clearing]!.vagabondHere = false;
         v.clearing = a.to;
@@ -159,15 +201,77 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
         if (v.daylightActionsLeft <= 0) return;
         const meta = AUTUMN_MAP.clearings.find(c => c.id === v.clearing)!;
         if (!meta.hasRuin) return;
+        if (v.exploredRuins.includes(v.clearing)) return;
         if (!exhaustItem(v.items, 'torch')) return;
-        // Treat ruin as removed; we don't track removal on Clearing state, so use a flag in vagabond state.
-        v.ruinsExplored += 1;
-        // Gain a face-down item from the supply (just take next available).
-        const itemKind: ItemKind | undefined = draft.itemSupply.shift();
-        if (itemKind) v.items.push({ kind: itemKind, state: 'face-down', exhausted: false });
+        // Mark the ruin as explored (removes it visually).
+        v.exploredRuins.push(v.clearing);
+        draft.map.clearings[v.clearing]!.ruinExplored = true;
+        // The clearing gains a free building slot where the ruin token was.
+        const cl = draft.map.clearings[v.clearing]!;
+        cl.extraBuildingSlots = (cl.extraBuildingSlots ?? 0) + 1;
+        // Give the specific item hidden under this ruin (random assignment in newGame overrides static map).
+        const itemKind: ItemKind = cl.ruinItem ?? meta.ruinItem ?? (draft.itemSupply.shift() as ItemKind | undefined) ?? 'torch';
+        // Track items (T/X/B) go face-up on their track if room; otherwise satchel.
+        const itemState = canGainItem(v.items, itemKind) ? 'face-up' : 'face-down';
+        v.items.push({ kind: itemKind, state: itemState, exhausted: false });
         draft.scores.vagabond += 1;
         v.daylightActionsLeft -= 1;
-        draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Explored ruin in ${v.clearing} (+1 VP).` });
+        draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Explored ruin in clearing ${v.clearing} — found ${itemKind}! (+1 VP)` });
+      });
+
+    case 'vagabond.battle':
+      return produce(state, draft => {
+        if (draft.phase !== 'daylight') return;
+        const v = draft.factions.vagabond!;
+        if (v.daylightActionsLeft <= 0) return;
+        if (v.inForest) return;
+        if (a.clearing !== v.clearing) return;
+        if (!exhaustItem(v.items, 'sword')) return;
+        const cl = draft.map.clearings[v.clearing]!;
+        const defWarriors = cl.warriors[a.defender] ?? 0;
+        const hasPieces = defWarriors > 0
+          || cl.buildings.some(b => b.faction === a.defender)
+          || cl.tokens.some(t => t.faction === a.defender);
+        if (!hasPieces) return;
+        // Roll dice using the shared rngStep counter.
+        const rng = mulberry32(mixSeed(state.seed, state.rngStep + 1));
+        draft.rngStep += 1;
+        const d1 = rollDie(rng);
+        const d2 = rollDie(rng);
+        const defenseless = defWarriors === 0;
+        // Vagabond pawn counts as 1 warrior for hit purposes.
+        const attHits = Math.min(1, Math.max(d1, d2) + (defenseless ? 1 : 0));
+        const defHits = Math.min(Math.min(d1, d2), defWarriors);
+        // Apply attacker hits: warriors → buildings → tokens.
+        let hitsLeft = attHits;
+        let piecesRemoved = 0;
+        const warriorsToRemove = Math.min(hitsLeft, defWarriors);
+        if (warriorsToRemove > 0) {
+          returnWarriors(draft, v.clearing, a.defender, warriorsToRemove);
+          hitsLeft -= warriorsToRemove;
+          piecesRemoved += warriorsToRemove;
+          if (v.relationships[a.defender] === 'hostile') draft.scores.vagabond += warriorsToRemove;
+        }
+        if (hitsLeft > 0) {
+          const bIdx = cl.buildings.findIndex(b => b.faction === a.defender);
+          if (bIdx >= 0) { cl.buildings.splice(bIdx, 1); draft.scores.vagabond += 1; hitsLeft -= 1; piecesRemoved += 1; }
+        }
+        if (hitsLeft > 0) {
+          const tIdx = cl.tokens.findIndex(t => t.faction === a.defender);
+          if (tIdx >= 0) { cl.tokens.splice(tIdx, 1); draft.scores.vagabond += 1; piecesRemoved += 1; }
+        }
+        // Removing pieces from a non-hostile faction requires the player to either
+        // discard a matching card or accept hostility.
+        if (piecesRemoved > 0 && v.relationships[a.defender] !== 'hostile') {
+          const meta = AUTUMN_MAP.clearings.find(c => c.id === v.clearing)!;
+          v.pendingRelationshipCost = { faction: a.defender, suit: meta.suit as CardSuit };
+        }
+        // Apply defender hits: damage vagabond items (face-up → damaged, then face-down → damaged).
+        let toDamage = defHits;
+        for (const it of v.items) { if (toDamage <= 0) break; if (it.state === 'face-up')   { it.state = 'damaged'; toDamage -= 1; } }
+        for (const it of v.items) { if (toDamage <= 0) break; if (it.state === 'face-down') { it.state = 'damaged'; toDamage -= 1; } }
+        v.daylightActionsLeft -= 1;
+        draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Battled ${a.defender}: rolled [${d1},${d2}] → dealt ${attHits} hit(s), took ${defHits} hit(s).` });
       });
 
     case 'vagabond.aid':
@@ -178,16 +282,66 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
         const meta = AUTUMN_MAP.clearings.find(c => c.id === v.clearing)!;
         const card = getCard(a.cardId);
         if (card.suit !== meta.suit && card.suit !== 'bird') return;
-        // Recipient must have warriors in clearing
+        // Recipient must have any pieces in clearing (warriors, buildings, or tokens).
         const cl = draft.map.clearings[v.clearing]!;
-        if ((cl.warriors[a.faction] ?? 0) <= 0) return;
+        const hasPieces = (cl.warriors[a.faction] ?? 0) > 0
+          || cl.buildings.some(b => b.faction === a.faction)
+          || cl.tokens.some(t => t.faction === a.faction);
+        if (!hasPieces) return;
+        // Aid costs one face-up item (exhausted).
+        if (!exhaustItem(v.items, a.itemKind)) return;
         const idx = draft.hands.vagabond.indexOf(a.cardId);
         if (idx < 0) return;
         draft.hands.vagabond.splice(idx, 1);
         draft.hands[a.faction].push(a.cardId);
         v.relationships[a.faction] = bumpRelationship(v.relationships[a.faction]);
+        // Score VP equal to the numeric relationship level reached (I=1, II=2, III=3, Allied=4).
+        const aidVp = aidVpForRelationship(v.relationships[a.faction]);
+        if (aidVp > 0) draft.scores.vagabond += aidVp;
         v.daylightActionsLeft -= 1;
-        draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Aided ${a.faction}; relationship → ${v.relationships[a.faction]}.` });
+        draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Aided ${a.faction} (exhausted ${a.itemKind}); relationship → ${v.relationships[a.faction]}${aidVp > 0 ? ` (+${aidVp} VP)` : ''}.` });
+      });
+
+    case 'vagabond.stealCard':
+      // Thief only: take a random card from a hostile faction's hand (costs 1 face-up item,
+      // improves relationship, scores VP — same as Aid but gets rather than gives).
+      return produce(state, draft => {
+        if (draft.phase !== 'daylight') return;
+        const v = draft.factions.vagabond!;
+        if (v.character !== 'thief') return;
+        if (v.daylightActionsLeft <= 0) return;
+        if (v.relationships[a.faction] !== 'hostile') return;
+        if (draft.hands[a.faction].length === 0) return;
+        const cl = draft.map.clearings[v.clearing]!;
+        const hasPieces = (cl.warriors[a.faction] ?? 0) > 0
+          || cl.buildings.some(b => b.faction === a.faction)
+          || cl.tokens.some(t => t.faction === a.faction);
+        if (!hasPieces) return;
+        if (!exhaustItem(v.items, a.itemKind)) return;
+        // Steal: take a random card from the hostile faction (deterministic via rngStep).
+        const rng = mulberry32(mixSeed(state.seed, state.rngStep + 1));
+        draft.rngStep += 1;
+        const stolenIdx = Math.floor(rng() * draft.hands[a.faction].length);
+        const stolen = draft.hands[a.faction].splice(stolenIdx, 1)[0]!;
+        draft.hands.vagabond.push(stolen);
+        v.relationships[a.faction] = bumpRelationship(v.relationships[a.faction]);
+        const stealVp = aidVpForRelationship(v.relationships[a.faction]);
+        if (stealVp > 0) draft.scores.vagabond += stealVp;
+        v.daylightActionsLeft -= 1;
+        draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Thief stole a card from ${a.faction} (exhausted ${a.itemKind}); relationship → ${v.relationships[a.faction]}${stealVp > 0 ? ` (+${stealVp} VP)` : ''}.` });
+      });
+
+    case 'vagabond.placeHideout':
+      // Ranger only: place a Hideout camp token in current clearing (costs 1 daylight action).
+      return produce(state, draft => {
+        if (draft.phase !== 'daylight') return;
+        const v = draft.factions.vagabond!;
+        if (v.character !== 'ranger') return;
+        if (v.daylightActionsLeft <= 0) return;
+        if (v.inForest) return;
+        v.hideout = v.clearing;
+        v.daylightActionsLeft -= 1;
+        draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Ranger placed Hideout at clearing ${v.clearing}.` });
       });
 
     case 'vagabond.strike':
@@ -196,13 +350,28 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
         const v = draft.factions.vagabond!;
         if (v.daylightActionsLeft <= 0) return;
         if (a.clearing !== v.clearing) return;
-        if (v.relationships[a.faction] === 'allied') return;
         if (!exhaustItem(v.items, 'crossbow')) return;
-        const cl = draft.map.clearings[v.clearing]!;
-        if ((cl.warriors[a.faction] ?? 0) <= 0) return;
-        returnWarriors(draft, v.clearing, a.faction, 1);
-        // +1 VP if hostile target
-        if (v.relationships[a.faction] === 'hostile') draft.scores.vagabond += 1;
+        const clS = draft.map.clearings[v.clearing]!;
+        const defWarriorsS = clS.warriors[a.faction] ?? 0;
+        let pieceRemovedS = false;
+        if (defWarriorsS > 0) {
+          returnWarriors(draft, v.clearing, a.faction, 1);
+          if (v.relationships[a.faction] === 'hostile') draft.scores.vagabond += 1;
+          pieceRemovedS = true;
+        } else {
+          const bIdx = clS.buildings.findIndex(b => b.faction === a.faction);
+          if (bIdx >= 0) { clS.buildings.splice(bIdx, 1); draft.scores.vagabond += 1; pieceRemovedS = true; }
+          else {
+            const tIdx = clS.tokens.findIndex(t => t.faction === a.faction);
+            if (tIdx >= 0) { clS.tokens.splice(tIdx, 1); draft.scores.vagabond += 1; pieceRemovedS = true; }
+          }
+        }
+        // Removing pieces from a non-hostile faction requires the player to either
+        // discard a matching card or accept hostility.
+        if (pieceRemovedS && v.relationships[a.faction] !== 'hostile') {
+          const metaS = AUTUMN_MAP.clearings.find(c => c.id === v.clearing)!;
+          v.pendingRelationshipCost = { faction: a.faction, suit: metaS.suit as CardSuit };
+        }
         v.daylightActionsLeft -= 1;
       });
 
@@ -223,13 +392,35 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
         if (v.inForest) return;
         const card = getCard(a.cardId);
         if (card.category !== 'item' && card.category !== 'persistent' && card.category !== 'favor') return;
-        // Vagabond crafts by exhausting one face-up item (the "hammer power").
-        if (!exhaustItem(v.items, 'hammer')) return;
+        // Vagabond crafts by exhausting one hammer per cost point. Each hammer
+        // provides 1 power of the current clearing's suit; bird-cost cards accept any suit.
+        const meta = AUTUMN_MAP.clearings.find(c => c.id === v.clearing)!;
+        const costEntries = Object.entries(card.craftCost) as [string, number][];
+        const hammersNeeded = costEntries.reduce((s, [, n]) => s + n, 0);
+        const suitOk = costEntries.every(([s]) => s === 'bird' || s === meta.suit);
+        if (!suitOk || hammersNeeded === 0) return;
+        // Tinker (Tinkerer) may exhaust any face-up items; others must use hammers.
+        if (v.character === 'tinker') {
+          let remaining = hammersNeeded;
+          for (const it of v.items) {
+            if (remaining <= 0) break;
+            if (it.state === 'face-up' && !it.exhausted) { it.exhausted = true; remaining -= 1; }
+          }
+          if (remaining > 0) return; // not enough items
+        } else {
+          for (let h = 0; h < hammersNeeded; h++) {
+            if (!exhaustItem(v.items, 'hammer')) return;
+          }
+        }
         const idx = draft.hands.vagabond.indexOf(a.cardId);
         if (idx < 0) return;
         draft.hands.vagabond.splice(idx, 1);
         if (card.craftVp) draft.scores.vagabond += card.craftVp;
-        if (card.item) draft.itemSupply.push(card.item);
+        if (card.item) {
+          // Crafted item goes to the Vagabond (track items go face-up if room, else satchel).
+          const itemState = canGainItem(v.items, card.item) ? 'face-up' : 'face-down';
+          v.items.push({ kind: card.item, state: itemState, exhausted: false });
+        }
         if (card.category === 'persistent') draft.craftedPersistents.push({ faction: 'vagabond', cardId: a.cardId });
         if (card.category === 'favor') applyFavor(draft, card.suit, 'vagabond');
         draft.discard.push(a.cardId);
@@ -297,6 +488,7 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
         if (draft.phase !== 'evening') return;
         const v = draft.factions.vagabond!;
         if (v.pendingDiscard > 0) return;
+        if (v.pendingItemRemoval > 0) return;
         const coinCount = v.items.filter(i => i.kind === 'coin' && i.state === 'face-up').length;
         const draws = 1 + coinCount;
         for (let i = 0; i < draws; i++) {
@@ -306,13 +498,34 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
         }
         const bagCount = v.items.filter(i => i.kind === 'bag' && i.state === 'face-up').length;
         const limit = 5 + bagCount;
-        const excess = draft.hands.vagabond.length - limit;
-        if (excess > 0) {
-          v.pendingDiscard = excess;
-          draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Evening: drew ${draws}, must discard ${excess} (limit ${limit}).` });
+        const cardExcess = draft.hands.vagabond.length - limit;
+        if (cardExcess > 0) {
+          v.pendingDiscard = cardExcess;
+          draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Evening: drew ${draws}, must discard ${cardExcess} (limit ${limit}).` });
+          return;
+        }
+        // Check item capacity: satchel + damaged items must not exceed capacity.
+        const capacity = itemCapacity(v.items);
+        const itemExcess = satchelAndDamagedCount(v.items) - capacity;
+        if (itemExcess > 0) {
+          v.pendingItemRemoval = itemExcess;
+          draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Evening: item capacity ${capacity}, must permanently remove ${itemExcess} item(s) from satchel/damaged.` });
           return;
         }
         finishVagabondTurn(draft, draws);
+      });
+
+    case 'vagabond.removeItem':
+      return produce(state, draft => {
+        const v = draft.factions.vagabond!;
+        if (v.pendingItemRemoval <= 0) return;
+        const item = v.items[a.itemIdx];
+        if (!item) return;
+        if (item.state !== 'face-down' && item.state !== 'damaged') return;
+        v.items.splice(a.itemIdx, 1);
+        v.pendingItemRemoval -= 1;
+        draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Permanently removed ${item.kind} from ${item.state === 'face-down' ? 'satchel' : 'damaged box'}.` });
+        if (v.pendingItemRemoval === 0) finishVagabondTurn(draft, 0);
       });
 
     case 'vagabond.discardCard':
@@ -327,6 +540,31 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
         if (v.pendingDiscard === 0) finishVagabondTurn(draft, 0);
       });
 
+    case 'vagabond.payRelationshipCost':
+      return produce(state, draft => {
+        const v = draft.factions.vagabond!;
+        if (!v.pendingRelationshipCost) return;
+        const card = getCard(a.cardId);
+        if (card.suit !== v.pendingRelationshipCost.suit && card.suit !== 'bird') return;
+        const idx = draft.hands.vagabond.indexOf(a.cardId);
+        if (idx < 0) return;
+        draft.hands.vagabond.splice(idx, 1);
+        draft.discard.push(a.cardId);
+        const faction = v.pendingRelationshipCost.faction;
+        v.pendingRelationshipCost = undefined;
+        draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Discarded ${card.name} to preserve relationship with ${faction}.` });
+      });
+
+    case 'vagabond.acceptHostility':
+      return produce(state, draft => {
+        const v = draft.factions.vagabond!;
+        if (!v.pendingRelationshipCost) return;
+        const faction = v.pendingRelationshipCost.faction;
+        v.relationships[faction] = 'hostile';
+        v.pendingRelationshipCost = undefined;
+        draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Accepted hostility with ${faction}.` });
+      });
+
     default:
       return state;
   }
@@ -337,6 +575,7 @@ function finishVagabondTurn(draft: GameState, _draws: number): void {
   v.slipped = false;
   v.daylightActionsLeft = 6;
   v.pendingDiscard = 0;
+  v.pendingItemRemoval = 0;
   draft.activeIndex = (draft.activeIndex + 1) % draft.factionOrder.length;
   if (draft.activeIndex === 0) draft.turn += 1;
   draft.phase = 'birdsong';
@@ -359,9 +598,25 @@ export function vagabondLegalActions(state: GameState): Action[] {
       for (const fid of forestsAtClearing(AUTUMN_MAP, v.clearing)) {
         out.push({ kind: 'vagabond.slipToForest', forestId: fid });
       }
+      // Ranger: slip to Hideout camp instead of walking.
+      if (v.character === 'ranger' && v.hideout && v.hideout !== v.clearing) {
+        out.push({ kind: 'vagabond.slipToHideout' });
+      }
     }
   }
   if (state.phase === 'daylight' && v.daylightActionsLeft > 0) {
+    // Pending relationship cost must be resolved before any other action.
+    if (v.pendingRelationshipCost) {
+      const { suit } = v.pendingRelationshipCost;
+      for (const cardId of state.hands.vagabond) {
+        const card = getCard(cardId);
+        if (card.suit === suit || card.suit === 'bird') {
+          out.push({ kind: 'vagabond.payRelationshipCost', cardId });
+        }
+      }
+      out.push({ kind: 'vagabond.acceptHostility' });
+      return out;
+    }
     // Move + forest entry/exit. While in a forest, almost everything else
     // is gated off — you have to step back into a clearing first.
     if (v.inForest) {
@@ -373,33 +628,79 @@ export function vagabondLegalActions(state: GameState): Action[] {
         }
       }
     } else {
-      if (findItem(v.items, 'boots')) {
+      // Movement: 1 boot always required; Thief (Nimble) never needs the extra hostile boot.
+      const hasBoot = findItem(v.items, 'boots');
+      const hasTwoBoots = v.items.filter(i => i.kind === 'boots' && i.state === 'face-up' && !i.exhausted).length >= 2;
+      if (hasBoot) {
         for (const nb of getAdjacent(AUTUMN_MAP, v.clearing)) {
-          out.push({ kind: 'vagabond.move', to: nb });
+          const destCl = state.map.clearings[nb]!;
+          const hasHostile = (['marquise', 'eyrie', 'alliance'] as const).some(f =>
+            v.relationships[f] === 'hostile' && (destCl.warriors[f] ?? 0) > 0,
+          );
+          // Thief (Nimble) can always move with 1 boot; others need a 2nd boot for hostile destinations.
+          if (!hasHostile || v.character === 'thief' || hasTwoBoots) {
+            out.push({ kind: 'vagabond.move', to: nb });
+          }
         }
         for (const fid of forestsAtClearing(AUTUMN_MAP, v.clearing)) {
           out.push({ kind: 'vagabond.enterForest', forestId: fid });
         }
       }
       const meta = AUTUMN_MAP.clearings.find(c => c.id === v.clearing)!;
+      const cl = state.map.clearings[v.clearing]!;
       // Explore
-      if (meta.hasRuin && findItem(v.items, 'torch') && v.ruinsExplored < 4) {
+      if (meta.hasRuin && !v.exploredRuins.includes(v.clearing) && findItem(v.items, 'torch')) {
         out.push({ kind: 'vagabond.exploreRuin' });
       }
-      // Aid
-      const cl = state.map.clearings[v.clearing]!;
-      for (const cardId of state.hands.vagabond) {
-        const card = getCard(cardId);
-        if (card.suit !== meta.suit && card.suit !== 'bird') continue;
+      // Battle (costs 1 sword; Vagabond pawn deals hits)
+      if (findItem(v.items, 'sword')) {
         for (const f of ['marquise', 'eyrie', 'alliance'] as const) {
-          if ((cl.warriors[f] ?? 0) > 0) out.push({ kind: 'vagabond.aid', faction: f, cardId });
+          const hasPieces = (cl.warriors[f] ?? 0) > 0
+            || cl.buildings.some(b => b.faction === f)
+            || cl.tokens.some(t => t.faction === f);
+          if (hasPieces) out.push({ kind: 'vagabond.battle', defender: f, clearing: v.clearing });
         }
       }
-      // Strike
+      // Aid (costs 1 face-up item; recipient must have any pieces here)
+      const availableItemKinds = new Set(
+        v.items.filter(it => it.state === 'face-up' && !it.exhausted).map(it => it.kind),
+      );
+      if (availableItemKinds.size > 0) {
+        for (const cardId of state.hands.vagabond) {
+          const card = getCard(cardId);
+          if (card.suit !== meta.suit && card.suit !== 'bird') continue;
+          for (const f of ['marquise', 'eyrie', 'alliance'] as const) {
+            const hasPieces = (cl.warriors[f] ?? 0) > 0
+              || cl.buildings.some(b => b.faction === f)
+              || cl.tokens.some(t => t.faction === f);
+            if (!hasPieces) continue;
+            for (const itemKind of availableItemKinds) {
+              out.push({ kind: 'vagabond.aid', faction: f, cardId, itemKind });
+            }
+          }
+        }
+        // Thief (Steal): may take a card from a hostile faction instead of giving one.
+        if (v.character === 'thief') {
+          for (const f of ['marquise', 'eyrie', 'alliance'] as const) {
+            if (v.relationships[f] !== 'hostile') continue;
+            if (state.hands[f].length === 0) continue;
+            const hasPieces = (cl.warriors[f] ?? 0) > 0
+              || cl.buildings.some(b => b.faction === f)
+              || cl.tokens.some(t => t.faction === f);
+            if (!hasPieces) continue;
+            for (const itemKind of availableItemKinds) {
+              out.push({ kind: 'vagabond.stealCard', faction: f, itemKind });
+            }
+          }
+        }
+      }
+      // Strike (costs 1 crossbow; targets warriors first, then buildings/tokens)
       if (findItem(v.items, 'crossbow')) {
         for (const f of ['marquise', 'eyrie', 'alliance'] as const) {
-          if (v.relationships[f] === 'allied') continue;
-          if ((cl.warriors[f] ?? 0) > 0) out.push({ kind: 'vagabond.strike', clearing: v.clearing, faction: f });
+          const hasPieces = (cl.warriors[f] ?? 0) > 0
+            || cl.buildings.some(b => b.faction === f)
+            || cl.tokens.some(t => t.faction === f);
+          if (hasPieces) out.push({ kind: 'vagabond.strike', clearing: v.clearing, faction: f });
         }
       }
       // Repair
@@ -407,14 +708,26 @@ export function vagabondLegalActions(state: GameState): Action[] {
         const damaged = v.items.find(i => i.state === 'damaged')!;
         out.push({ kind: 'vagabond.repair', itemKind: damaged.kind });
       }
-      // Craft — exhausts a hammer, consumes a card.
-      if (findItem(v.items, 'hammer')) {
+      // Craft — Tinker may use any face-up items; others must use hammers.
+      // Each item/hammer gives 1 power of the clearing's suit; bird-cost cards accept any suit.
+      const availableCraftPower = v.character === 'tinker'
+        ? v.items.filter(i => i.state === 'face-up' && !i.exhausted).length
+        : v.items.filter(i => i.kind === 'hammer' && i.state === 'face-up' && !i.exhausted).length;
+      if (availableCraftPower > 0) {
         for (const cardId of state.hands.vagabond) {
           const card = getCard(cardId);
-          if (card.category === 'item' || card.category === 'persistent' || card.category === 'favor') {
-            out.push({ kind: 'vagabond.craft', cardId });
-          }
+          if (card.category !== 'item' && card.category !== 'persistent' && card.category !== 'favor') continue;
+          const costEntries = Object.entries(card.craftCost) as [string, number][];
+          const powerNeeded = costEntries.reduce((s, [, n]) => s + n, 0);
+          if (powerNeeded === 0) continue;
+          if (powerNeeded > availableCraftPower) continue;
+          const suitOk = costEntries.every(([s]) => s === 'bird' || s === meta.suit);
+          if (suitOk) out.push({ kind: 'vagabond.craft', cardId });
         }
+      }
+      // Ranger: place Hideout camp in current clearing.
+      if (v.character === 'ranger') {
+        out.push({ kind: 'vagabond.placeHideout' });
       }
       // Complete quest
       for (const questId of v.questDisplay) {
@@ -440,9 +753,15 @@ export function vagabondLegalActions(state: GameState): Action[] {
       }
     }
   }
-  if (state.phase === 'daylight') out.push({ kind: 'vagabond.endDaylight' });
+  if (state.phase === 'daylight' && !v.pendingRelationshipCost) out.push({ kind: 'vagabond.endDaylight' });
   if (state.phase === 'evening') {
-    if (v.pendingDiscard > 0) {
+    if (v.pendingItemRemoval > 0) {
+      v.items.forEach((item, idx) => {
+        if (item.state === 'face-down' || item.state === 'damaged') {
+          out.push({ kind: 'vagabond.removeItem', itemIdx: idx });
+        }
+      });
+    } else if (v.pendingDiscard > 0) {
       for (const cardId of state.hands.vagabond) {
         out.push({ kind: 'vagabond.discardCard', cardId });
       }

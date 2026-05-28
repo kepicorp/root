@@ -26,6 +26,17 @@ export function startGame(state: GameState): GameState {
 export function advancePhase(state: GameState): GameState {
   return produce(state, draft => {
     if (draft.phase === 'setup' || draft.phase === 'gameOver') return;
+    // Block advance if the active faction has unresolved pending state.
+    if (draft.pendingOutrage) return;
+    const active = draft.factionOrder[draft.activeIndex];
+    const m = draft.factions.marquise;
+    const e = draft.factions.eyrie;
+    const al = draft.factions.alliance;
+    const v = draft.factions.vagabond;
+    if (active === 'marquise' && m && m.pendingDiscard > 0) return;
+    if (active === 'eyrie' && e && e.pendingDiscard > 0) return;
+    if (active === 'alliance' && al && al.pendingDiscard > 0) return;
+    if (active === 'vagabond' && v && (v.pendingDiscard > 0 || v.pendingItemRemoval > 0 || v.pendingRelationshipCost)) return;
     const i = PHASE_SEQUENCE.indexOf(draft.phase);
     if (i < 0) return;
     if (i < PHASE_SEQUENCE.length - 1) {
@@ -89,6 +100,25 @@ export function onEnterBirdsong(draft: GameState): void {
     if (c) {
       draft.hands.eyrie.push(c);
       draft.log.push({ turn: draft.turn, faction: 'eyrie', message: 'Emergency Orders: drew 1 card.' });
+    }
+  }
+  if (active === 'vagabond' && draft.factions.vagabond) {
+    const v = draft.factions.vagabond;
+    const teaCount = v.items.filter(i => i.kind === 'tea' && i.state === 'face-up').length;
+    let toRefresh = 3 + teaCount;
+    let refreshed = 0;
+    for (const it of v.items) {
+      if (toRefresh <= 0) break;
+      if (it.exhausted && it.state === 'face-up') {
+        it.exhausted = false;
+        toRefresh -= 1;
+        refreshed += 1;
+      }
+    }
+    // Ensure daylight actions are ready before the player clicks "Start daylight".
+    v.daylightActionsLeft = 6;
+    if (refreshed > 0) {
+      draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Refreshed ${refreshed} item(s).` });
     }
   }
 }

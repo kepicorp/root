@@ -193,7 +193,7 @@ export function allianceReducer(state: GameState, action: Action): GameState {
         if (idx < 0) return;
         draft.hands.alliance.splice(idx, 1);
         if (card.craftVp) draft.scores.alliance += card.craftVp;
-        if (card.item) draft.itemSupply.push(card.item);
+        if (card.item) { draft.itemSupply.push(card.item); draft.craftedItemLog.push({ faction: 'alliance', item: card.item }); }
         if (card.category === 'persistent') draft.craftedPersistents.push({ faction: 'alliance', cardId: a.cardId });
         if (card.category === 'favor') applyFavor(draft, card.suit, 'alliance');
         draft.discard.push(a.cardId);

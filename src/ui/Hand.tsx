@@ -28,17 +28,21 @@ export function Hand({ state, faction }: HandProps) {
   }
   const cards = state.hands[faction];
   const icon = factionIcon(faction);
+  const bagCount = faction === 'vagabond'
+    ? (state.factions.vagabond?.items.filter(i => i.kind === 'bag' && i.state === 'face-up').length ?? 0)
+    : 0;
+  const handLimit = 5 + bagCount;
   return (
     <div className="hand">
       <div className="hand-label">
         {icon && <img src={icon} alt="" className="faction-icon" />}
-        Hand · {faction} <span className="dim hand-count">({cards.length})</span>
+        Hand · {faction} <span className="dim hand-count">({cards.length}/{handLimit})</span>
       </div>
       <div className="hand-cards">
         {cards.length === 0 && <em className="dim">— empty —</em>}
         {cards.map((id) => {
           const c = getCard(id);
-          const art = cardArt(c.name);
+          const art = cardArt(c);
           return (
             <div
               key={id}

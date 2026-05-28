@@ -192,6 +192,14 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
         e.resolutionLeft!.move -= 1;
         draft.lastMoveClearing = a.to;
         draft.log.push({ turn: draft.turn, faction: 'eyrie', message: `Moved 1 from ${a.from} → ${a.to}.` });
+        // Outrage: if destination has Alliance sympathy, moving faction must pay
+        if (!draft.pendingOutrage) {
+          const destCl = draft.map.clearings[a.to]!;
+          if (destCl.tokens.some(t => t.faction === 'alliance' && t.kind === 'sympathy')) {
+            const destMeta = AUTUMN_MAP.clearings.find(c => c.id === a.to)!;
+            draft.pendingOutrage = { clearing: a.to, faction: 'eyrie', suit: destMeta.suit as 'fox' | 'mouse' | 'rabbit' };
+          }
+        }
         maybeFinishResolution(draft);
       });
 
@@ -239,7 +247,7 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
         const cl = draft.map.clearings[a.clearing]!;
         if (cl.buildings.some(b => b.faction === 'eyrie' && b.kind === 'roost')) return;
         const used = cl.buildings.length + cl.tokens.filter(t => t.kind === 'keep').length;
-        if (used >= meta.buildingSlots) return;
+        if (used >= meta.buildingSlots + (cl.extraBuildingSlots ?? 0)) return;
         if (e.roosts.length >= 7) return;
         cl.buildings.push({ faction: 'eyrie', kind: 'roost' });
         e.roosts.push(a.clearing);
@@ -380,6 +388,24 @@ export function eyrieLegalActions(state: GameState): Action[] {
   const out: Action[] = [];
   const e = state.factions.eyrie;
   if (!e) return out;
+
+  // If outrage is pending for eyrie, ONLY resolve it
+  if (state.pendingOutrage?.faction === 'eyrie') {
+    const o = state.pendingOutrage;
+    const matchingCards = state.hands.eyrie.filter(id => {
+      const c = getCard(id);
+      return c.suit === o.suit || c.suit === 'bird';
+    });
+    if (matchingCards.length > 0) {
+      for (const cardId of matchingCards) {
+        out.push({ kind: 'system.resolveOutrage', cardId });
+      }
+    } else {
+      out.push({ kind: 'system.resolveOutrage' });
+    }
+    return out;
+  }
+
   if (state.phase === 'birdsong') {
     // Official rule: exactly one card added to the Decree per birdsong.
     if (!e.needsLeaderChoice && e.cardsAddedThisBirdsong < 2) {
@@ -436,7 +462,7 @@ export function eyrieLegalActions(state: GameState): Action[] {
           if (!eyrieRules(state, cm.id)) continue;
           if (cl.buildings.some(b => b.faction === 'eyrie' && b.kind === 'roost')) continue;
           const used = cl.buildings.length + cl.tokens.filter(t => t.kind === 'keep').length;
-          if (used < cm.buildingSlots && e.roosts.length < 7) {
+          if (used < cm.buildingSlots + (cl.extraBuildingSlots ?? 0) && e.roosts.length < 7) {
             out.push({ kind: 'eyrie.executeBuild', clearing: cm.id });
           }
         }

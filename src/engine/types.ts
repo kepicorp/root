@@ -40,6 +40,8 @@ export interface Clearing {
   suit: Suit;
   buildingSlots: number;
   hasRuin: boolean;
+  /** Item hidden under the ruin token (present only when hasRuin is true). */
+  ruinItem?: ItemKind;
   hasRiver?: boolean;
   x: number;
   y: number;
@@ -79,6 +81,12 @@ export interface ClearingState {
   buildings: BuildingInstance[];
   tokens: TokenInstance[];
   vagabondHere: boolean;
+  /** Bonus building slots added when a ruin in this clearing was explored. */
+  extraBuildingSlots?: number;
+  /** True once the Vagabond has explored the ruin here (removes the marker). */
+  ruinExplored?: boolean;
+  /** Item hidden under the ruin in this clearing (assigned randomly at game start). */
+  ruinItem?: ItemKind;
 }
 
 export interface MapState {
@@ -143,6 +151,11 @@ export interface GameState {
   lastBattleClearing?: ClearingId;
   /** Friend of X: this hand card counts as any suit for one action this turn. */
   wildCard?: CardId;
+  /** Set when a faction moves into a clearing with Alliance sympathy.
+   *  The moving faction must resolve this before taking further actions. */
+  pendingOutrage?: { clearing: ClearingId; faction: Faction; suit: 'fox' | 'mouse' | 'rabbit' };
+  /** Items crafted by each faction (item tokens they contributed to the supply). */
+  craftedItemLog: { faction: Faction; item: ItemKind }[];
 }
 
 export type ItemKind = 'sword' | 'hammer' | 'crossbow' | 'boots' | 'bag' | 'tea' | 'coin' | 'torch';
@@ -152,7 +165,8 @@ export type ItemKind = 'sword' | 'hammer' | 'crossbow' | 'boots' | 'bag' | 'tea'
 export type SystemAction =
   | { kind: 'system.advancePhase' }
   | { kind: 'system.endTurn' }
-  | { kind: 'system.playDominance'; faction: Faction; cardId: CardId };
+  | { kind: 'system.playDominance'; faction: Faction; cardId: CardId }
+  | { kind: 'system.resolveOutrage'; cardId?: CardId };
 
 export type CombatAction =
   | { kind: 'combat.declare'; clearing: ClearingId; attacker: Faction; defender: Faction }

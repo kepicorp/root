@@ -14,17 +14,17 @@ const clearings: readonly Clearing[] = [
   // Row 1 (top)
   { id: 1,  suit: 'fox',    buildingSlots: 2, hasRuin: false, x: 160, y: 140 },
   { id: 2,  suit: 'rabbit', buildingSlots: 2, hasRuin: false, x: 400, y: 140 },
-  { id: 3,  suit: 'mouse',  buildingSlots: 2, hasRuin: true,  x: 620, y: 140 },
+  { id: 3,  suit: 'mouse',  buildingSlots: 2, hasRuin: true,  ruinItem: 'crossbow', x: 620, y: 140 },
   { id: 4,  suit: 'fox',    buildingSlots: 1, hasRuin: false, hasRiver: true, x: 850, y: 140 },
   // Row 2 (middle)
   { id: 5,  suit: 'mouse',  buildingSlots: 2, hasRuin: false, x: 160, y: 400 },
-  { id: 6,  suit: 'rabbit', buildingSlots: 1, hasRuin: true,  x: 400, y: 400 },
+  { id: 6,  suit: 'rabbit', buildingSlots: 1, hasRuin: true,  ruinItem: 'hammer',   x: 400, y: 400 },
   { id: 7,  suit: 'fox',    buildingSlots: 2, hasRuin: false, x: 620, y: 400 },
-  { id: 8,  suit: 'rabbit', buildingSlots: 2, hasRuin: true,  hasRiver: true, x: 850, y: 400 },
+  { id: 8,  suit: 'rabbit', buildingSlots: 2, hasRuin: true,  ruinItem: 'boots',    hasRiver: true, x: 850, y: 400 },
   // Row 3 (bottom)
   { id: 9,  suit: 'rabbit', buildingSlots: 1, hasRuin: false, x: 160, y: 660 },
   { id: 10, suit: 'mouse',  buildingSlots: 2, hasRuin: false, x: 400, y: 660 },
-  { id: 11, suit: 'fox',    buildingSlots: 2, hasRuin: true,  hasRiver: true, x: 620, y: 660 },
+  { id: 11, suit: 'fox',    buildingSlots: 2, hasRuin: true,  ruinItem: 'sword',    hasRiver: true, x: 620, y: 660 },
   { id: 12, suit: 'mouse',  buildingSlots: 2, hasRuin: false, hasRiver: true, x: 850, y: 660 },
 ];
 

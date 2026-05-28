@@ -46,6 +46,7 @@ const MAP_DRIVEN: ReadonlySet<string> = new Set([
   'vagabond.slipToForest',
   'vagabond.enterForest',
   'vagabond.exitForest',
+  'vagabond.battle',
   'vagabond.strike',
   'vagabond.aid',
   'vagabond.repair',
@@ -53,6 +54,12 @@ const MAP_DRIVEN: ReadonlySet<string> = new Set([
   'vagabond.completeQuest',
   'vagabond.formCoalition',
   'vagabond.discardCard',
+  'vagabond.removeItem',
+  'vagabond.stealCard',
+  'vagabond.slipToHideout',
+  'vagabond.payRelationshipCost',
+  'vagabond.acceptHostility',
+  'system.resolveOutrage',
   'eyrie.addToDecree',
   'eyrie.executeRecruit',
   'eyrie.executeMove',
@@ -102,8 +109,11 @@ const ACTION_META: Record<string, ActionMeta> = {
   'alliance.endDaylight':         { label: 'End daylight',        group: 'end' },
   'alliance.evening':             { label: 'End evening',         group: 'end',         primary: true },
   // Vagabond
-  'vagabond.refresh':             { label: 'Refresh items',       group: 'birdsong',    primary: true },
+  'vagabond.refresh':             { label: 'Start daylight',      group: 'birdsong',    primary: true },
+  'vagabond.slipToHideout':      { label: 'Slip to Hideout',     group: 'birdsong' },
+  'vagabond.placeHideout':       { label: 'Place Hideout',       group: 'main' },
   'vagabond.exploreRuin':         { label: 'Explore ruin',        group: 'main',        primary: true },
+  'vagabond.battle':              { label: 'Battle',              group: 'main',        primary: true },
   'vagabond.aid':                 { label: 'Aid faction',         group: 'main' },
   'vagabond.strike':              { label: 'Strike',              group: 'main' },
   'vagabond.repair':              { label: 'Repair item',         group: 'main' },
@@ -138,6 +148,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
   const [craftPicking, setCraftPicking] = useState(false);
   const [spendBirdPicking, setSpendBirdPicking] = useState(false);
   const [aidPicking, setAidPicking] = useState(false);
+  const [stealPicking, setStealPicking] = useState(false);
   const [repairPicking, setRepairPicking] = useState(false);
   const [trainPicking, setTrainPicking] = useState(false);
   const [dominancePicking, setDominancePicking] = useState(false);
@@ -170,6 +181,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
     setCraftPicking(false);
     setSpendBirdPicking(false);
     setAidPicking(false);
+    setStealPicking(false);
     setRepairPicking(false);
     setTrainPicking(false);
     setDominancePicking(false);
@@ -282,8 +294,11 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
   const craftCards = new Set<string>();
   const spendBirdCards = new Set<string>();
   const trainOfficerCards = new Set<string>();
-  // Vagabond can aid: (card × faction with warriors here in matching suit).
-  const aidLegals: Array<{ cardId: string; faction: Exclude<Faction, 'vagabond'> }> = [];
+  const vagabondBattleDefenders = new Set<Faction>();
+  // Vagabond can aid: (card × faction × itemKind).
+  const aidLegals: Array<{ cardId: string; faction: Exclude<Faction, 'vagabond'>; itemKind: string }> = [];
+  // Thief can steal: (faction × itemKind).
+  const stealLegals: Array<{ faction: Exclude<Faction, 'vagabond'>; itemKind: string }> = [];
   // Vagabond can repair (per damaged item kind).
   const repairItems = new Set<string>();
   // Persistent card effects (any faction).
@@ -309,6 +324,11 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
   const brazenDemagogActions: Array<{ cardId: string; spendCard: string; takeDominance: string }> = [];
   const coalitionFactions = new Set<Faction>();
   const discardCardIds = new Set<string>();
+  const removeItemIdxs: Array<{ itemIdx: number; kind: string; state: string }> = [];
+  const payRelCostCards = new Set<string>();
+  let canAcceptHostility = false;
+  const outragePayCards = new Set<string>();
+  let outrageAutoResolve = false;
   let canSpreadSympathy = false;
   let canRevolt = false;
   let canOrganize = false;
@@ -322,6 +342,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
     else if (a.kind === 'marquise.overwork')   overworkCards.add(a.cardId);
     else if (a.kind === 'alliance.battle')     allianceBattleDefenders.add(a.defender);
     else if (a.kind === 'alliance.mobilize')   mobilizeCards.add(a.cardId);
+    else if (a.kind === 'vagabond.battle')     vagabondBattleDefenders.add(a.defender);
     else if (a.kind === 'vagabond.strike')     vagabondStrikeDefenders.add(a.faction);
     else if (a.kind === 'alliance.spreadSympathy') canSpreadSympathy = true;
     else if (a.kind === 'alliance.revolt')         canRevolt = true;
@@ -335,7 +356,8 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
     else if (a.kind === 'alliance.craft')             craftCards.add(a.cardId);
     else if (a.kind === 'alliance.trainOfficer')      trainOfficerCards.add(a.cardId);
     else if (a.kind === 'vagabond.craft')             craftCards.add(a.cardId);
-    else if (a.kind === 'vagabond.aid')               aidLegals.push({ cardId: a.cardId, faction: a.faction });
+    else if (a.kind === 'vagabond.aid')               aidLegals.push({ cardId: a.cardId, faction: a.faction, itemKind: a.itemKind });
+    else if (a.kind === 'vagabond.stealCard')         stealLegals.push({ faction: a.faction, itemKind: a.itemKind });
     else if (a.kind === 'vagabond.repair')            repairItems.add(a.itemKind);
     else if (a.kind === 'card.royalClaim')            royalClaimActions.push({ cardId: a.cardId });
     else if (a.kind === 'card.standAndDeliver')       standAndDeliverActions.push({ cardId: a.cardId, target: a.target });
@@ -359,6 +381,16 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
     else if (a.kind === 'card.brazenDemagogue')       brazenDemagogActions.push({ cardId: a.cardId, spendCard: a.spendCard, takeDominance: a.takeDominance });
     else if (a.kind === 'vagabond.formCoalition')    coalitionFactions.add(a.faction);
     else if (a.kind === 'vagabond.discardCard')      discardCardIds.add(a.cardId);
+    else if (a.kind === 'vagabond.removeItem') {
+      const item = state.factions.vagabond?.items[a.itemIdx];
+      if (item) removeItemIdxs.push({ itemIdx: a.itemIdx, kind: item.kind, state: item.state });
+    }
+    else if (a.kind === 'vagabond.payRelationshipCost') payRelCostCards.add(a.cardId);
+    else if (a.kind === 'vagabond.acceptHostility')     canAcceptHostility = true;
+    else if (a.kind === 'system.resolveOutrage') {
+      if (a.cardId) outragePayCards.add(a.cardId);
+      else outrageAutoResolve = true;
+    }
   }
   // canEyrieMove drives only the map hint; movement is map-driven via the
   // existing source→destination click flow, not an explicit button.
@@ -380,6 +412,9 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
   for (const d of allianceBattleDefenders) {
     intentButtons.push({ label: `Battle ${FACTION_LABEL[d]}`, intent: { kind: 'alliance.battle', defender: d }, group: 'main' });
   }
+  for (const d of vagabondBattleDefenders) {
+    intentButtons.push({ label: `Battle ${FACTION_LABEL[d]}`, intent: { kind: 'vagabond.battle', defender: d }, group: 'main' });
+  }
   for (const d of vagabondStrikeDefenders) {
     intentButtons.push({ label: `Strike ${FACTION_LABEL[d]}`, intent: { kind: 'vagabond.strike', defender: d }, group: 'main' });
   }
@@ -395,11 +430,29 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
   const intentButtonsByGroup: Record<'birdsong' | 'main', IntentButton[]> = { birdsong: [], main: [] };
   for (const b of intentButtons) intentButtonsByGroup[b.group].push(b);
 
+  // Greyed-out building buttons: slot is available somewhere but not enough wood
+  const greyedBuildings: { kind: 'sawmill' | 'workshop' | 'recruiter'; cost: number; missing: number }[] = [];
+  if (active === 'marquise' && state.phase === 'daylight') {
+    const marquise = state.factions.marquise;
+    if (marquise && marquise.daylightActionsLeft > 0 && marquise.marchMovesLeft === 0) {
+      const woodOnBoard = Object.values(state.map.clearings)
+        .reduce((s, cl) => s + cl.tokens.filter(t => t.faction === 'marquise' && t.kind === 'wood').length, 0);
+      for (const b of ['sawmill', 'workshop', 'recruiter'] as const) {
+        if (buildable.has(b)) continue;
+        if (marquise.buildings[b] >= 6) continue;
+        const cost = buildCost(marquise.buildings[b]);
+        const missing = Math.max(0, cost - woodOnBoard);
+        if (missing > 0) greyedBuildings.push({ kind: b, cost, missing });
+      }
+    }
+  }
+
   function intentEquals(a: MapIntent, b: MapIntent): boolean {
     if (a.kind !== b.kind) return false;
     if (a.kind === 'build' && b.kind === 'build')                       return a.building === b.building;
     if (a.kind === 'marquise.battle' && b.kind === 'marquise.battle')   return a.defender === b.defender;
     if (a.kind === 'alliance.battle' && b.kind === 'alliance.battle')   return a.defender === b.defender;
+    if (a.kind === 'vagabond.battle' && b.kind === 'vagabond.battle')   return a.defender === b.defender;
     if (a.kind === 'vagabond.strike' && b.kind === 'vagabond.strike')   return a.defender === b.defender;
     if (a.kind === 'eyrie.executeBattle' && b.kind === 'eyrie.executeBattle') return a.defender === b.defender;
     return true;
@@ -438,6 +491,22 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
         <button className="btn ghost small undo-btn" onClick={onUndo}>↩ Undo</button>
       )}
 
+      {state.phase === 'daylight' && active === 'marquise' && state.factions.marquise && (
+        <div className="actionbar-counter">
+          Actions left: <strong>{state.factions.marquise.daylightActionsLeft}</strong>
+        </div>
+      )}
+      {state.phase === 'daylight' && active === 'alliance' && state.factions.alliance && (
+        <div className="actionbar-counter">
+          Actions left: <strong>{state.factions.alliance.daylightActionsLeft}</strong>
+        </div>
+      )}
+      {state.phase === 'daylight' && active === 'vagabond' && state.factions.vagabond && (
+        <div className="actionbar-counter">
+          Actions left: <strong>{state.factions.vagabond.daylightActionsLeft}</strong>
+        </div>
+      )}
+
       {marchMovesLeft > 0 && (
         <div className="actionbar-hint map-hint" style={{ borderColor: '#f0c060', color: '#f0e2c2' }}>
           ⚔ <strong>March in progress</strong> — {marchMovesLeft} move{marchMovesLeft === 1 ? '' : 's'} remaining.
@@ -464,6 +533,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
         const showCraft = g === 'main' && craftCards.size > 0;
         const showSpendBird = g === 'bonus' && spendBirdCards.size > 0;
         const showAid = g === 'main' && aidLegals.length > 0;
+        const showSteal = g === 'main' && stealLegals.length > 0;
         const showRepair = g === 'main' && repairItems.size > 0;
         const showTrain = g === 'main' && trainOfficerCards.size > 0;
         // Dominance card may be played during the player's birdsong once
@@ -500,6 +570,9 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
         const showBrazenDemagog    = g === 'end'      && brazenDemagogActions.length > 0;
         const showCoalition        = g === 'main'     && coalitionFactions.size > 0;
         const showDiscard          = g === 'end'      && discardCardIds.size > 0;
+        const showRemoveItem       = g === 'end'      && removeItemIdxs.length > 0;
+        const showPayRelationship  = g === 'main'     && (payRelCostCards.size > 0 || canAcceptHostility);
+        const showOutrage          = g === 'main'     && (outragePayCards.size > 0 || outrageAutoResolve);
         if (list.length === 0 && ibs.length === 0
             && !showOverwork && !showMobilize && !showCraft
             && !showSpendBird && !showAid && !showRepair && !showTrain
@@ -510,7 +583,9 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
             && !showRiversteads && !showSupplyTrain && !showRaidingParty && !showStandardBearer
             && !showTactician && !showSquires && !showFriendWildcard && !showSpyNetwork
             && !showShadowCouncil && !showApprentice && !showSilverTongue && !showBrazenDemagog
-            && !showCoalition && !showDiscard) return null;
+            && !showCoalition && !showDiscard && !showRemoveItem && !showSteal
+            && !showPayRelationship && !showOutrage
+            && greyedBuildings.length === 0) return null;
         const overworkArmed = mapIntent?.kind === 'marquise.overwork';
         return (
           <div key={g} className={`action-group action-group-${g}`}>
@@ -569,6 +644,16 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                 >
                   <span className="action-label">Aid faction</span>
                   {aidPicking && <span className="action-detail">pick a card + recipient below</span>}
+                </button>
+              )}
+              {showSteal && (
+                <button
+                  className={`btn action-btn ${stealPicking ? 'armed' : ''} faction-${active}`}
+                  onClick={() => setStealPicking(p => !p)}
+                  title="Thief: take a card from a hostile faction's hand instead of giving one"
+                >
+                  <span className="action-label">Steal card</span>
+                  {stealPicking && <span className="action-detail">pick a faction + item below</span>}
                 </button>
               )}
               {showRepair && (
@@ -818,6 +903,18 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                   {coalitionPicking && <span className="action-detail">pick a faction below</span>}
                 </button>
               )}
+              {g === 'main' && greyedBuildings.map(({ kind, cost, missing }) => (
+                <button
+                  key={`greyed-${kind}`}
+                  className={`btn action-btn faction-${active}`}
+                  disabled
+                  style={{ opacity: 0.45 }}
+                  title={`Need ${missing} more wood to build`}
+                >
+                  <span className="action-label">{BUILDING_LABEL[kind]} ({cost} wood)</span>
+                  <span className="action-detail">need {missing} more wood</span>
+                </button>
+              ))}
               {list.filter(a => !a.kind.startsWith('card.')).slice(0, 20).map((a, i) => {
                 const meta = ACTION_META[a.kind];
                 const label = meta?.label ?? a.kind.split('.')[1];
@@ -952,28 +1049,55 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
             {showAid && aidPicking && (
               <div className="action-card-picker">
                 <div className="action-card-picker-title">
-                  Aid — pick a card + recipient
+                  Aid — pick a card + recipient (exhausts an item)
                   <button className="btn ghost small" onClick={() => setAidPicking(false)} aria-label="Cancel">×</button>
                 </div>
                 <div className="action-card-picker-list">
-                  {aidLegals.map(({ cardId, faction }, i) => {
+                  {[...new Map(aidLegals.map(a => [`${a.cardId}-${a.faction}-${a.itemKind}`, a])).values()].map(({ cardId, faction, itemKind }, i) => {
                     const c = getCard(cardId);
+                    const relNow = state.factions.vagabond?.relationships[faction as Exclude<Faction, 'vagabond'>];
+                    const REL_NEXT: Record<string, string | number> = { hostile: 'indifferent', indifferent: 1, '1': 2, '2': 3, '3': 'allied' };
+                    const relAfter = relNow != null ? REL_NEXT[String(relNow)] : undefined;
+                    const VP_FOR_REL: Record<string, number> = { '1': 1, '2': 2, '3': 3, allied: 4 };
+                    const aidVp = relAfter != null ? (VP_FOR_REL[String(relAfter)] ?? 0) : 0;
                     return (
                       <button
-                        key={`${cardId}-${faction}-${i}`}
+                        key={`${cardId}-${faction}-${itemKind}-${i}`}
                         className="action-card-pick"
                         style={{ borderColor: SUIT_COLOR[c.suit] }}
                         onClick={() => {
-                          dispatch({ kind: 'vagabond.aid', cardId, faction });
+                          dispatch({ kind: 'vagabond.aid', cardId, faction, itemKind: itemKind as never });
                           setAidPicking(false);
                         }}
                       >
                         <span className="action-card-pick-suit" style={{ background: SUIT_COLOR[c.suit] }} />
                         <span className="action-card-pick-suit-label" style={{ color: SUIT_COLOR[c.suit] }}>{c.suit}</span>
-                        <span className="action-card-pick-name">{c.name} → <strong>{faction}</strong></span>
+                        <span className="action-card-pick-name">{c.name} → <strong>{faction}</strong> <span className="dim">(exhaust {itemKind})</span>{aidVp > 0 && <span className="action-vp-hint"> +{aidVp} VP</span>}</span>
                       </button>
                     );
                   })}
+                </div>
+              </div>
+            )}
+            {showSteal && stealPicking && (
+              <div className="action-card-picker">
+                <div className="action-card-picker-title">
+                  Steal — take a card from a hostile faction (exhaust an item)
+                  <button className="btn ghost small" onClick={() => setStealPicking(false)} aria-label="Cancel">×</button>
+                </div>
+                <div className="action-card-picker-list">
+                  {[...new Map(stealLegals.map(s => [`${s.faction}-${s.itemKind}`, s])).values()].map(({ faction, itemKind }, i) => (
+                    <button
+                      key={`${faction}-${itemKind}-${i}`}
+                      className="action-card-pick"
+                      onClick={() => {
+                        dispatch({ kind: 'vagabond.stealCard', faction, itemKind: itemKind as never });
+                        setStealPicking(false);
+                      }}
+                    >
+                      <span className="action-card-pick-name">Steal from <strong>{faction}</strong> <span className="dim">(exhaust {itemKind})</span><span className="action-vp-hint"> hostile→indiff</span></span>
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
@@ -1378,6 +1502,78 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                 </div>
               </div>
             )}
+            {showPayRelationship && (
+              <div className="action-card-picker">
+                <div className="action-card-picker-title">
+                  You removed pieces from a non-hostile faction — discard a matching card to preserve the relationship, or accept hostility.
+                  {state.factions.vagabond?.pendingRelationshipCost && (
+                    <span className="dim"> (clearing suit: {state.factions.vagabond.pendingRelationshipCost.suit})</span>
+                  )}
+                </div>
+                <div className="action-card-picker-list">
+                  {Array.from(payRelCostCards).map(id => {
+                    const c = getCard(id);
+                    return (
+                      <button
+                        key={id}
+                        className="action-card-pick"
+                        style={{ borderColor: SUIT_COLOR[c.suit] }}
+                        onClick={() => dispatch({ kind: 'vagabond.payRelationshipCost', cardId: id })}
+                      >
+                        <span className="action-card-pick-suit" style={{ background: SUIT_COLOR[c.suit] }} />
+                        <span className="action-card-pick-suit-label" style={{ color: SUIT_COLOR[c.suit] }}>{c.suit}</span>
+                        <span className="action-card-pick-name">{c.name}</span>
+                      </button>
+                    );
+                  })}
+                  {canAcceptHostility && (
+                    <button
+                      className="action-card-pick"
+                      style={{ borderColor: '#c44' }}
+                      onClick={() => dispatch({ kind: 'vagabond.acceptHostility' })}
+                    >
+                      <span className="action-card-pick-name" style={{ color: '#c44' }}>Accept hostility</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+            {showOutrage && (
+              <div className="action-card-picker">
+                <div className="action-card-picker-title">
+                  <strong>Outrage!</strong> You moved into a clearing with Alliance sympathy.
+                  {state.pendingOutrage && (
+                    <span className="dim"> Clearing {state.pendingOutrage.clearing} ({state.pendingOutrage.suit})</span>
+                  )}
+                </div>
+                <div className="action-card-picker-list">
+                  {Array.from(outragePayCards).map(id => {
+                    const c = getCard(id);
+                    return (
+                      <button
+                        key={id}
+                        className="action-card-pick"
+                        style={{ borderColor: SUIT_COLOR[c.suit] }}
+                        onClick={() => dispatch({ kind: 'system.resolveOutrage', cardId: id })}
+                      >
+                        <span className="action-card-pick-suit" style={{ background: SUIT_COLOR[c.suit] }} />
+                        <span className="action-card-pick-suit-label" style={{ color: SUIT_COLOR[c.suit] }}>{c.suit}</span>
+                        <span className="action-card-pick-name">{c.name} → Alliance supporters</span>
+                      </button>
+                    );
+                  })}
+                  {outrageAutoResolve && (
+                    <button
+                      className="action-card-pick"
+                      style={{ borderColor: '#7da3c9' }}
+                      onClick={() => dispatch({ kind: 'system.resolveOutrage' })}
+                    >
+                      <span className="action-card-pick-name" style={{ color: '#7da3c9' }}>No matching card — Alliance draws from deck</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
             {showDiscard && (
               <div className="action-card-picker">
                 <div className="action-card-picker-title">
@@ -1400,6 +1596,25 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                       </button>
                     );
                   })}
+                </div>
+              </div>
+            )}
+            {showRemoveItem && (
+              <div className="action-card-picker">
+                <div className="action-card-picker-title">
+                  Over item capacity — permanently remove an item from satchel or damaged box
+                  <span className="dim"> ({state.factions.vagabond?.pendingItemRemoval ?? 0} remaining)</span>
+                </div>
+                <div className="action-card-picker-list">
+                  {removeItemIdxs.map(({ itemIdx, kind, state: itemState }) => (
+                    <button
+                      key={itemIdx}
+                      className="action-card-pick"
+                      onClick={() => dispatch({ kind: 'vagabond.removeItem', itemIdx })}
+                    >
+                      <span className="action-card-pick-name">{kind} <span className="dim">({itemState === 'face-down' ? 'satchel' : 'damaged'})</span></span>
+                    </button>
+                  ))}
                 </div>
               </div>
             )}

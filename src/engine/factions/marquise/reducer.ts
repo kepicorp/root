@@ -56,6 +56,7 @@ function reachableSawmillWood(state: GameState, clearing: ClearingId): ClearingI
 }
 
 function payWood(draft: GameState, fromClearings: ClearingId[], cost: number): boolean {
+  const m = draft.factions.marquise!;
   let remaining = cost;
   for (const cid of fromClearings) {
     if (remaining <= 0) break;
@@ -64,6 +65,7 @@ function payWood(draft: GameState, fromClearings: ClearingId[], cost: number): b
       const t = cl.tokens[i]!;
       if (t.faction === 'marquise' && t.kind === 'wood') {
         cl.tokens.splice(i, 1);
+        m.wood += 1;
         remaining -= 1;
       }
     }
@@ -92,9 +94,12 @@ export function marquiseReducer(state: GameState, action: Action): GameState {
         if (m.birdsongDone) return;
         let placed = 0;
         for (const cl of Object.values(draft.map.clearings)) {
+          if (m.wood <= 0) break;
           const sawmills = cl.buildings.filter(b => b.faction === 'marquise' && b.kind === 'sawmill').length;
           for (let i = 0; i < sawmills; i++) {
+            if (m.wood <= 0) break;
             cl.tokens.push({ faction: 'marquise', kind: 'wood' });
+            m.wood -= 1;
             placed += 1;
           }
         }
@@ -112,8 +117,9 @@ export function marquiseReducer(state: GameState, action: Action): GameState {
         const clMeta = AUTUMN_MAP.clearings.find(c => c.id === a.clearing)!;
         if (!rules(draft, a.clearing)) return;
         // Enemy tokens that would block? Skipping detailed hostile-token check.
+        const totalSlots = clMeta.buildingSlots + (cl.extraBuildingSlots ?? 0);
         const usedSlots = cl.buildings.length + cl.tokens.filter(t => t.kind === 'keep').length;
-        if (usedSlots >= clMeta.buildingSlots) return;
+        if (usedSlots >= totalSlots) return;
         if (m.buildings[a.building] >= 6) return;
         const cost = buildCost(m.buildings[a.building]);
         const reachable = reachableSawmillWood(draft, a.clearing);
@@ -199,6 +205,14 @@ export function marquiseReducer(state: GameState, action: Action): GameState {
         m.marchMovesLeft -= 1;
         draft.lastMoveClearing = a.to;
         draft.log.push({ turn: draft.turn, faction: 'marquise', message: `Marched ${n} from ${a.from} to ${a.to}.` });
+        // Outrage: if destination has Alliance sympathy, moving faction must pay
+        if (!draft.pendingOutrage) {
+          const destCl = draft.map.clearings[a.to]!;
+          if (destCl.tokens.some(t => t.faction === 'alliance' && t.kind === 'sympathy')) {
+            const destMeta = AUTUMN_MAP.clearings.find(c => c.id === a.to)!;
+            draft.pendingOutrage = { clearing: a.to, faction: 'marquise', suit: destMeta.suit as 'fox' | 'mouse' | 'rabbit' };
+          }
+        }
       });
     }
 
@@ -245,7 +259,7 @@ export function marquiseReducer(state: GameState, action: Action): GameState {
         if (!consumeCardFromHand(draft, a.cardId)) return;
         m.craftedThisTurn.push(a.cardId);
         if (card.craftVp) draft.scores.marquise += card.craftVp;
-        if (card.item) draft.itemSupply.push(card.item);
+        if (card.item) { draft.itemSupply.push(card.item); draft.craftedItemLog.push({ faction: 'marquise', item: card.item }); }
         if (card.category === 'persistent') draft.craftedPersistents.push({ faction: 'marquise', cardId: a.cardId });
         if (card.category === 'favor') applyFavor(draft, card.suit, 'marquise');
         draft.log.push({ turn: draft.turn, faction: 'marquise', message: `Crafted ${card.name} (+${card.craftVp ?? 0} VP).` });
@@ -332,6 +346,23 @@ export function marquiseLegalActions(state: GameState): Action[] {
   const m = state.factions.marquise;
   if (!m) return out;
 
+  // If outrage is pending for marquise, ONLY resolve it
+  if (state.pendingOutrage?.faction === 'marquise') {
+    const o = state.pendingOutrage;
+    const matchingCards = state.hands.marquise.filter(id => {
+      const c = getCard(id);
+      return c.suit === o.suit || c.suit === 'bird';
+    });
+    if (matchingCards.length > 0) {
+      for (const cardId of matchingCards) {
+        out.push({ kind: 'system.resolveOutrage', cardId });
+      }
+    } else {
+      out.push({ kind: 'system.resolveOutrage' });
+    }
+    return out;
+  }
+
   if (state.phase === 'birdsong' && !m.birdsongDone) {
     out.push({ kind: 'marquise.placeWood' });
   }
@@ -356,7 +387,7 @@ export function marquiseLegalActions(state: GameState): Action[] {
         if (m.buildings[kind] >= 6) continue;
         for (const c of AUTUMN_MAP.clearings) {
           const cl = state.map.clearings[c.id]!;
-          if (cl.buildings.length + cl.tokens.filter(t => t.kind === 'keep').length >= c.buildingSlots) continue;
+          if (cl.buildings.length + cl.tokens.filter(t => t.kind === 'keep').length >= c.buildingSlots + (cl.extraBuildingSlots ?? 0)) continue;
           if (!rules(state, c.id)) continue;
           const cost = buildCost(m.buildings[kind]);
           if (reachableSawmillWood(state, c.id).length < cost) continue;
@@ -420,11 +451,11 @@ export function marquiseLegalActions(state: GameState): Action[] {
           if (canCraft) out.push({ kind: 'marquise.craft', cardId });
         }
       }
-      // Bird card for extra action (dominance cards are reserved for their own effect)
+      // Bird card for extra action (any bird card including dominance is valid per rules)
       if (!m.bonusActionUsed) {
         for (const cardId of state.hands.marquise) {
           const c = getCard(cardId);
-          if (c.suit === 'bird' && c.category !== 'dominance') {
+          if (c.suit === 'bird') {
             out.push({ kind: 'marquise.spendBirdForExtra', cardId });
             break;
           }

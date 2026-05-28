@@ -11,14 +11,22 @@ interface Props {
   dispatch: (a: Action) => void;
 }
 
+const REL_STEPS = ['hostile', 'indifferent', 1, 2, 3, 'allied'] as const;
 const REL_LABEL: Record<string, string> = {
-  hostile: 'hostile',
-  indifferent: '–',
+  hostile: 'Hostile',
+  indifferent: 'Indiff.',
   '1': 'I',
   '2': 'II',
   '3': 'III',
-  allied: 'allied',
+  allied: 'Allied',
 };
+
+function aidsToNextLevel(rel: string | number): number | null {
+  // hostile can only be repaired by aiding; find position
+  const idx = REL_STEPS.indexOf(rel as never);
+  if (idx < 0 || idx === REL_STEPS.length - 1) return null;
+  return 1; // each aid bumps one step
+}
 
 const SUIT_COLOR: Record<string, string> = {
   fox:    '#d97a3c',
@@ -44,6 +52,32 @@ function ItemIcon({ kind }: { kind: string }) {
   return art
     ? <img src={art} alt={kind} className="quest-item-icon" title={kind} />
     : <span className="quest-item-text">{kind}</span>;
+}
+
+interface ItemGroupProps {
+  label: string;
+  items: { kind: string; state: string; exhausted: boolean }[];
+  stateClass: string;
+}
+
+function ItemGroup({ label, items, stateClass }: ItemGroupProps) {
+  if (items.length === 0) return null;
+  return (
+    <div className={`item-group item-group-${stateClass}`}>
+      <span className="item-group-label">{label}</span>
+      <div className="item-group-row">
+        {items.map((it, idx) => {
+          const art = itemArt(it.kind as never);
+          return (
+            <div key={idx} className={`vagabond-item ${stateClass}`} title={it.kind}>
+              {art ? <img src={art} alt={it.kind} /> : <span>{it.kind[0]!.toUpperCase()}</span>}
+              <span className="vagabond-item-name">{it.kind}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export function VagabondPanel({ state, isHuman, dispatch }: Props) {
@@ -76,30 +110,63 @@ export function VagabondPanel({ state, isHuman, dispatch }: Props) {
       <h3>Vagabond — {v.character}</h3>
       <div className="vagabond-line">
         <span className="dim">clearing</span> {v.clearing ?? '—'}
-        <span className="dim"> · ruins</span> {v.ruinsExplored}/4
+        <span className="dim"> · ruins</span> {v.exploredRuins.length}/4
         <span className="dim"> · quests done</span> {v.completedQuests.length}
       </div>
-      <div className="vagabond-items" aria-label="Vagabond items">
-        {v.items.map((it, idx) => {
-          const art = itemArt(it.kind);
+      <div className="vagabond-item-track" aria-label="Vagabond items">
+        <ItemGroup label="Ready" items={v.items.filter(it => it.state === 'face-up' && !it.exhausted)} stateClass="ready" />
+        <ItemGroup label="Exhausted" items={v.items.filter(it => it.state === 'face-up' && it.exhausted)} stateClass="exhausted" />
+        <ItemGroup label="Satchel" items={v.items.filter(it => it.state === 'face-down')} stateClass="satchel" />
+        <ItemGroup label="Damaged" items={v.items.filter(it => it.state === 'damaged')} stateClass="damaged" />
+      </div>
+      {(() => {
+        const TRACK_ITEMS = ['torch', 'crossbow', 'bag'] as const;
+        const faceUpTrack = TRACK_ITEMS.reduce((s, k) => s + v.items.filter(i => i.kind === k && i.state === 'face-up').length, 0);
+        const cap = 6 + 2 * faceUpTrack;
+        const used = v.items.filter(i => i.state === 'face-down' || i.state === 'damaged').length;
+        const over = used > cap;
+        return (
+          <div className={`vagabond-capacity${over ? ' over' : ''}`}>
+            <span className="dim">Satchel+Damaged:</span> {used}/{cap}
+            {over && <span className="vagabond-capacity-warn"> ⚠ remove {used - cap}</span>}
+          </div>
+        );
+      })()}
+      <div className="vagabond-relationships">
+        <div className="vagabond-rel-title">Relationships</div>
+        {(['marquise', 'eyrie', 'alliance'] as const).map(f => {
+          const rel = v.relationships[f];
+          const relStr = String(rel);
+          const curIdx = REL_STEPS.indexOf(rel as never);
+          const toNext = aidsToNextLevel(relStr);
+          const isAllied = rel === 'allied';
           return (
-            <div
-              key={idx}
-              className={`vagabond-item ${it.state} ${it.exhausted ? 'exhausted' : ''}`}
-              title={`${it.kind} · ${it.state}${it.exhausted ? ' · exhausted' : ''}`}
-            >
-              {art ? <img src={art} alt={it.kind} /> : <span>{it.kind[0]}</span>}
+            <div key={f} className={`vagabond-rel-row rel-${relStr}`}>
+              <span className="vagabond-rel-faction">{f[0]!.toUpperCase() + f.slice(1)}</span>
+              <div className="vagabond-rel-ladder">
+                {REL_STEPS.map((step, i) => (
+                  <span
+                    key={String(step)}
+                    className={`vagabond-rel-step ${i === curIdx ? 'current' : ''} ${i < curIdx ? 'past' : ''}`}
+                    title={String(REL_LABEL[String(step)] ?? step)}
+                  >
+                    {REL_LABEL[String(step)] ?? String(step)}
+                  </span>
+                ))}
+              </div>
+              <span className="vagabond-rel-hint dim">
+                {isAllied
+                  ? '✓ free move, no hostile extra boot'
+                  : toNext != null
+                    ? `+${toNext} aid → next`
+                    : ''}
+              </span>
             </div>
           );
         })}
-      </div>
-      <div className="vagabond-rel">
-        <span className="dim">rel:</span>
-        {(['marquise', 'eyrie', 'alliance'] as const).map(f => (
-          <span key={f} className={`rel rel-${String(v.relationships[f])}`}>
-            {f[0].toUpperCase()}:{REL_LABEL[String(v.relationships[f])] ?? v.relationships[f]}
-          </span>
-        ))}
+        <div className="vagabond-rel-legend dim">
+          Hostile: +1 VP on kill · Allied: free movement · Attacking = hostile
+        </div>
       </div>
 
       {v.questDisplay.length > 0 && (

@@ -41,6 +41,9 @@ const PRIORITY: Record<string, number> = {
   'eyrie.endBirdsong':               65,  // higher than addToDecree so bot adds 1 card then stops
   'marquise.endDaylight':             1,
   'alliance.endDaylight':             1,
+  'vagabond.payRelationshipCost':     30, // prefer paying to preserve relationships
+  'vagabond.acceptHostility':         10,
+  'system.resolveOutrage':            25,
   'vagabond.endDaylight':             1,
   'marquise.evening':                10,
   'eyrie.evening':                   10,

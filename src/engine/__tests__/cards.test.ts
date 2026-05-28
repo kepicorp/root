@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { BASE_SHARED_DECK, SD_SHARED_DECK, SHARED_DECK, DOMINANCE_CARDS, getCard } from '../cards';
 
 describe('shared deck', () => {
-  it('base deck has 43 confirmed cards (11 persistents still to verify)', () => {
-    expect(BASE_SHARED_DECK.length).toBe(43);
+  it('base deck has 46 confirmed cards', () => {
+    expect(BASE_SHARED_DECK.length).toBe(46);
   });
 
   it('Squires & Disciples deck has exactly 54 cards', () => {

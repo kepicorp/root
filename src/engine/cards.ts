@@ -71,28 +71,31 @@ const items: Card[] = [
   card('Foxfolk Steel',        'fox',    'item', { fox:    2 }, { item: 'sword',    craftVp: 2 }),
   card('Arms Trader',          'bird',   'item', { fox:    2 }, { item: 'sword',    craftVp: 2 }),
   card('Sword',                'mouse',  'item', { mouse:  2 }, { item: 'sword',    craftVp: 2 }),
-  // Crossbows
-  card('Crossbow',             'bird',   'item', { bird:   1 }, { item: 'crossbow', craftVp: 1 }),
-  card('Crossbow',             'mouse',  'item', { mouse:  1 }, { item: 'crossbow', craftVp: 1 }),
-  // Hammers
-  card('Smithy',               'fox',    'item', { fox:    2 }, { item: 'hammer',   craftVp: 2 }),
+  // Crossbows (both cost fox×1 — confirmed from card images)
+  card('Crossbow',             'bird',   'item', { fox:    1 }, { item: 'crossbow', craftVp: 1 }),
+  card('Crossbow',             'mouse',  'item', { fox:    1 }, { item: 'crossbow', craftVp: 1 }),
+  // Hammers (Anvil gives a hammer token, not coin — confirmed from card image)
+  card('Anvil',                'fox',    'item', { fox:    1 }, { item: 'hammer',   craftVp: 2 }),
   // Boots
   card('A Visit to Friends',   'rabbit', 'item', { rabbit: 1 }, { item: 'boots',    craftVp: 1 }),
   card('A Visit to Friends',   'rabbit', 'item', { rabbit: 1 }, { item: 'boots',    craftVp: 1 }),
   card('Travel Gear',          'fox',    'item', { fox:    1 }, { item: 'boots',    craftVp: 1 }),
   card('Travel Gear',          'mouse',  'item', { mouse:  1 }, { item: 'boots',    craftVp: 1 }),
+  card('Woodland Runners',     'bird',   'item', { rabbit: 1 }, { item: 'boots',    craftVp: 1 }),
   // Bags
   card('Gently Used Knapsack', 'fox',    'item', { fox:    1 }, { item: 'bag',      craftVp: 1 }),
   card('Mouse-in-a-Sack',      'mouse',  'item', { mouse:  1 }, { item: 'bag',      craftVp: 1 }),
+  card('Birdy Bindle',         'bird',   'item', { mouse:  1 }, { item: 'bag',      craftVp: 1 }),
+  card("Smuggler's Trail",     'rabbit', 'item', { mouse:  1 }, { item: 'bag',      craftVp: 1 }),
   // Tea
   card('Root Tea',             'rabbit', 'item', { rabbit: 1 }, { item: 'tea',      craftVp: 2 }),
   card('Root Tea',             'fox',    'item', { fox:    1 }, { item: 'tea',      craftVp: 2 }),
   card('Root Tea',             'mouse',  'item', { mouse:  1 }, { item: 'tea',      craftVp: 2 }),
-  // Coin
-  card('Anvil',                'fox',    'item', { fox:    1 }, { item: 'coin',     craftVp: 2 }),
   // Torch
   card('Investments',          'mouse',  'item', { mouse:  1 }, { item: 'torch',    craftVp: 1 }),
-  card('Investments',          'fox',    'item', { fox:    1 }, { item: 'torch',    craftVp: 1 }),
+  // Coins (craft a coin token for +3 VP)
+  card('Bake Sale',            'rabbit', 'item', { rabbit: 2 }, { item: 'coin',     craftVp: 3 }),
+  card('Protection Racket',    'fox',    'item', { rabbit: 2 }, { item: 'coin',     craftVp: 3 }),
 ];
 
 // ─── Persistent effect cards — Base game ──────────────────────────────────────
@@ -171,7 +174,6 @@ const sdPersistents: Card[] = [
   card('Tactician',          'fox',    'persistent', { fox:    1 }),   // ×1
   card('Supply Train',       'fox',    'persistent', { fox:    1 }),   // ×1
   card('Friend of the Foxes','fox',    'persistent', { fox:    2 }),   // ×1
-  card('Protection Racket',  'fox',    'persistent', { mouse:  3 }),   // ×1
   // ── Rabbit ────────────────────────────────────────────────────────────────
   card('Riversteads',        'rabbit', 'persistent', { bird:   2 }),   // ×1
   card('The Faithful',       'rabbit', 'persistent', { rabbit: 1 }),   // ×1
@@ -180,8 +182,6 @@ const sdPersistents: Card[] = [
   card('Rabbit Squires',     'rabbit', 'persistent', { rabbit: 1 }),   // ×1
   card('Friend of the Rabbits','rabbit','persistent', { rabbit: 2 }),  // ×1
   card('Standard Bearer',    'rabbit', 'persistent', { rabbit: 2 }),   // ×1
-  card('Bake Sale',          'rabbit', 'persistent', { rabbit: 1 }),   // ×1
-  card("Smuggler's Trail",   'rabbit', 'persistent', { rabbit: 2 }),   // ×1
   // ── Mouse ─────────────────────────────────────────────────────────────────
   card('Brazen Demagogue',   'mouse',  'persistent', { fox:    2 }),   // ×1
   card('Raiding Party',      'mouse',  'persistent', { fox:    2 }),   // ×1

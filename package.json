@@ -1,7 +1,7 @@
 {
   "name": "root",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,7 +12,9 @@
     "typecheck": "tsc -b --noEmit",
     "server": "tsx server/index.ts",
     "host": "concurrently -k -n vite,server -c green,cyan \"vite --host\" \"tsx server/index.ts\"",
-    "prune-stale": "node scripts/prune-stale.mjs"
+    "download-assets": "node scripts/download-assets.mjs",
+    "prune-stale": "node scripts/prune-stale.mjs",
+    "release": "node -e \"const v=require('./package.json').version; const r='docker.kepi.site/root-game'; require('child_process').execSync('docker buildx build --platform linux/amd64,linux/arm64 --tag '+r+':'+v+' --tag '+r+':latest --push .', {stdio:'inherit'});\""
   },
   "dependencies": {
     "concurrently": "^9.2.1",

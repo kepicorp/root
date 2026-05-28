@@ -38,6 +38,7 @@ export type MapIntent =
   | { kind: 'alliance.revolt' }
   | { kind: 'alliance.organize' }
   | { kind: 'alliance.battle'; defender: Faction }
+  | { kind: 'vagabond.battle'; defender: Faction }
   | { kind: 'vagabond.strike'; defender: Faction }
   | { kind: 'eyrie.executeRecruit' }
   | { kind: 'eyrie.executeBattle'; defender: Faction }
@@ -99,7 +100,12 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
   const [spaceHeld, setSpaceHeld] = useState(false);
   const [dragging, setDragging] = useState(false);
   const svgRef = useRef<SVGSVGElement | null>(null);
-  const dragRef = useRef<{ startX: number; startY: number; startPan: { x: number; y: number } } | null>(null);
+  const dragRef = useRef<{
+    startX: number; startY: number; startPan: { x: number; y: number };
+    pointerId: number; committed: boolean;
+  } | null>(null);
+  // Set to true when a drag commits; suppresses the click event that follows pointerup.
+  const suppressClickRef = useRef(false);
   const bgSrc = backgroundSrc ?? boardArt() ?? undefined;
 
   // viewBox: zoom shrinks the visible area, pan offsets its center.
@@ -171,10 +177,12 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
     const up = (e: KeyboardEvent) => {
       if (e.code === 'Space') {
         setSpaceHeld(false);
-        // If a drag was in progress when space was released, end it.
-        if (dragRef.current) {
+        // If a committed drag was in progress when space was released, end it.
+        if (dragRef.current?.committed) {
           dragRef.current = null;
           setDragging(false);
+        } else {
+          dragRef.current = null;
         }
       }
     };
@@ -189,33 +197,49 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
     };
   }, [zoom, setZoomClamped, resetView]);
 
-  // Pan via right-mouse drag, shift+left-drag, or space+left-drag.
-  // Left-click without modifier still selects clearings for movement.
+  // Pan via right-mouse drag, shift+left-drag, space+left-drag, or plain left-drag
+  // (once the pointer moves more than DRAG_THRESHOLD px). A quick left press+release
+  // with no significant movement still counts as a clearing click.
+  const DRAG_THRESHOLD = 6;
   function onPointerDown(e: React.PointerEvent<SVGSVGElement>) {
-    const isDragInput =
-      e.button === 2 ||
-      (e.button === 0 && e.shiftKey) ||
-      (e.button === 0 && spaceHeld);
-    if (!isDragInput) return;
-    e.preventDefault();
-    dragRef.current = { startX: e.clientX, startY: e.clientY, startPan: { ...pan } };
-    setDragging(true);
-    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    if (e.button !== 0 && e.button !== 2) return;
+    const commitNow = e.button === 2 || e.shiftKey || spaceHeld;
+    if (commitNow) e.preventDefault();
+    dragRef.current = {
+      startX: e.clientX, startY: e.clientY, startPan: { ...pan },
+      pointerId: e.pointerId, committed: commitNow,
+    };
+    if (commitNow) {
+      setDragging(true);
+      (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    }
   }
   function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
     const d = dragRef.current;
     if (!d || !svgRef.current) return;
+    if (!d.committed) {
+      const dist = Math.hypot(e.clientX - d.startX, e.clientY - d.startY);
+      if (dist < DRAG_THRESHOLD) return;
+      d.committed = true;
+      setDragging(true);
+      suppressClickRef.current = true;
+      (svgRef.current as Element).setPointerCapture(d.pointerId);
+    }
     const rect = svgRef.current.getBoundingClientRect();
     const dx = (e.clientX - d.startX) * (BOARD_W / rect.width) / zoom;
     const dy = (e.clientY - d.startY) * (BOARD_H / rect.height) / zoom;
     setPan(clampPan({ x: d.startPan.x - dx, y: d.startPan.y - dy }, zoom));
   }
   function onPointerUp(e: React.PointerEvent<SVGSVGElement>) {
-    if (dragRef.current) {
+    const d = dragRef.current;
+    if (!d) return;
+    if (d.committed) {
       (e.currentTarget as Element).releasePointerCapture(e.pointerId);
-      dragRef.current = null;
       setDragging(false);
+      // Suppress the click event that fires right after pointerup.
+      setTimeout(() => { suppressClickRef.current = false; }, 0);
     }
+    dragRef.current = null;
   }
 
   // Reset selection when turn changes.
@@ -293,6 +317,8 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
   }
 
   function handleClearingClick(id: ClearingId) {
+    // Suppress click if a drag just ended.
+    if (suppressClickRef.current) return;
     // Always show / toggle the info popup for the clicked clearing.
     setInfoClearing(prev => (prev === id ? null : id));
 
@@ -352,7 +378,7 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
 
   const adjacentToHovered = hovered ? new Set(getAdjacent(AUTUMN_MAP, hovered)) : null;
 
-  const panCursor = dragging ? 'grabbing' : spaceHeld ? 'grab' : undefined;
+  const panCursor = dragging ? 'grabbing' : (spaceHeld || zoom > 1) ? 'grab' : undefined;
 
   return (
     <div className="board-wrap">
@@ -510,8 +536,8 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
                 strokeWidth={strokeWidth}
                 className={isValidTarget || isIntentTarget ? 'pulse' : ''}
               />
-              {/* Ruin marker (a small broken column near the top) */}
-              {c.hasRuin && (
+              {/* Ruin marker — hidden once the Vagabond has explored it */}
+              {c.hasRuin && !state.map.clearings[c.id]?.ruinExplored && (
                 <g transform="translate(-38 -38)" aria-hidden>
                   <rect x={-6} y={-2} width={12} height={12} fill="#cdc3a8" stroke="#3b2a18" strokeWidth={1.5} />
                   <rect x={-4} y={-10} width={8} height={8} fill="#cdc3a8" stroke="#3b2a18" strokeWidth={1.5} />
@@ -527,14 +553,17 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
               </g>
               {/* Slot indicator (empty plots shown as outlined squares; filled overlays appear below) */}
               {(() => {
+                const totalSlots = c.buildingSlots + (cl.extraBuildingSlots ?? 0);
                 const usedSlots = cl.buildings.length + cl.tokens.filter(t => t.kind === 'keep').length;
-                const free = Math.max(0, c.buildingSlots - usedSlots);
+                const free = Math.max(0, totalSlots - usedSlots);
                 const dotR = 4;
-                const totalWidth = (c.buildingSlots - 1) * 12;
+                const totalWidth = (totalSlots - 1) * 12;
                 return (
-                  <g transform={`translate(${-totalWidth / 2} -16)`} aria-label={`${usedSlots} of ${c.buildingSlots} slots used`}>
-                    {Array.from({ length: c.buildingSlots }).map((_, i) => {
+                  <g transform={`translate(${-totalWidth / 2} -16)`} aria-label={`${usedSlots} of ${totalSlots} slots used`}>
+                    {Array.from({ length: totalSlots }).map((_, i) => {
                       const filled = i < usedSlots;
+                      // Extra slots from ruin exploration are shown with a lighter stroke
+                      const isExtra = i >= c.buildingSlots;
                       return (
                         <circle
                           key={i}
@@ -542,8 +571,8 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
                           cy={0}
                           r={dotR}
                           fill={filled ? '#3b2a18' : '#f5e9d0'}
-                          stroke="#3b2a18"
-                          strokeWidth={1.5}
+                          stroke={isExtra ? '#b8a37a' : '#3b2a18'}
+                          strokeWidth={isExtra ? 2 : 1.5}
                           opacity={filled ? 0.85 : 0.75}
                         />
                       );
@@ -786,6 +815,7 @@ function intentBannerText(intent: MapIntent, targets: number): ReactNode {
     case 'alliance.revolt':          return <>Click a clearing to <strong>revolt</strong>{tail}.</>;
     case 'alliance.organize':        return <>Click a clearing to <strong>organize</strong>{tail}.</>;
     case 'alliance.battle':          return <>Click a clearing to attack the <strong>{intent.defender}</strong>{tail}.</>;
+    case 'vagabond.battle':          return <>Click your clearing to <strong>battle</strong> the <strong>{intent.defender}</strong>{tail}.</>;
     case 'vagabond.strike':          return <>Click your clearing to <strong>strike</strong> the <strong>{intent.defender}</strong>{tail}.</>;
     case 'eyrie.executeRecruit':     return <>Click a matching-suit roost to <strong>recruit</strong>{tail}.</>;
     case 'eyrie.executeBattle':      return <>Click a clearing to attack the <strong>{intent.defender}</strong>{tail}.</>;
@@ -810,6 +840,8 @@ function matchIntent(intent: MapIntent, action: Action): ClearingId | null {
       return action.kind === 'alliance.organize' ? action.clearing : null;
     case 'alliance.battle':
       return action.kind === 'alliance.battle' && action.defender === intent.defender ? action.clearing : null;
+    case 'vagabond.battle':
+      return action.kind === 'vagabond.battle' && action.defender === intent.defender ? action.clearing : null;
     case 'vagabond.strike':
       return action.kind === 'vagabond.strike' && action.faction === intent.defender ? action.clearing : null;
     case 'eyrie.executeRecruit':

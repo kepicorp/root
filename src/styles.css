@@ -731,31 +731,59 @@ body { background: var(--bg); color: var(--paper); }
 
 /* Vagabond panel item track */
 .vagabond-line { font-size: 12px; margin: 4px 0; }
-.vagabond-items {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin: 6px 0;
+.vagabond-item-track { margin: 6px 0; display: flex; flex-direction: column; gap: 4px; }
+.item-group { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-height: 16px; }
+.item-group-label {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase;
+  min-width: 54px; color: #8a8070;
 }
+.item-group-row { display: flex; flex-wrap: wrap; gap: 4px; }
 .vagabond-item {
-  width: 28px;
-  height: 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  width: 34px;
+  padding: 3px 2px 2px;
   border-radius: 4px;
   background: #2a1d10;
   border: 1.5px solid var(--rule);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
+  font-size: 9px;
   color: var(--paper);
 }
-.vagabond-item img { width: 22px; height: 22px; }
-.vagabond-item.exhausted { opacity: 0.4; }
-.vagabond-item.face-down img { filter: brightness(0.3) sepia(1); }
-.vagabond-item.damaged { border-color: #d97a3c; }
-.vagabond-item.damaged img { filter: hue-rotate(120deg) saturate(0.4); }
+.vagabond-item img { width: 20px; height: 20px; }
+.vagabond-item-name { font-size: 9px; line-height: 1; color: #a09080; white-space: nowrap; overflow: hidden; max-width: 32px; text-overflow: ellipsis; }
+.item-group-exhausted .vagabond-item { opacity: 0.45; border-style: dashed; }
+.item-group-satchel .vagabond-item { border-style: dotted; }
+.item-group-satchel .vagabond-item img { filter: brightness(0.35) sepia(1); }
+.item-group-satchel .item-group-label { color: #6a6060; }
+.item-group-damaged .vagabond-item { border-color: #d97a3c; }
+.item-group-damaged .vagabond-item img { filter: hue-rotate(120deg) saturate(0.4); }
+.item-group-damaged .item-group-label { color: #d97a3c; }
 
-.vagabond-rel { font-size: 11px; margin-top: 4px; display: flex; gap: 6px; flex-wrap: wrap; }
+.vagabond-capacity { font-size: 11px; margin: 4px 0 2px; color: #9a8a7a; }
+.vagabond-capacity.over { color: #d97a3c; }
+.vagabond-capacity-warn { font-weight: 700; }
+
+.vagabond-relationships { margin-top: 8px; border-top: 1px solid var(--rule); padding-top: 6px; }
+.vagabond-rel-title { font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; color: #b8a37a; margin-bottom: 5px; }
+.vagabond-rel-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; flex-wrap: wrap; }
+.vagabond-rel-faction { font-size: 11px; font-weight: 600; min-width: 52px; }
+.vagabond-rel-row.rel-hostile .vagabond-rel-faction { color: #d97a3c; }
+.vagabond-rel-row.rel-allied  .vagabond-rel-faction { color: #9bbd58; }
+.vagabond-rel-ladder { display: flex; gap: 2px; align-items: center; }
+.vagabond-rel-step {
+  font-size: 9px; padding: 1px 4px; border-radius: 3px; border: 1px solid #3a2a1a;
+  color: #6a5a4a; background: #1e1510; white-space: nowrap;
+}
+.vagabond-rel-step.past    { color: #9a8a7a; background: #2a1d10; }
+.vagabond-rel-step.current { background: #b8a37a; color: #1a1208; font-weight: 700; border-color: #d4c090; }
+.rel-hostile .vagabond-rel-step.current { background: #d97a3c; border-color: #f09050; color: #fff; }
+.rel-allied  .vagabond-rel-step.current { background: #9bbd58; border-color: #b8d870; color: #1a2808; }
+.vagabond-rel-hint { font-size: 9px; }
+.vagabond-rel-legend { font-size: 9px; margin-top: 4px; line-height: 1.4; }
+
+/* Legacy rel classes (may still be referenced elsewhere) */
 .rel { padding: 1px 5px; border-radius: 3px; background: #2a1d10; }
 .rel-hostile { background: #5a1f1a; }
 .rel-allied { background: #2f4a2a; }
@@ -797,12 +825,18 @@ body { background: var(--bg); color: var(--paper); }
 .faction-panel.vagabond { border-color: #b8a37a; }
 .faction-stats { display: flex; gap: 10px; font-size: 11px; color: #cfc2a8; flex-wrap: wrap; margin-bottom: 3px; }
 .faction-stats strong { color: #f0e2c2; font-weight: 700; }
-.crafted-cards { margin-top: 6px; border-top: 1px solid var(--rule); padding-top: 5px; }
+.crafted-cards { margin-top: 6px; border-top: 1px solid var(--rule); padding-top: 5px; position: relative; }
 .crafted-cards-title { font-size: 10px; font-weight: 700; letter-spacing: 0.5px; color: #b8a37a; margin-bottom: 4px; text-transform: uppercase; }
-.crafted-card-row { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #e8d6a8; padding: 2px 0; border-left: 2px solid transparent; padding-left: 4px; }
+.crafted-cards-list { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
+.crafted-card-row { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #e8d6a8; padding: 2px 0; border-left: 2px solid transparent; padding-left: 4px; cursor: default; }
+.crafted-card-row.crafted-card-has-art { padding: 0; border-left: none; cursor: pointer; }
+.crafted-card-art { width: 48px; height: 68px; object-fit: cover; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); display: block; }
+.crafted-card-art:hover { opacity: 0.85; }
 .crafted-card-suit { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .crafted-card-suit-label { font-size: 9px; text-transform: capitalize; opacity: 0.7; white-space: nowrap; flex-shrink: 0; }
 .crafted-card-name { flex: 1; font-weight: 500; }
+.crafted-cards-items { display: flex; flex-wrap: wrap; gap: 4px; }
+.crafted-item-badge { font-size: 10px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); border-radius: 3px; padding: 1px 5px; color: #c8b87a; }
 
 /* Alliance supporters — shown only to the Alliance player. */
 .alliance-supporters-line { margin-top: 4px; font-size: 11px; color: #cfc2a8; }
@@ -1043,6 +1077,16 @@ body { background: var(--bg); color: var(--paper); }
 .action-btn { font-size: 11px; padding: 4px 8px; }
 .actionbar-label { font-weight: 700; }
 .actionbar-hint { color: #b8a37a; font-style: italic; font-size: 11px; }
+.actionbar-counter {
+  font-size: 0.82rem;
+  padding: 2px 8px;
+  margin-bottom: 4px;
+  color: var(--ink);
+  opacity: 0.85;
+}
+.actionbar-counter strong {
+  font-size: 1rem;
+}
 .btn.faction-marquise { border-color: #d97a3c; }
 .btn.faction-eyrie    { border-color: #7da3c9; }
 .btn.faction-alliance { border-color: #9bbd58; }
@@ -1240,6 +1284,7 @@ circle.pulse {
 .action-card-pick-suit { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 .action-card-pick-suit-label { font-size: 9px; text-transform: capitalize; opacity: 0.7; white-space: nowrap; flex-shrink: 0; }
 .action-card-pick-name { flex: 1; }
+.action-vp-hint { color: #f0c040; font-weight: 700; margin-left: 4px; }
 .action-label { font-weight: 600; }
 .action-detail { font-size: 10px; opacity: 0.7; }
 

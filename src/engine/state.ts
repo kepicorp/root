@@ -32,6 +32,15 @@ export function newGame(opts: NewGameOptions = {}): GameState {
     clearings[c.id] = { warriors: {}, buildings: [], tokens: [], vagabondHere: false };
   }
 
+  // Randomly assign the 4 ruin items to the 4 ruin clearings.
+  const ruinItems: ItemKind[] = shuffle(['crossbow', 'hammer', 'boots', 'sword'] as ItemKind[], mulberry32(seed + 1));
+  let ruinIdx = 0;
+  for (const c of AUTUMN_MAP.clearings) {
+    if (c.hasRuin) {
+      clearings[c.id]!.ruinItem = ruinItems[ruinIdx++];
+    }
+  }
+
   const rng = mulberry32(seed);
   const sharedDeck = deckVariant === 'squires' ? SD_SHARED_DECK : BASE_SHARED_DECK;
   // Dominance cards are shuffled into the shared deck; players draw and play them from hand.
@@ -79,6 +88,7 @@ export function newGame(opts: NewGameOptions = {}): GameState {
     scores: { marquise: 0, eyrie: 0, alliance: 0, vagabond: 0 },
     pendingPrompts: [],
     dominanceAvailable: [],
+    craftedItemLog: [],
     log: [{ turn: 1, faction: 'system', message: `New game (seed ${seed})` }],
   };
 
@@ -147,6 +157,29 @@ export function reduce(state: GameState, action: Action): GameState {
       if (!prompt || prompt.faction !== action.faction) return state;
       return resolveAmbushPrompt(state, {});
     }
+    case 'system.resolveOutrage':
+      return produce(state, draft => {
+        const o = draft.pendingOutrage;
+        if (!o) return;
+        const al = draft.factions.alliance;
+        if (action.cardId) {
+          // Moving faction pays a matching card to Alliance supporters
+          const idx = draft.hands[o.faction].indexOf(action.cardId);
+          if (idx < 0) return;
+          draft.hands[o.faction].splice(idx, 1);
+          if (al) al.supporters.push(action.cardId);
+          else draft.discard.push(action.cardId);
+          draft.log.push({ turn: draft.turn, faction: o.faction, message: `Outrage: gave ${getCard(action.cardId).name} to Alliance supporters.` });
+        } else {
+          // No matching card — Alliance draws from deck
+          if (al && draft.deck.length > 0) {
+            const drawn = draft.deck.pop()!;
+            al.supporters.push(drawn);
+            draft.log.push({ turn: draft.turn, faction: o.faction, message: `Outrage: no matching card — Alliance drew a supporter from the deck.` });
+          }
+        }
+        draft.pendingOutrage = undefined;
+      });
     case 'prompt.respond':
       // Generic prompt response — faction reducers handle their own.
       return state;
