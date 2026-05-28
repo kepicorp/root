@@ -106,7 +106,14 @@ import { vagabondReducer } from './factions/vagabond/reducer';
 import { cardEffectsReducer } from './card-effects';
 import type { CardAction } from './card-effects';
 
+/** Migrate state saved by older engine versions to the current shape. */
+function migrateState(state: GameState): GameState {
+  if (state.craftedItemLog) return state;
+  return { ...state, craftedItemLog: [] };
+}
+
 export function reduce(state: GameState, action: Action): GameState {
+  state = migrateState(state);
   if (state.winner) return state;
 
   switch (action.kind) {
