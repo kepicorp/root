@@ -507,6 +507,19 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
         </div>
       )}
 
+      {active === 'eyrie' && state.phase === 'birdsong' && (() => {
+        const e = state.factions.eyrie;
+        if (!e || e.needsLeaderChoice) return null;
+        if (e.cardsAddedThisBirdsong >= 2) return null;
+        return (
+          <div className="actionbar-hint map-hint" style={{ borderColor: '#7da3c9', color: '#c0deff' }}>
+            📜 <strong>Decree</strong> — {e.cardsAddedThisBirdsong === 0
+              ? 'Click a decree column on the right to add a card (required).'
+              : 'You may add one more card to the decree, or end birdsong.'}
+          </div>
+        );
+      })()}
+
       {marchMovesLeft > 0 && (
         <div className="actionbar-hint map-hint" style={{ borderColor: '#f0c060', color: '#f0e2c2' }}>
           ⚔ <strong>March in progress</strong> — {marchMovesLeft} move{marchMovesLeft === 1 ? '' : 's'} remaining.
