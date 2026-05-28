@@ -776,10 +776,10 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                 <button
                   className={`btn action-btn ${trainPicking ? 'armed' : ''} faction-${active}`}
                   onClick={() => setTrainPicking(p => !p)}
-                  title="Spend a bird-suit supporter to promote an officer"
+                  title="Spend a hand card matching a base clearing's suit to gain an officer"
                 >
                   <span className="action-label">Train officer</span>
-                  {trainPicking && <span className="action-detail">pick a bird supporter below</span>}
+                  {trainPicking && <span className="action-detail">pick a hand card below</span>}
                 </button>
               )}
               {showDominance && (
@@ -1232,7 +1232,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
             {showTrain && trainPicking && (
               <div className="action-card-picker">
                 <div className="action-card-picker-title">
-                  Train officer — pick a bird-suit supporter
+                  Train officer — pick a hand card matching a base clearing's suit
                   <button className="btn ghost small" onClick={() => setTrainPicking(false)} aria-label="Cancel">×</button>
                 </div>
                 <div className="action-card-picker-list">

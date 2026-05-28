@@ -205,19 +205,18 @@ export function allianceReducer(state: GameState, action: Action): GameState {
         if (draft.phase !== 'daylight') return;
         const al = draft.factions.alliance!;
         if (al.officers >= 10) return;
-        // Spend a bird-suit supporter to gain an officer.
-        // Train is FREE — does not cost an officer action.
-        const idx = al.supporters.indexOf(a.cardId);
+        // §8.5.3: spend a hand card matching the suit of a base clearing.
+        const idx = draft.hands.alliance.indexOf(a.cardId);
         if (idx < 0) return;
         const card = getCard(a.cardId);
-        if (card.suit !== 'bird') return;
-        al.supporters.splice(idx, 1);
+        const baseSuits = Object.keys(al.bases) as Array<'fox' | 'mouse' | 'rabbit'>;
+        const matchesBase = baseSuits.some(s => card.suit === s || card.suit === 'bird');
+        if (!matchesBase) return;
+        draft.hands.alliance.splice(idx, 1);
         draft.discard.push(a.cardId);
         al.officers += 1;
-        // Training also immediately grants one more officer-limited action slot
-        // for the rest of this daylight.
         al.daylightActionsLeft += 1;
-        draft.log.push({ turn: draft.turn, faction: 'alliance', message: `Trained an officer (now ${al.officers}).` });
+        draft.log.push({ turn: draft.turn, faction: 'alliance', message: `Trained an officer with ${card.name} (now ${al.officers}).` });
       });
 
     case 'alliance.endDaylight':
@@ -323,11 +322,15 @@ export function allianceLegalActions(state: GameState): Action[] {
         out.push({ kind: 'alliance.mobilize', cardId });
       }
     }
-    // Train officer: spend a bird-suit supporter (free action).
+    // Train officer: spend a hand card matching the suit of a base clearing (§8.5.3).
     if (al.officers < 10) {
-      for (const id of al.supporters) {
-        if (getCard(id).suit === 'bird') {
-          out.push({ kind: 'alliance.trainOfficer', cardId: id });
+      const baseSuits = new Set(Object.keys(al.bases) as Array<'fox' | 'mouse' | 'rabbit'>);
+      if (baseSuits.size > 0) {
+        for (const id of state.hands.alliance) {
+          const card = getCard(id);
+          if (card.suit === 'bird' || baseSuits.has(card.suit as 'fox' | 'mouse' | 'rabbit')) {
+            out.push({ kind: 'alliance.trainOfficer', cardId: id });
+          }
         }
       }
     }
