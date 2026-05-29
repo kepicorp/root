@@ -537,29 +537,27 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
       {active === 'alliance' && state.factions.alliance && (state.phase === 'birdsong' || state.phase === 'daylight') && (() => {
         const al = state.factions.alliance!;
         const cost = (SYMPATHY_COST as readonly number[])[Math.min(al.sympathy.length, SYMPATHY_COST.length - 1)] ?? 4;
-        const suitCounts: Record<string, number> = {};
-        for (const id of al.supporters) {
-          try { const s = getCard(id).suit; suitCounts[s] = (suitCounts[s] ?? 0) + 1; } catch { /* stale id */ }
-        }
         const hasSpreads = canSpreadSympathy || canRevolt;
         return (
           <div className="actionbar-supporters">
-            <span className="actionbar-supporters-label">Supporters ({al.supporters.length}):</span>
+            <div className="actionbar-supporters-label">Supporters ({al.supporters.length}):</div>
             {al.supporters.length === 0
-              ? <span className="dim"> none</span>
-              : Object.entries(suitCounts).map(([suit, n]) => (
-                  <span key={suit} className="supporter-pip-group">
-                    {Array.from({ length: n }).map((_, i) => (
-                      <span key={i} className="supporter-pip" style={{ background: SUIT_COLOR[suit as 'fox'|'mouse'|'rabbit'|'bird'] }} title={suit} />
-                    ))}
-                  </span>
-                ))
+              ? <div className="dim actionbar-supporters-hint">none — mobilize hand cards to gain supporters</div>
+              : al.supporters.map((id, i) => {
+                  try {
+                    const c = getCard(id);
+                    return (
+                      <div key={i} className="actionbar-supporter-row" style={{ borderColor: SUIT_COLOR[c.suit] }}>
+                        <span className="supporter-pip" style={{ background: SUIT_COLOR[c.suit] }} />
+                        <span className="actionbar-supporter-suit" style={{ color: SUIT_COLOR[c.suit] }}>{c.suit}</span>
+                        <span className="actionbar-supporter-name">{c.name}</span>
+                      </div>
+                    );
+                  } catch { return null; }
+                })
             }
             {state.phase === 'birdsong' && !hasSpreads && al.supporters.length > 0 && (
-              <span className="dim actionbar-supporters-hint"> — need {cost} matching to spread</span>
-            )}
-            {state.phase === 'birdsong' && !hasSpreads && al.supporters.length === 0 && (
-              <span className="dim actionbar-supporters-hint"> — mobilize cards to gain supporters</span>
+              <div className="dim actionbar-supporters-hint">need {cost} matching supporters to spread sympathy</div>
             )}
           </div>
         );
