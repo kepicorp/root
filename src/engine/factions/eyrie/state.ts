@@ -27,6 +27,8 @@ export interface EyrieState {
   // True at game start and immediately after a Turmoil. The player must
   // choose a leader before adding to the Decree; cleared by chooseLeader.
   needsLeaderChoice: boolean;
+  // Card IDs crafted during this daylight phase; used to track roost power spent.
+  craftedThisTurn: CardId[];
 }
 
 export const INITIAL_EYRIE_STATE: EyrieState = {
@@ -42,6 +44,7 @@ export const INITIAL_EYRIE_STATE: EyrieState = {
   cardsAddedThisBirdsong: 0,
   pendingDiscard: 0,
   needsLeaderChoice: true,   // prompt for first leader before the first Decree add
+  craftedThisTurn: [],
 };
 
 export const ROOST_VP_TRACK = [0, 0, 1, 2, 3, 4, 4, 5] as const;

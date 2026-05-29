@@ -47,13 +47,10 @@ function aidVpForRelationship(rel: Relationship): number {
 const TRACK_ITEMS: readonly ItemKind[] = ['torch', 'crossbow', 'bag'];
 const TRACK_LIMIT = 3;
 
-/** Max items allowed in satchel + damaged box. */
+/** Max items allowed in satchel + damaged box. §9.4.5: 3 base + 1 per face-up Bag on the Refresh track. */
 function itemCapacity(items: { kind: ItemKind; state: string }[]): number {
-  const faceUpTrackCount = TRACK_ITEMS.reduce(
-    (sum, kind) => sum + items.filter(i => i.kind === kind && i.state === 'face-up').length,
-    0,
-  );
-  return 6 + 2 * faceUpTrackCount;
+  const faceUpBagCount = items.filter(i => i.kind === 'bag' && i.state === 'face-up').length;
+  return 3 + faceUpBagCount;
 }
 
 /** Count of items currently in satchel (face-down) or damaged box (damaged). */
@@ -85,11 +82,20 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
       return produce(state, draft => {
         if (draft.phase !== 'birdsong') return;
         const v = draft.factions.vagabond!;
-        if (v.inForest) return;
-        if (!getAdjacent(AUTUMN_MAP, v.clearing).includes(a.to)) return;
-        draft.map.clearings[v.clearing]!.vagabondHere = false;
-        v.clearing = a.to;
-        draft.map.clearings[a.to]!.vagabondHere = true;
+        if (v.slipped) return;
+        if (v.inForest) {
+          // Slip from forest to an adjacent clearing.
+          const f = getForest(AUTUMN_MAP, v.inForest);
+          if (!f.clearings.includes(a.to)) return;
+          v.clearing = a.to;
+          v.inForest = undefined;
+          draft.map.clearings[a.to]!.vagabondHere = true;
+        } else {
+          if (!getAdjacent(AUTUMN_MAP, v.clearing).includes(a.to)) return;
+          draft.map.clearings[v.clearing]!.vagabondHere = false;
+          v.clearing = a.to;
+          draft.map.clearings[a.to]!.vagabondHere = true;
+        }
         v.slipped = true;
       });
 
@@ -443,17 +449,33 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
           if (it1) it1.exhausted = false;
           return;
         }
-        // Remove from display, draw a replacement if available, bank the VP.
+        // Remove from display, draw a replacement if available, then wait for reward choice.
         v.questDisplay = v.questDisplay.filter(id => id !== a.questId);
         if (v.questDeck.length > 0) v.questDisplay.push(v.questDeck.shift()!);
         v.completedQuests.push(a.questId);
-        const alreadyCompletedOfType = v.completedQuests.filter(id => id !== a.questId && getQuest(id).suit === quest.suit).length;
-        // Real Root grants +1 VP per existing completion of the same quest;
-        // we use the same per-suit bump for similar pressure.
-        const vp = quest.baseVp + alreadyCompletedOfType;
-        draft.scores.vagabond += vp;
         v.daylightActionsLeft -= 1;
-        draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Completed quest ${a.questId} for ${vp} VP.` });
+        v.pendingQuestReward = a.questId;
+        draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Completed quest ${a.questId}. Choose reward: draw 2 cards or score VP.` });
+      });
+
+    case 'vagabond.completeQuestReward':
+      return produce(state, draft => {
+        const v = draft.factions.vagabond!;
+        if (v.pendingQuestReward !== a.questId) return;
+        if (a.choice === 'cards') {
+          for (let i = 0; i < 2; i++) {
+            const c = draft.deck.pop();
+            if (!c) break;
+            draft.hands.vagabond.push(c);
+          }
+          draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Quest reward: drew 2 cards.` });
+        } else {
+          // Score VP equal to number of completed quests (including this one).
+          const vp = v.completedQuests.length;
+          draft.scores.vagabond += vp;
+          draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Quest reward: scored ${vp} VP.` });
+        }
+        v.pendingQuestReward = undefined;
       });
 
     case 'vagabond.formCoalition':
@@ -470,10 +492,15 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
         const isLastPlace = others.every(f => draft.scores[f] > targetScore);
         if (!isLastPlace) return;
         if (targetScore >= myScore) return;
+        // Consume a dominance card from hand (required per §9.7).
+        const domIdx = draft.hands.vagabond.findIndex(id => getCard(id).category === 'dominance');
+        if (domIdx < 0) return;
+        const domCard = draft.hands.vagabond.splice(domIdx, 1)[0]!;
+        draft.discard.push(domCard);
         v.coalitionPartner = a.faction;
         // Vagabond becomes 'allied' with the partner (no longer attacks them).
         v.relationships[a.faction] = 'allied';
-        draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Formed coalition with ${a.faction}.` });
+        draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Formed coalition with ${a.faction} (activated dominance card).` });
       });
 
     case 'vagabond.endDaylight':
@@ -607,18 +634,32 @@ export function vagabondLegalActions(state: GameState): Action[] {
 
   if (state.phase === 'birdsong') {
     out.push({ kind: 'vagabond.refresh' });
-    if (!v.inForest) {
-      for (const nb of getAdjacent(AUTUMN_MAP, v.clearing)) {
-        out.push({ kind: 'vagabond.slip', to: nb });
-      }
-      for (const fid of forestsAtClearing(AUTUMN_MAP, v.clearing)) {
-        out.push({ kind: 'vagabond.slipToForest', forestId: fid });
-      }
-      // Ranger: slip to Hideout camp instead of walking.
-      if (v.character === 'ranger' && v.hideout && v.hideout !== v.clearing) {
-        out.push({ kind: 'vagabond.slipToHideout' });
+    if (!v.slipped) {
+      if (!v.inForest) {
+        for (const nb of getAdjacent(AUTUMN_MAP, v.clearing)) {
+          out.push({ kind: 'vagabond.slip', to: nb });
+        }
+        for (const fid of forestsAtClearing(AUTUMN_MAP, v.clearing)) {
+          out.push({ kind: 'vagabond.slipToForest', forestId: fid });
+        }
+        // Ranger: slip to Hideout camp instead of walking.
+        if (v.character === 'ranger' && v.hideout && v.hideout !== v.clearing) {
+          out.push({ kind: 'vagabond.slipToHideout' });
+        }
+      } else {
+        // In a forest: can slip out to any adjacent clearing.
+        const f = getForest(AUTUMN_MAP, v.inForest);
+        for (const cid of f.clearings) {
+          out.push({ kind: 'vagabond.slip', to: cid });
+        }
       }
     }
+  }
+  if (state.phase === 'daylight' && v.pendingQuestReward) {
+    // Must choose quest reward before taking other actions.
+    out.push({ kind: 'vagabond.completeQuestReward', questId: v.pendingQuestReward, choice: 'cards' });
+    out.push({ kind: 'vagabond.completeQuestReward', questId: v.pendingQuestReward, choice: 'vp' });
+    return out;
   }
   if (state.phase === 'daylight' && v.daylightActionsLeft > 0) {
     // Pending relationship cost must be resolved before any other action.
@@ -758,8 +799,8 @@ export function vagabondLegalActions(state: GameState): Action[] {
         out.push({ kind: 'vagabond.completeQuest', questId });
       }
     }
-    // Form coalition — only with a strictly-last-place faction.
-    if (!v.coalitionPartner) {
+    // Form coalition — only with a strictly-last-place faction, and only with a dominance card in hand.
+    if (!v.coalitionPartner && state.hands.vagabond.some(id => getCard(id).category === 'dominance')) {
       const candidates = (['marquise', 'eyrie', 'alliance'] as const).filter(f => state.factions[f]);
       for (const f of candidates) {
         const others = candidates.filter(o => o !== f);

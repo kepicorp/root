@@ -1,9 +1,10 @@
 import { produce } from 'immer';
-import type { GameState, Action, ClearingId } from '../../types';
+import type { GameState, Action, ClearingId, CardSuit } from '../../types';
 import type { CardId } from '../../cards';
 import { getCard } from '../../cards';
 import { AUTUMN_MAP, getAdjacent } from '../../map';
 import { resolveCombat } from '../../combat';
+import { applyFavor } from '../../effects';
 import { onEnterBirdsong } from '../../loop';
 import { ROOST_VP_TRACK, LEADER_VIZIER_SLOTS, type EyrieLeader, type DecreeSlot, type EyrieState } from './state';
 import { findSlotTarget, eyrieRules, suitMatches } from './decree';
@@ -329,6 +330,37 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
       });
     }
 
+    case 'eyrie.craft':
+      return produce(state, draft => {
+        if (draft.phase !== 'daylight') return;
+        const card = getCard(a.cardId);
+        if (card.category !== 'item' && card.category !== 'persistent' && card.category !== 'favor') return;
+        const e = draft.factions.eyrie!;
+        // Compute roost power per suit: each roost in clearing X provides 1 pip of that clearing's suit.
+        const power: Partial<Record<CardSuit, number>> = {};
+        for (const roostClearing of e.roosts) {
+          const cm = AUTUMN_MAP.clearings.find(c => c.id === roostClearing);
+          if (cm) power[cm.suit] = (power[cm.suit] ?? 0) + 1;
+        }
+        // Subtract power already consumed this turn.
+        for (const craftedId of e.craftedThisTurn) {
+          for (const [s, n] of Object.entries(getCard(craftedId).craftCost)) {
+            power[s as CardSuit] = Math.max(0, (power[s as CardSuit] ?? 0) - (n ?? 0));
+          }
+        }
+        const canCraft = Object.entries(card.craftCost).every(([s, n]) => (power[s as CardSuit] ?? 0) >= (n as number));
+        if (!canCraft) return;
+        const idx = draft.hands.eyrie.indexOf(a.cardId);
+        if (idx < 0) return;
+        draft.hands.eyrie.splice(idx, 1);
+        e.craftedThisTurn.push(a.cardId);
+        if (card.craftVp) draft.scores.eyrie += card.craftVp;
+        if (card.item) { draft.itemSupply.push(card.item); draft.craftedItemLog.push({ faction: 'eyrie', item: card.item }); }
+        if (card.category === 'persistent') draft.craftedPersistents.push({ faction: 'eyrie', cardId: a.cardId });
+        if (card.category === 'favor') applyFavor(draft, card.suit, 'eyrie');
+        draft.log.push({ turn: draft.turn, faction: 'eyrie', message: `Crafted ${card.name} (+${card.craftVp ?? 0} VP).` });
+      });
+
     case 'eyrie.evening':
       return produce(state, draft => {
         if (draft.phase !== 'evening') return;
@@ -376,6 +408,7 @@ function finishEyrieTurn(draft: GameState, _vp: number, _draws: number): void {
   e.cardsAddedThisBirdsong = 0;
   e.resolutionLeft = undefined;
   e.pendingDiscard = 0;
+  e.craftedThisTurn = [];
   draft.activeIndex = (draft.activeIndex + 1) % draft.factionOrder.length;
   if (draft.activeIndex === 0) draft.turn += 1;
   draft.phase = 'birdsong';
@@ -432,6 +465,27 @@ export function eyrieLegalActions(state: GameState): Action[] {
       }
     }
     out.push({ kind: 'eyrie.endBirdsong' });
+  }
+  if (state.phase === 'daylight' && e.roosts.length > 0) {
+    // Craft using roost power — available throughout daylight, independent of Decree.
+    const power: Partial<Record<CardSuit, number>> = {};
+    for (const roostClearing of e.roosts) {
+      const cm = AUTUMN_MAP.clearings.find(c => c.id === roostClearing);
+      if (cm) power[cm.suit] = (power[cm.suit] ?? 0) + 1;
+    }
+    for (const craftedId of e.craftedThisTurn) {
+      for (const [s, n] of Object.entries(getCard(craftedId).craftCost)) {
+        power[s as CardSuit] = Math.max(0, (power[s as CardSuit] ?? 0) - (n ?? 0));
+      }
+    }
+    for (const cardId of state.hands.eyrie) {
+      const card = getCard(cardId);
+      if (card.category !== 'item' && card.category !== 'persistent' && card.category !== 'favor') continue;
+      const cost = card.craftCost;
+      if (!cost || Object.keys(cost).length === 0) continue;
+      const canCraft = Object.entries(cost).every(([s, n]) => (power[s as CardSuit] ?? 0) >= (n ?? 0));
+      if (canCraft) out.push({ kind: 'eyrie.craft', cardId });
+    }
   }
   if (state.phase === 'daylight' && !e.decreeResolved) {
     out.push({ kind: 'eyrie.resolveDecree' });

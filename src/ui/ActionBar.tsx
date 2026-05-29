@@ -68,6 +68,7 @@ const MAP_DRIVEN: ReadonlySet<string> = new Set([
   'eyrie.executeMove',
   'eyrie.executeBattle',
   'eyrie.executeBuild',
+  'eyrie.craft',
 ]);
 
 const BUILDING_LABEL: Record<'sawmill' | 'workshop' | 'recruiter', string> = {
@@ -123,16 +124,17 @@ const ACTION_META: Record<string, ActionMeta> = {
   'alliance.endDaylight':         { label: 'End daylight',        group: 'end' },
   'alliance.evening':             { label: 'End evening',         group: 'end',         primary: true },
   // Vagabond
-  'vagabond.refresh':             { label: 'Start daylight',      group: 'birdsong',    primary: true },
-  'vagabond.slipToHideout':      { label: 'Slip to Hideout',     group: 'birdsong' },
-  'vagabond.placeHideout':       { label: 'Place Hideout',       group: 'main' },
-  'vagabond.exploreRuin':         { label: 'Explore ruin',        group: 'main',        primary: true },
-  'vagabond.battle':              { label: 'Battle',              group: 'main',        primary: true },
-  'vagabond.aid':                 { label: 'Aid faction',         group: 'main' },
-  'vagabond.strike':              { label: 'Strike',              group: 'main' },
-  'vagabond.repair':              { label: 'Repair item',         group: 'main' },
-  'vagabond.endDaylight':         { label: 'End daylight',        group: 'end' },
-  'vagabond.evening':             { label: 'End evening',         group: 'end',         primary: true },
+  'vagabond.refresh':                  { label: 'Start daylight',      group: 'birdsong',    primary: true },
+  'vagabond.slipToHideout':           { label: 'Slip to Hideout',     group: 'birdsong' },
+  'vagabond.placeHideout':            { label: 'Place Hideout',       group: 'main' },
+  'vagabond.exploreRuin':              { label: 'Explore ruin',        group: 'main',        primary: true },
+  'vagabond.battle':                   { label: 'Battle',              group: 'main',        primary: true },
+  'vagabond.aid':                      { label: 'Aid faction',         group: 'main' },
+  'vagabond.strike':                   { label: 'Strike',              group: 'main' },
+  'vagabond.repair':                   { label: 'Repair item',         group: 'main' },
+  'vagabond.completeQuestReward':      { label: 'Quest reward',        group: 'main',        primary: true },
+  'vagabond.endDaylight':              { label: 'End daylight',        group: 'end' },
+  'vagabond.evening':                  { label: 'End evening',         group: 'end',         primary: true },
 };
 
 const GROUP_ORDER = ['birdsong', 'main', 'bonus', 'end'] as const;
@@ -378,6 +380,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
     else if (a.kind === 'eyrie.chooseLeader')      eyrieLeaderLegals.push(a.leader);
     else if (a.kind === 'marquise.craft')             craftCards.add(a.cardId);
     else if (a.kind === 'marquise.spendBirdForExtra') spendBirdCards.add(a.cardId);
+    else if (a.kind === 'eyrie.craft')                craftCards.add(a.cardId);
     else if (a.kind === 'alliance.craft')             craftCards.add(a.cardId);
     else if (a.kind === 'alliance.trainOfficer')      trainOfficerCards.add(a.cardId);
     else if (a.kind === 'vagabond.craft')             craftCards.add(a.cardId);
@@ -1151,6 +1154,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                         style={{ borderColor: SUIT_COLOR[c.suit] }}
                         onClick={() => {
                           if (active === 'marquise')      dispatch({ kind: 'marquise.craft', cardId: id });
+                          else if (active === 'eyrie')    dispatch({ kind: 'eyrie.craft', cardId: id });
                           else if (active === 'alliance') dispatch({ kind: 'alliance.craft', cardId: id });
                           else if (active === 'vagabond') dispatch({ kind: 'vagabond.craft', cardId: id });
                           setCraftPicking(false);

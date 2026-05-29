@@ -39,6 +39,8 @@ export interface VagabondState {
   /** Set after a battle/strike removes pieces from a non-hostile faction.
    *  Must be resolved (pay card or accept hostility) before further actions. */
   pendingRelationshipCost?: { faction: Exclude<Faction, 'vagabond'>; suit: CardSuit };
+  /** Set after completing a quest; player must choose cards or VP before continuing. */
+  pendingQuestReward?: string;
 }
 
 export const INITIAL_VAGABOND_STATE: VagabondState = {

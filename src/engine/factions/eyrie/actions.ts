@@ -15,5 +15,7 @@ export type EyrieAction =
   | { kind: 'eyrie.executeBuild';   clearing: ClearingId }
   // Resolve everything left automatically (Turmoil if anything is stuck).
   | { kind: 'eyrie.resolveDecree' }
+  // Craft using roost power during daylight (outside Decree).
+  | { kind: 'eyrie.craft'; cardId: CardId }
   | { kind: 'eyrie.evening' }
   | { kind: 'eyrie.discardCard'; cardId: CardId };

@@ -6,6 +6,7 @@ import { performSetup } from '../../../setup';
 import { checkCoalitionVictory } from '../reducer';
 import { AUTUMN_MAP } from '../../../map';
 import { QUEST_DECK, getQuest } from '../quests';
+import { DOMINANCE_CARDS } from '../../../cards';
 
 function fixture(seed = 7) {
   return startGame(performSetup(newGame({ seed })));
@@ -22,7 +23,7 @@ describe('Vagabond quest deck', () => {
     }
   });
 
-  it('completing a quest exhausts both items, banks VP, and refills the display', () => {
+  it('completing a quest exhausts both items, sets pendingQuestReward, and reward scores VP', () => {
     const baseline = fixture();
 
     // Force a winnable scenario: put Vagabond in the right clearing, with
@@ -44,19 +45,26 @@ describe('Vagabond quest deck', () => {
     });
 
     const before = setup.scores.vagabond;
-    const after = reduce(setup, { kind: 'vagabond.completeQuest', questId: targetQuest.id });
-    expect(after).not.toBe(setup);
+    const afterComplete = reduce(setup, { kind: 'vagabond.completeQuest', questId: targetQuest.id });
+    expect(afterComplete).not.toBe(setup);
 
-    const v = after.factions.vagabond!;
+    const v = afterComplete.factions.vagabond!;
     expect(v.completedQuests).toContain(targetQuest.id);
     expect(v.questDisplay).not.toContain(targetQuest.id);
     expect(v.questDisplay).toContain('q-fox-2'); // refilled from deck
-    expect(after.scores.vagabond).toBe(before + targetQuest.baseVp);
+    // Reward not yet given — pendingQuestReward is set.
+    expect(v.pendingQuestReward).toBe(targetQuest.id);
+    expect(afterComplete.scores.vagabond).toBe(before); // no VP yet
     // Both items now exhausted.
     expect(v.items.every(i => i.exhausted)).toBe(true);
+
+    // Choose VP reward: scores completedQuests.length VP (1 at this point).
+    const afterReward = reduce(afterComplete, { kind: 'vagabond.completeQuestReward', questId: targetQuest.id, choice: 'vp' });
+    expect(afterReward.scores.vagabond).toBe(before + 1);
+    expect(afterReward.factions.vagabond!.pendingQuestReward).toBeUndefined();
   });
 
-  it('completing a second quest of the same suit awards a +1 bonus', () => {
+  it('completing a second quest and choosing VP reward scores completedQuests.length VP', () => {
     const baseline = fixture();
     const foxQuests = QUEST_DECK.filter(q => q.suit === 'fox');
     expect(foxQuests.length).toBeGreaterThanOrEqual(2);
@@ -79,8 +87,11 @@ describe('Vagabond quest deck', () => {
     });
 
     const before = setup.scores.vagabond;
-    const after = reduce(setup, { kind: 'vagabond.completeQuest', questId: secondQuest.id });
-    expect(after.scores.vagabond).toBe(before + secondQuest.baseVp + 1);
+    const afterComplete = reduce(setup, { kind: 'vagabond.completeQuest', questId: secondQuest.id });
+    // completedQuests now has 2 entries (firstQuest + secondQuest).
+    // VP reward = completedQuests.length = 2.
+    const afterReward = reduce(afterComplete, { kind: 'vagabond.completeQuestReward', questId: secondQuest.id, choice: 'vp' });
+    expect(afterReward.scores.vagabond).toBe(before + 2);
   });
 
   it('rejects completion when the clearing suit does not match', () => {
@@ -105,8 +116,9 @@ describe('Vagabond quest deck', () => {
 });
 
 describe('Vagabond coalition', () => {
-  it('forms a coalition only with the strictly-last-place faction', () => {
+  it('forms a coalition only with the strictly-last-place faction and requires a dominance card', () => {
     const baseline = fixture();
+    const domCard = DOMINANCE_CARDS[0]!;
     const setup = produce(baseline, draft => {
       draft.phase = 'daylight';
       draft.activeIndex = draft.factionOrder.indexOf('vagabond');
@@ -115,6 +127,8 @@ describe('Vagabond coalition', () => {
       draft.scores.marquise = 5;
       draft.scores.eyrie = 6;
       draft.scores.alliance = 4;  // last place
+      // Give the Vagabond a dominance card to activate coalition.
+      draft.hands.vagabond.push(domCard.id);
     });
 
     // Try a non-last-place faction first — must fail.
@@ -125,6 +139,8 @@ describe('Vagabond coalition', () => {
     const ok = reduce(setup, { kind: 'vagabond.formCoalition', faction: 'alliance' });
     expect(ok.factions.vagabond!.coalitionPartner).toBe('alliance');
     expect(ok.factions.vagabond!.relationships.alliance).toBe('allied');
+    // Dominance card should be consumed.
+    expect(ok.hands.vagabond).not.toContain(domCard.id);
   });
 
   it('coalition victory fires when partner reaches 30', () => {

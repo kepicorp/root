@@ -15,6 +15,7 @@ export type VagabondAction =
   | { kind: 'vagabond.strike'; clearing: ClearingId; faction: Exclude<Faction, 'vagabond'> }
   | { kind: 'vagabond.repair'; itemKind: ItemKind }
   | { kind: 'vagabond.completeQuest'; questId: string }
+  | { kind: 'vagabond.completeQuestReward'; questId: string; choice: 'cards' | 'vp' }
   | { kind: 'vagabond.formCoalition'; faction: Exclude<Faction, 'vagabond'> }
   | { kind: 'vagabond.placeHideout' }
   | { kind: 'vagabond.refresh' }

@@ -241,6 +241,7 @@ export function marquiseReducer(state: GameState, action: Action): GameState {
         const card = getCard(a.cardId);
         if (card.category !== 'item' && card.category !== 'persistent' && card.category !== 'favor') return;
         const m = draft.factions.marquise!;
+        if (m.daylightActionsLeft <= 0) return;
         if (m.buildings.workshop <= 0) return;
         // Verify per-suit workshop power, accounting for already-used power this turn.
         const power: Partial<Record<CardSuit, number>> = {};
@@ -258,6 +259,7 @@ export function marquiseReducer(state: GameState, action: Action): GameState {
         if (!canCraft) return;
         if (!consumeCardFromHand(draft, a.cardId)) return;
         m.craftedThisTurn.push(a.cardId);
+        m.daylightActionsLeft -= 1;
         if (card.craftVp) draft.scores.marquise += card.craftVp;
         if (card.item) { draft.itemSupply.push(card.item); draft.craftedItemLog.push({ faction: 'marquise', item: card.item }); }
         if (card.category === 'persistent') draft.craftedPersistents.push({ faction: 'marquise', cardId: a.cardId });
@@ -459,14 +461,15 @@ export function marquiseLegalActions(state: GameState): Action[] {
           if (canCraft) out.push({ kind: 'marquise.craft', cardId });
         }
       }
-      // Bird card for extra action (any bird card including dominance is valid per rules)
-      if (!m.bonusActionUsed) {
-        for (const cardId of state.hands.marquise) {
-          const c = getCard(cardId);
-          if (c.suit === 'bird') {
-            out.push({ kind: 'marquise.spendBirdForExtra', cardId });
-            break;
-          }
+    }
+    // Bird card for extra action (any bird card including dominance is valid per rules)
+    // Available even at 0 actions left — to get one more action.
+    if (!m.bonusActionUsed) {
+      for (const cardId of state.hands.marquise) {
+        const c = getCard(cardId);
+        if (c.suit === 'bird') {
+          out.push({ kind: 'marquise.spendBirdForExtra', cardId });
+          break;
         }
       }
     }
