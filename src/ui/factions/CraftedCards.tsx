@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { GameState, Faction, CardSuit } from '../../engine/types';
 import { getCard } from '../../engine/cards';
 import { cardArt } from '../../assets';
@@ -17,6 +17,8 @@ export function CraftedCards({ state, faction }: Props) {
   const [zoomed, setZoomed] = useState<string | null>(null);
 
   const persistents = state.craftedPersistents.filter(e => e.faction === faction);
+  // Clear zoom when the crafted cards list changes (removed cards won't fire mouseLeave).
+  useEffect(() => { setZoomed(null); }, [persistents.length]);
   const items = state.craftedItemLog.filter(e => e.faction === faction);
 
   if (persistents.length === 0 && items.length === 0) return null;

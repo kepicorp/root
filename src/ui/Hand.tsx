@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { GameState, Faction } from '../engine/types';
 import { getCard } from '../engine/cards';
 import { cardArt, factionIcon } from '../assets';
@@ -18,6 +18,9 @@ const SUIT_COLOR: Record<string, string> = {
 
 export function Hand({ state, faction }: HandProps) {
   const [zoomed, setZoomed] = useState<string | null>(null);
+  const cards = state.hands[faction ?? 'marquise'];
+  // Clear zoom whenever the hand contents change (cards removed have no mouseLeave to fire).
+  useEffect(() => { setZoomed(null); }, [cards]);
 
   if (!faction) {
     return (
@@ -26,7 +29,6 @@ export function Hand({ state, faction }: HandProps) {
       </div>
     );
   }
-  const cards = state.hands[faction];
   const icon = factionIcon(faction);
   const bagCount = faction === 'vagabond'
     ? (state.factions.vagabond?.items.filter(i => i.kind === 'bag' && i.state === 'face-up').length ?? 0)
