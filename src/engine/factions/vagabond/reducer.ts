@@ -173,7 +173,8 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
     case 'vagabond.refresh':
       return produce(state, draft => {
         if (draft.phase !== 'birdsong') return;
-        // Items were already auto-refreshed in onEnterBirdsong; this just starts daylight.
+        // Player may skip remaining refresh picks by clicking "Start daylight".
+        draft.factions.vagabond!.pendingRefresh = 0;
         draft.phase = 'daylight';
       });
 
@@ -300,9 +301,11 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
         if (idx < 0) return;
         draft.hands.vagabond.splice(idx, 1);
         draft.hands[a.faction].push(a.cardId);
+        const wasAllied = v.relationships[a.faction] === 'allied';
         v.relationships[a.faction] = bumpRelationship(v.relationships[a.faction]);
-        // Score VP equal to the numeric relationship level reached (I=1, II=2, III=3, Allied=4).
-        const aidVp = aidVpForRelationship(v.relationships[a.faction]);
+        // §9.7.a: when aiding an already-allied faction, score 2 VP each time.
+        // Otherwise score VP equal to the numeric relationship level reached.
+        const aidVp = wasAllied ? 2 : aidVpForRelationship(v.relationships[a.faction]);
         if (aidVp > 0) draft.scores.vagabond += aidVp;
         v.daylightActionsLeft -= 1;
         draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Aided ${a.faction} (exhausted ${a.itemKind}); relationship → ${v.relationships[a.faction]}${aidVp > 0 ? ` (+${aidVp} VP)` : ''}.` });
@@ -635,6 +638,26 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
         draft.factions.vagabond!.pendingAidItemTake = undefined;
       });
 
+    case 'vagabond.pickRefreshItem':
+      return produce(state, draft => {
+        const v = draft.factions.vagabond!;
+        if (draft.phase !== 'birdsong') return;
+        if (v.pendingRefresh <= 0) return;
+        const item = v.items[a.itemIdx];
+        if (!item || !item.exhausted) return;
+        item.exhausted = false;
+        v.pendingRefresh -= 1;
+        draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Refreshed ${item.kind}.` });
+      });
+
+    case 'vagabond.skipRefreshItem':
+      return produce(state, draft => {
+        const v = draft.factions.vagabond!;
+        if (draft.phase !== 'birdsong') return;
+        v.pendingRefresh = 0;
+        draft.log.push({ turn: draft.turn, faction: 'vagabond', message: 'Skipped remaining refreshes.' });
+      });
+
     case 'vagabond.rangerHideout':
       // Ranger only: exhaust 1 torch to repair 3 items, then immediately end Daylight.
       return produce(state, draft => {
@@ -664,6 +687,7 @@ function finishVagabondTurn(draft: GameState, _draws: number): void {
   v.daylightActionsLeft = 6;
   v.pendingDiscard = 0;
   v.pendingItemRemoval = 0;
+  v.pendingRefresh = 0;
   draft.activeIndex = (draft.activeIndex + 1) % draft.factionOrder.length;
   if (draft.activeIndex === 0) draft.turn += 1;
   draft.phase = 'birdsong';
@@ -707,6 +731,16 @@ export function vagabondLegalActions(state: GameState): Action[] {
   }
 
   if (state.phase === 'birdsong') {
+    if (v.pendingRefresh > 0) {
+      // Offer each exhausted face-up item as a refresh pick.
+      v.items.forEach((item, idx) => {
+        if (item.exhausted && item.state === 'face-up') {
+          out.push({ kind: 'vagabond.pickRefreshItem', itemIdx: idx });
+        }
+      });
+      // Always allow skipping remaining refreshes.
+      out.push({ kind: 'vagabond.skipRefreshItem' });
+    }
     out.push({ kind: 'vagabond.refresh' });
     if (!v.slipped) {
       if (!v.inForest) {

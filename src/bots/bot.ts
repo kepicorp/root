@@ -31,6 +31,8 @@ const PRIORITY: Record<string, number> = {
   'marquise.recruit':                70,
   'marquise.overwork':               40,
   'vagabond.refresh':                80,
+  'vagabond.pickRefreshItem':        60,
+  'vagabond.skipRefreshItem':         5,
   'vagabond.move':                   30,
   'eyrie.addToDecree':               60,
   'alliance.mobilize':               40,

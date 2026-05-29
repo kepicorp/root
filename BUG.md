@@ -6,15 +6,23 @@ This is a list of bugs and features, sorted by global mechanics or faction.
 
 ### General
 
-- [ ] The card royal dominance require 4 ressources of any kind but you need at least 4 ressources.
-- [ ] Dominance should only be taken into account at the next turn it seems (Check the rules)
+- [x] The card royal dominance require 4 ressources of any kind but you need at least 4 ressources.
+  - Already working: `canMeetCraftCost` handles bird wildcard as "any suit"; Royal Claim only requires ruling clearings, not paying resources.
+- [x] Dominance should only be taken into account at the next turn it seems (Check the rules)
+  - Already correctly implemented: `checkVictory` in `loop.ts` only checks dominance during the dominance faction's own birdsong (`state.factionOrder[state.activeIndex] === state.dominance.faction` and `state.phase === 'birdsong'`).
 
 ### Vagabond
 
-- [ ] Available quest to do should be visible in the YOUR TURN during daylight
-- [ ] I would like to pick the item I want to refresh
-- [ ] It seems that can I move between multuple clearing with the slip move. I should not be able to make two.
-- [ ] Crafting uses hammer per ressource I should not be able to craft a 3 ressources card with 2 hammers.
+- [x] Available quest to do should be visible in the YOUR TURN during daylight
+  - Fixed: completable quests now show as buttons in the Actions group of the ActionBar during daylight, with item requirements and VP displayed.
+- [x] I would like to pick the item I want to refresh
+  - Fixed: `onEnterBirdsong` now sets `v.pendingRefresh` instead of auto-refreshing. During birdsong the player is offered each exhausted item as a pick button plus a "Skip remaining" option. Bot handles via PRIORITY entries.
+- [x] It seems that can I move between multuple clearing with the slip move. I should not be able to make two.
+  - Already enforced: `v.slipped = true` is set in all slip cases and `finishVagabondTurn` resets it. (Was marked resolved previously; re-confirmed no code change needed.)
+- [x] Crafting uses hammer per ressource I should not be able to craft a 3 ressources card with 2 hammers.
+  - Already correctly implemented: `vagabond.craft` reducer computes `hammersNeeded` as the sum of all cost entries and exhausts that many hammers (or face-up items for Tinker). Legal actions gate on `availableCraftPower >= powerNeeded`.
+- [x] Aiding Ally should score 2 VP (§9.7.a)
+  - Fixed: `vagabond.aid` reducer now checks `wasAllied` before bumping the relationship; if already allied it always awards 2 VP. Aid picker VP hint updated to show +2 VP for allied factions.
 - [ ] The Allied status does not seem implemented here are the rules:
 ```
 Allied Status. If a relationship marker reaches

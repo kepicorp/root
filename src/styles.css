@@ -1083,6 +1083,8 @@ body { background: var(--bg); color: var(--paper); }
 .actionbar-supporter-suit { font-size: 9px; text-transform: capitalize; opacity: 0.8; min-width: 36px; }
 .actionbar-supporter-name { flex: 1; }
 .supporter-pip { display: inline-block; width: 8px; height: 8px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.2); flex-shrink: 0; }
+.actionbar-quest-list { display: flex; flex-direction: column; gap: 4px; width: 100%; margin-top: 4px; }
+.actionbar-quest-title { font-size: 10px; color: #b8a37a; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; }
 .actionbar-counter {
   font-size: 0.82rem;
   padding: 2px 8px;

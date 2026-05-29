@@ -43,6 +43,8 @@ export interface VagabondState {
   pendingQuestReward?: string;
   /** Set after aiding a faction that has crafted items; player may take one. */
   pendingAidItemTake?: { faction: Exclude<Faction, 'vagabond'> };
+  /** Number of items still to be picked for refresh during birdsong. */
+  pendingRefresh: number;
 }
 
 export const INITIAL_VAGABOND_STATE: VagabondState = {
@@ -59,6 +61,7 @@ export const INITIAL_VAGABOND_STATE: VagabondState = {
   daylightActionsLeft: 0,
   pendingDiscard: 0,
   pendingItemRemoval: 0,
+  pendingRefresh: 0,
 };
 
 export const STARTING_ITEMS: Record<VagabondCharacter, ItemKind[]> = {

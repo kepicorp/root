@@ -7,6 +7,7 @@ import type { MapIntent } from './Board';
 import { buildCost } from '../engine/factions/marquise/scoring';
 import { SYMPATHY_COST } from '../engine/factions/alliance/state';
 import type { DecreeSlot, EyrieLeader } from '../engine/factions/eyrie/state';
+import { getQuest } from '../engine/factions/vagabond/quests';
 
 const SUIT_COLOR: Record<CardSuit, string> = {
   fox: '#c03428', mouse: '#e07858', rabbit: '#f0c030', bird: '#5aabaa',
@@ -64,6 +65,8 @@ const MAP_DRIVEN: ReadonlySet<string> = new Set([
   'vagabond.dayLabor',
   'vagabond.takeAidItem',
   'vagabond.skipAidItem',
+  'vagabond.pickRefreshItem',
+  'vagabond.skipRefreshItem',
   'system.resolveOutrage',
   'eyrie.addToDecree',
   'eyrie.chooseLeader',
@@ -128,6 +131,8 @@ const ACTION_META: Record<string, ActionMeta> = {
   'alliance.evening':             { label: 'End evening',         group: 'end',         primary: true },
   // Vagabond
   'vagabond.refresh':                  { label: 'Start daylight',      group: 'birdsong',    primary: true },
+  'vagabond.pickRefreshItem':          { label: 'Refresh item',         group: 'birdsong' },
+  'vagabond.skipRefreshItem':          { label: 'Skip refreshes',       group: 'birdsong' },
   'vagabond.slipToHideout':           { label: 'Slip to Hideout',     group: 'birdsong' },
   'vagabond.placeHideout':            { label: 'Place Hideout',       group: 'main' },
   'vagabond.rangerHideout':           { label: 'Hideout (repair 3)',  group: 'main',        primary: true },
@@ -382,6 +387,9 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
   let canEyrieMove = false;
   const eyrieDecreeLegals: Array<{ slot: DecreeSlot; cardId: string }> = [];
   const eyrieLeaderLegals: EyrieLeader[] = [];
+  const completeQuestActions: Array<{ questId: string }> = [];
+  const refreshableItemIdxs: Array<{ itemIdx: number; kind: string }> = [];
+  let canSkipRefresh = false;
   for (const a of allLegals) {
     if (a.kind === 'marquise.build')           buildable.add(a.building);
     else if (a.kind === 'marquise.battle')     marquiseBattleDefenders.add(a.defender);
@@ -439,6 +447,12 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
     }
     else if (a.kind === 'vagabond.payRelationshipCost') payRelCostCards.add(a.cardId);
     else if (a.kind === 'vagabond.acceptHostility')     canAcceptHostility = true;
+    else if (a.kind === 'vagabond.completeQuest')       completeQuestActions.push({ questId: a.questId });
+    else if (a.kind === 'vagabond.pickRefreshItem') {
+      const item = state.factions.vagabond?.items[a.itemIdx];
+      if (item) refreshableItemIdxs.push({ itemIdx: a.itemIdx, kind: item.kind });
+    }
+    else if (a.kind === 'vagabond.skipRefreshItem')     canSkipRefresh = true;
     else if (a.kind === 'system.resolveOutrage') {
       if (a.cardId) outragePayCards.add(a.cardId);
       else outrageAutoResolve = true;
@@ -663,6 +677,8 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
         const showOutrage          = g === 'main'     && (outragePayCards.size > 0 || outrageAutoResolve);
         const showEyrieDecree      = g === 'birdsong' && eyrieDecreeLegals.length > 0;
         const showEyrieLeader      = g === 'birdsong' && eyrieLeaderLegals.length > 0;
+        const showQuests           = g === 'main'     && completeQuestActions.length > 0;
+        const showRefreshPicker    = g === 'birdsong' && refreshableItemIdxs.length > 0;
         if (list.length === 0 && ibs.length === 0
             && !showOverwork && !showMobilize && !showCraft
             && !showSpendBird && !showAid && !showRepair && !showTrain
@@ -676,6 +692,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
             && !showCoalition && !showDayLabor && !showAidItemTake && !showDiscard && !showRemoveItem && !showSteal
             && !showPayRelationship && !showOutrage
             && !showEyrieDecree && !showEyrieLeader
+            && !showQuests && !showRefreshPicker
             && greyedBuildings.length === 0) return null;
         const overworkArmed = mapIntent?.kind === 'marquise.overwork';
         return (
@@ -1117,6 +1134,46 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                   </button>
                 );
               })}
+              {showQuests && (
+                <div className="actionbar-quest-list">
+                  <div className="actionbar-quest-title">Completable Quests</div>
+                  {completeQuestActions.map(({ questId }, i) => {
+                    try {
+                      const q = getQuest(questId);
+                      return (
+                        <button
+                          key={`${questId}-${i}`}
+                          className="btn action-btn primary faction-vagabond"
+                          onClick={() => dispatch({ kind: 'vagabond.completeQuest', questId })}
+                        >
+                          <span className="action-label">{q.suit} quest</span>
+                          <span className="action-detail dim">{q.item1} + {q.item2} → {q.baseVp} VP</span>
+                        </button>
+                      );
+                    } catch { return null; }
+                  })}
+                </div>
+              )}
+              {showRefreshPicker && (() => {
+                const pendingCount = state.factions.vagabond?.pendingRefresh ?? 0;
+                return (
+                  <div className="action-card-picker">
+                    <div className="action-card-picker-title">
+                      Refresh {pendingCount} item{pendingCount !== 1 ? 's' : ''} — pick which to flip face-up
+                      {canSkipRefresh && (
+                        <button className="btn ghost small" onClick={() => dispatch({ kind: 'vagabond.skipRefreshItem' })}>Skip remaining</button>
+                      )}
+                    </div>
+                    <div className="action-card-picker-list">
+                      {refreshableItemIdxs.map(({ itemIdx, kind }) => (
+                        <button key={itemIdx} className="action-card-pick" onClick={() => dispatch({ kind: 'vagabond.pickRefreshItem', itemIdx })}>
+                          <span className="action-card-pick-name">{kind}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
             {showOverwork && overworkPicking && (
               <div className="action-card-picker">
@@ -1246,7 +1303,8 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                     const REL_NEXT: Record<string, string | number> = { hostile: 'indifferent', indifferent: 1, '1': 2, '2': 3, '3': 'allied' };
                     const relAfter = relNow != null ? REL_NEXT[String(relNow)] : undefined;
                     const VP_FOR_REL: Record<string, number> = { '1': 1, '2': 2, '3': 3, allied: 4 };
-                    const aidVp = relAfter != null ? (VP_FOR_REL[String(relAfter)] ?? 0) : 0;
+                    // §9.7.a: aiding an already-allied faction scores 2 VP each time.
+                    const aidVp = relNow === 'allied' ? 2 : (relAfter != null ? (VP_FOR_REL[String(relAfter)] ?? 0) : 0);
                     return (
                       <button
                         key={`${cardId}-${faction}-${itemKind}-${i}`}

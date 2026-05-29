@@ -110,6 +110,9 @@ import type { CardAction } from './card-effects';
 function migrateState(state: GameState): GameState {
   let s = state;
   if (!s.craftedItemLog) s = { ...s, craftedItemLog: [] };
+  if (s.factions.vagabond && (s.factions.vagabond as any).pendingRefresh === undefined) {
+    s = { ...s, factions: { ...s.factions, vagabond: { ...s.factions.vagabond, pendingRefresh: 0 } } };
+  }
   const al = s.factions.alliance;
   if (al) {
     let newAl = al;

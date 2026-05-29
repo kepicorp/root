@@ -105,22 +105,10 @@ export function onEnterBirdsong(draft: GameState): void {
   if (active === 'vagabond' && draft.factions.vagabond) {
     const v = draft.factions.vagabond;
     const teaCount = v.items.filter(i => i.kind === 'tea' && i.state === 'face-up').length;
-    // §9.3.2: flip up 2 exhausted items per face-up Tea, then 3 more.
-    let toRefresh = 3 + 2 * teaCount;
-    let refreshed = 0;
-    for (const it of v.items) {
-      if (toRefresh <= 0) break;
-      if (it.exhausted && it.state === 'face-up') {
-        it.exhausted = false;
-        toRefresh -= 1;
-        refreshed += 1;
-      }
-    }
+    // §9.3.2: player picks which exhausted items to flip face-up (3 + 2 per tea).
+    v.pendingRefresh = 3 + 2 * teaCount;
     // Ensure daylight actions are ready before the player clicks "Start daylight".
     v.daylightActionsLeft = 6;
-    if (refreshed > 0) {
-      draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Refreshed ${refreshed} item(s).` });
-    }
   }
 }
 

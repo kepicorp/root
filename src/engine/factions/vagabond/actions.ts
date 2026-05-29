@@ -29,4 +29,6 @@ export type VagabondAction =
   | { kind: 'vagabond.dayLabor'; cardId: CardId }
   | { kind: 'vagabond.rangerHideout' }
   | { kind: 'vagabond.takeAidItem'; item: ItemKind }
-  | { kind: 'vagabond.skipAidItem' };
+  | { kind: 'vagabond.skipAidItem' }
+  | { kind: 'vagabond.pickRefreshItem'; itemIdx: number }
+  | { kind: 'vagabond.skipRefreshItem' };
