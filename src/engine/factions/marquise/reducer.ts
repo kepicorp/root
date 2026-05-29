@@ -8,6 +8,7 @@ import { declareBattle } from '../../combat';
 import { applyFavor } from '../../effects';
 import { onEnterBirdsong } from '../../loop';
 import { vpForBuilding, buildCost } from './scoring';
+import { canMeetCraftCost } from '../../craft-utils';
 import type { MarquiseAction } from './actions';
 
 const ACTIVE: Faction = 'marquise';
@@ -255,8 +256,7 @@ export function marquiseReducer(state: GameState, action: Action): GameState {
             power[s as CardSuit] = Math.max(0, (power[s as CardSuit] ?? 0) - (n ?? 0));
           }
         }
-        const canCraft = Object.entries(card.craftCost).every(([s, n]) => (power[s as CardSuit] ?? 0) >= (n as number));
-        if (!canCraft) return;
+        if (!canMeetCraftCost(power, card.craftCost)) return;
         if (!consumeCardFromHand(draft, a.cardId)) return;
         m.craftedThisTurn.push(a.cardId);
         m.daylightActionsLeft -= 1;
@@ -457,8 +457,7 @@ export function marquiseLegalActions(state: GameState): Action[] {
           if (card.category !== 'item' && card.category !== 'persistent' && card.category !== 'favor') continue;
           const cost = card.craftCost;
           if (!cost || Object.keys(cost).length === 0) continue;
-          const canCraft = Object.entries(cost).every(([s, n]) => (power[s as CardSuit] ?? 0) >= (n ?? 0));
-          if (canCraft) out.push({ kind: 'marquise.craft', cardId });
+          if (canMeetCraftCost(power, cost)) out.push({ kind: 'marquise.craft', cardId });
         }
       }
     }

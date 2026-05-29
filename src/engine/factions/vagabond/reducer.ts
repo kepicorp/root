@@ -306,6 +306,11 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
         if (aidVp > 0) draft.scores.vagabond += aidVp;
         v.daylightActionsLeft -= 1;
         draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Aided ${a.faction} (exhausted ${a.itemKind}); relationship → ${v.relationships[a.faction]}${aidVp > 0 ? ` (+${aidVp} VP)` : ''}.` });
+        // If the faction has crafted items the Vagabond may take one.
+        const hasCraftedItems = draft.craftedItemLog.some(e => e.faction === a.faction);
+        if (hasCraftedItems) {
+          v.pendingAidItemTake = { faction: a.faction };
+        }
       });
 
     case 'vagabond.stealCard':
@@ -592,6 +597,62 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
         draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Accepted hostility with ${faction}.` });
       });
 
+    case 'vagabond.dayLabor':
+      // Tinker only: exhaust 1 torch to take a card from the discard pile matching clearing suit or bird.
+      return produce(state, draft => {
+        if (draft.phase !== 'daylight') return;
+        const v = draft.factions.vagabond!;
+        if (v.character !== 'tinker') return;
+        if (v.daylightActionsLeft <= 0) return;
+        if (!exhaustItem(v.items, 'torch')) return;
+        const idx = draft.discard.indexOf(a.cardId);
+        if (idx < 0) return;
+        const card = getCard(a.cardId);
+        const meta = AUTUMN_MAP.clearings.find(c => c.id === v.clearing)!;
+        if (card.suit !== meta.suit && card.suit !== 'bird') return;
+        draft.discard.splice(idx, 1);
+        draft.hands.vagabond.push(a.cardId);
+        v.daylightActionsLeft -= 1;
+        draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Tinker Day Labor: took ${card.name} from discard.` });
+      });
+
+    case 'vagabond.takeAidItem':
+      return produce(state, draft => {
+        const v = draft.factions.vagabond!;
+        if (!v.pendingAidItemTake) return;
+        const { faction } = v.pendingAidItemTake;
+        const idx = draft.craftedItemLog.findIndex(e => e.faction === faction && e.item === a.item);
+        if (idx < 0) return;
+        draft.craftedItemLog.splice(idx, 1);
+        const itemState = canGainItem(v.items, a.item) ? 'face-up' : 'face-down';
+        v.items.push({ kind: a.item, state: itemState, exhausted: false });
+        v.pendingAidItemTake = undefined;
+        draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Took ${a.item} from ${faction}'s crafted items.` });
+      });
+
+    case 'vagabond.skipAidItem':
+      return produce(state, draft => {
+        draft.factions.vagabond!.pendingAidItemTake = undefined;
+      });
+
+    case 'vagabond.rangerHideout':
+      // Ranger only: exhaust 1 torch to repair 3 items, then immediately end Daylight.
+      return produce(state, draft => {
+        if (draft.phase !== 'daylight') return;
+        const v = draft.factions.vagabond!;
+        if (v.character !== 'ranger') return;
+        if (v.daylightActionsLeft <= 0) return;
+        if (!exhaustItem(v.items, 'torch')) return;
+        let repaired = 0;
+        for (const it of v.items) {
+          if (repaired >= 3) break;
+          if (it.state === 'damaged') { it.state = 'face-up'; repaired += 1; }
+        }
+        v.daylightActionsLeft = 0;
+        draft.phase = 'evening';
+        draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Ranger Hideout: repaired ${repaired} item(s), beginning Evening.` });
+      });
+
     default:
       return state;
   }
@@ -615,6 +676,19 @@ export function vagabondLegalActions(state: GameState): Action[] {
   const out: Action[] = [];
   const v = state.factions.vagabond;
   if (!v) return out;
+
+  // pendingAidItemTake: player may take one item from aided faction's crafted items or skip.
+  if (v.pendingAidItemTake) {
+    const { faction } = v.pendingAidItemTake;
+    const availableItems = state.craftedItemLog
+      .filter(e => e.faction === faction)
+      .map(e => e.item);
+    for (const item of availableItems) {
+      out.push({ kind: 'vagabond.takeAidItem', item });
+    }
+    out.push({ kind: 'vagabond.skipAidItem' });
+    return out;
+  }
 
   // Pending discard / item removal gates everything else, regardless of phase
   if (v.pendingItemRemoval > 0) {
@@ -785,6 +859,19 @@ export function vagabondLegalActions(state: GameState): Action[] {
       // Ranger: place Hideout camp in current clearing.
       if (v.character === 'ranger') {
         out.push({ kind: 'vagabond.placeHideout' });
+      }
+      // Tinker Day Labor: exhaust 1 torch → take a matching card from discard.
+      if (v.character === 'tinker' && findItem(v.items, 'torch')) {
+        for (const cardId of state.discard) {
+          const card = getCard(cardId);
+          if (card.suit === meta.suit || card.suit === 'bird') {
+            out.push({ kind: 'vagabond.dayLabor', cardId });
+          }
+        }
+      }
+      // Ranger Hideout special: exhaust 1 torch → repair 3 items, end Daylight.
+      if (v.character === 'ranger' && findItem(v.items, 'torch') && v.items.some(i => i.state === 'damaged')) {
+        out.push({ kind: 'vagabond.rangerHideout' });
       }
       // Complete quest
       for (const questId of v.questDisplay) {

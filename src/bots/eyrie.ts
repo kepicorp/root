@@ -17,6 +17,36 @@ interface AddCandidate { slot: DecreeSlot; cardId: string; score: number }
 export function pickEyrieAction(state: GameState, legals: Action[]): Action | null {
   const eyrie = state.factions.eyrie;
   if (!eyrie) return null;
+  // During daylight, execute the decree step-by-step. For move actions,
+  // pick the destination with the most enemy pieces (mirrors the old
+  // resolveDecree auto-resolve heuristic). For other execute kinds,
+  // pick the first available clearing.
+  if (state.phase === 'daylight' && !eyrie.decreeResolved) {
+    const execKinds = ['eyrie.executeRecruit', 'eyrie.executeMove', 'eyrie.executeBattle', 'eyrie.executeBuild'] as const;
+    for (const kind of execKinds) {
+      const candidates = legals.filter(a => a.kind === kind);
+      if (candidates.length === 0) continue;
+      if (kind === 'eyrie.executeMove') {
+        // Pick the move that ends in the clearing with most enemy pieces.
+        let bestAction = candidates[0]!;
+        let bestScore = -1;
+        for (const a of candidates) {
+          const mv = a as Extract<Action, { kind: 'eyrie.executeMove' }>;
+          const dc = state.map.clearings[mv.to]!;
+          const enemyW = (dc.warriors.marquise ?? 0) + (dc.warriors.alliance ?? 0) + (dc.warriors.vagabond ?? 0);
+          const enemyP = dc.buildings.filter((b: {faction: string}) => b.faction !== 'eyrie').length
+                       + dc.tokens.filter((t: {faction: string}) => t.faction !== 'eyrie').length;
+          const score = enemyW * 2 + enemyP;
+          if (score > bestScore) { bestScore = score; bestAction = a; }
+        }
+        return bestAction;
+      }
+      return candidates[0]!;
+    }
+    // No execute actions possible — turmoil is the only option.
+    const rd = legals.find(a => a.kind === 'eyrie.resolveDecree');
+    if (rd) return rd;
+  }
   if (state.phase !== 'birdsong') return null;
   // Must choose a leader first. Commander (Move + Battle viziers) works
   // best for the bot: Move sets up the Battle, and combat removes warriors

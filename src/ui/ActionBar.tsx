@@ -61,6 +61,9 @@ const MAP_DRIVEN: ReadonlySet<string> = new Set([
   'vagabond.slipToHideout',
   'vagabond.payRelationshipCost',
   'vagabond.acceptHostility',
+  'vagabond.dayLabor',
+  'vagabond.takeAidItem',
+  'vagabond.skipAidItem',
   'system.resolveOutrage',
   'eyrie.addToDecree',
   'eyrie.chooseLeader',
@@ -112,7 +115,7 @@ const ACTION_META: Record<string, ActionMeta> = {
   // Eyrie
   'eyrie.addToDecree':            { label: 'Add to decree',       group: 'birdsong',    primary: true },
   'eyrie.endBirdsong':            { label: 'Done with decree',    group: 'end' },
-  'eyrie.resolveDecree':          { label: 'Resolve decree',      group: 'main',        primary: true },
+  'eyrie.resolveDecree':          { label: 'Trigger Turmoil',     group: 'main',        primary: true },
   'eyrie.evening':                { label: 'End evening',         group: 'end',         primary: true },
   // Alliance
   'alliance.spreadSympathy':      { label: 'Spread sympathy',     group: 'birdsong',    primary: true },
@@ -127,6 +130,7 @@ const ACTION_META: Record<string, ActionMeta> = {
   'vagabond.refresh':                  { label: 'Start daylight',      group: 'birdsong',    primary: true },
   'vagabond.slipToHideout':           { label: 'Slip to Hideout',     group: 'birdsong' },
   'vagabond.placeHideout':            { label: 'Place Hideout',       group: 'main' },
+  'vagabond.rangerHideout':           { label: 'Hideout (repair 3)',  group: 'main',        primary: true },
   'vagabond.exploreRuin':              { label: 'Explore ruin',        group: 'main',        primary: true },
   'vagabond.battle':                   { label: 'Battle',              group: 'main',        primary: true },
   'vagabond.aid':                      { label: 'Aid faction',         group: 'main' },
@@ -188,6 +192,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
   const [silverTonguePicking, setSilverTonguePicking] = useState(false);
   const [brazenDemagogPicking, setBrazenDemagogPicking] = useState(false);
   const [coalitionPicking, setCoalitionPicking] = useState(false);
+  const [dayLaborPicking, setDayLaborPicking] = useState(false);
   const [eyrieDecreeSlot, setEyrieDecreeSlot] = useState<DecreeSlot | null>(null);
   const [pendingCardMove, setPendingCardMove] = useState<{
     kind: string; cardId: string; from: number; to: number; max: number; pick: number;
@@ -222,6 +227,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
     setSilverTonguePicking(false);
     setBrazenDemagogPicking(false);
     setCoalitionPicking(false);
+    setDayLaborPicking(false);
     setEyrieDecreeSlot(null);
     setPendingCardMove(null);
   }
@@ -278,7 +284,19 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
     && state.pendingPrompts[0]!.faction === playerFaction;
   const isHuman = active === playerFaction || pendingForHuman;
   const allLegals = isHuman ? getLegalActions(state) : [];
-  const filtered = allLegals.filter(a => !MAP_DRIVEN.has(a.kind) && a.kind !== 'system.advancePhase' && a.kind !== 'system.endTurn');
+  // Hide eyrie.resolveDecree ("Trigger Turmoil") when execute actions are
+  // available — it's only useful as a last resort when no execute step is possible.
+  const hasEyrieExecuteActions = allLegals.some(a =>
+    a.kind === 'eyrie.executeRecruit' || a.kind === 'eyrie.executeMove' ||
+    a.kind === 'eyrie.executeBattle' || a.kind === 'eyrie.executeBuild',
+  );
+  const filtered = allLegals.filter(a => {
+    if (!MAP_DRIVEN.has(a.kind) && a.kind !== 'system.advancePhase' && a.kind !== 'system.endTurn') {
+      if (a.kind === 'eyrie.resolveDecree' && hasEyrieExecuteActions) return false;
+      return true;
+    }
+    return false;
+  });
   const hasMapMoves = isHuman && allLegals.some(a =>
     a.kind === 'marquise.march'
     || a.kind === 'alliance.move'
@@ -346,6 +364,9 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
   const silverTongueActions: Array<{ cardId: string; from: number; to: number; count: number }> = [];
   const brazenDemagogActions: Array<{ cardId: string; spendCard: string; takeDominance: string }> = [];
   const coalitionFactions = new Set<Faction>();
+  const dayLaborCards = new Set<string>();
+  const aidItemTakeItems = new Set<string>();
+  let canSkipAidItem = false;
   const discardCardIds = new Set<string>();
   const removeItemIdxs: Array<{ itemIdx: number; kind: string; state: string }> = [];
   const payRelCostCards = new Set<string>();
@@ -408,6 +429,9 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
     else if (a.kind === 'card.silverTongue')          silverTongueActions.push({ cardId: a.cardId, from: a.from, to: a.to, count: a.count });
     else if (a.kind === 'card.brazenDemagogue')       brazenDemagogActions.push({ cardId: a.cardId, spendCard: a.spendCard, takeDominance: a.takeDominance });
     else if (a.kind === 'vagabond.formCoalition')    coalitionFactions.add(a.faction);
+    else if (a.kind === 'vagabond.dayLabor')         dayLaborCards.add(a.cardId);
+    else if (a.kind === 'vagabond.takeAidItem')      aidItemTakeItems.add(a.item);
+    else if (a.kind === 'vagabond.skipAidItem')      canSkipAidItem = true;
     else if (a.kind === 'vagabond.discardCard')      discardCardIds.add(a.cardId);
     else if (a.kind === 'vagabond.removeItem') {
       const item = state.factions.vagabond?.items[a.itemIdx];
@@ -631,6 +655,8 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
         const showSilverTongue     = silverTongueActions.length > 0;
         const showBrazenDemagog    = g === 'end'      && brazenDemagogActions.length > 0;
         const showCoalition        = g === 'main'     && coalitionFactions.size > 0;
+        const showDayLabor         = g === 'main'     && dayLaborCards.size > 0;
+        const showAidItemTake      = g === 'main'     && (aidItemTakeItems.size > 0 || canSkipAidItem);
         const showDiscard          = g === 'end'      && discardCardIds.size > 0;
         const showRemoveItem       = g === 'end'      && removeItemIdxs.length > 0;
         const showPayRelationship  = g === 'main'     && (payRelCostCards.size > 0 || canAcceptHostility);
@@ -647,7 +673,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
             && !showRiversteads && !showSupplyTrain && !showRaidingParty && !showStandardBearer
             && !showTactician && !showSquires && !showFriendWildcard && !showSpyNetwork
             && !showShadowCouncil && !showApprentice && !showSilverTongue && !showBrazenDemagog
-            && !showCoalition && !showDiscard && !showRemoveItem && !showSteal
+            && !showCoalition && !showDayLabor && !showAidItemTake && !showDiscard && !showRemoveItem && !showSteal
             && !showPayRelationship && !showOutrage
             && !showEyrieDecree && !showEyrieLeader
             && greyedBuildings.length === 0) return null;
@@ -814,6 +840,16 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                 >
                   <span className="action-label">Repair</span>
                   {repairPicking && <span className="action-detail">pick an item below</span>}
+                </button>
+              )}
+              {showDayLabor && (
+                <button
+                  className={`btn action-btn primary ${dayLaborPicking ? 'armed' : ''} faction-${active}`}
+                  onClick={() => setDayLaborPicking(p => !p)}
+                  title="Tinker: exhaust 1 torch to take a matching card from the discard pile"
+                >
+                  <span className="action-label">Day Labor</span>
+                  {dayLaborPicking && <span className="action-detail">pick a card from discard below</span>}
                 </button>
               )}
               {showTrain && (
@@ -1274,6 +1310,34 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                 </div>
               </div>
             )}
+            {showDayLabor && dayLaborPicking && (
+              <div className="action-card-picker">
+                <div className="action-card-picker-title">
+                  Day Labor — pick a card from the discard pile
+                  <button className="btn ghost small" onClick={() => setDayLaborPicking(false)} aria-label="Cancel">×</button>
+                </div>
+                <div className="action-card-picker-list">
+                  {Array.from(dayLaborCards).map(id => {
+                    const c = getCard(id);
+                    return (
+                      <button
+                        key={id}
+                        className="action-card-pick"
+                        style={{ borderColor: SUIT_COLOR[c.suit] }}
+                        onClick={() => {
+                          dispatch({ kind: 'vagabond.dayLabor', cardId: id });
+                          setDayLaborPicking(false);
+                        }}
+                      >
+                        <span className="action-card-pick-suit" style={{ background: SUIT_COLOR[c.suit] }} />
+                        <span className="action-card-pick-suit-label" style={{ color: SUIT_COLOR[c.suit] }}>{c.suit}</span>
+                        <span className="action-card-pick-name">{c.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             {showTrain && trainPicking && (
               <div className="action-card-picker">
                 <div className="action-card-picker-title">
@@ -1720,6 +1784,34 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                       onClick={() => dispatch({ kind: 'system.resolveOutrage' })}
                     >
                       <span className="action-card-pick-name" style={{ color: '#5aabaa' }}>No matching card — Alliance draws from deck</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+            {showAidItemTake && (
+              <div className="action-card-picker">
+                <div className="action-card-picker-title">
+                  <strong>Aid bonus!</strong> You may take one item from the faction's Crafted Items box.
+                </div>
+                <div className="action-card-picker-list">
+                  {Array.from(aidItemTakeItems).map(item => (
+                    <button
+                      key={item}
+                      className="action-card-pick"
+                      style={{ borderColor: '#b8a37a' }}
+                      onClick={() => dispatch({ kind: 'vagabond.takeAidItem', item: item as never })}
+                    >
+                      <span className="action-card-pick-name">{item}</span>
+                    </button>
+                  ))}
+                  {canSkipAidItem && (
+                    <button
+                      className="action-card-pick"
+                      style={{ borderColor: '#888' }}
+                      onClick={() => dispatch({ kind: 'vagabond.skipAidItem' })}
+                    >
+                      <span className="action-card-pick-name" style={{ color: '#888' }}>Skip (take no item)</span>
                     </button>
                   )}
                 </div>

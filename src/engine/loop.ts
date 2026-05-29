@@ -105,7 +105,8 @@ export function onEnterBirdsong(draft: GameState): void {
   if (active === 'vagabond' && draft.factions.vagabond) {
     const v = draft.factions.vagabond;
     const teaCount = v.items.filter(i => i.kind === 'tea' && i.state === 'face-up').length;
-    let toRefresh = 3 + teaCount;
+    // §9.3.2: flip up 2 exhausted items per face-up Tea, then 3 more.
+    let toRefresh = 3 + 2 * teaCount;
     let refreshed = 0;
     for (const it of v.items) {
       if (toRefresh <= 0) break;

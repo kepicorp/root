@@ -6,6 +6,7 @@ import { declareBattle } from '../../combat';
 import { SYMPATHY_VP_TRACK, SYMPATHY_COST } from './state';
 import { applyFavor } from '../../effects';
 import { onEnterBirdsong } from '../../loop';
+import { canMeetCraftCost } from '../../craft-utils';
 import type { AllianceAction } from './actions';
 
 function isAllianceTurn(state: GameState): boolean {
@@ -213,8 +214,7 @@ export function allianceReducer(state: GameState, action: Action): GameState {
             power[s as CardSuit] = Math.max(0, (power[s as CardSuit] ?? 0) - (n as number));
           }
         }
-        const canCraft = Object.entries(card.craftCost).every(([s, n]) => (power[s as CardSuit] ?? 0) >= (n as number));
-        if (!canCraft) return;
+        if (!canMeetCraftCost(power, card.craftCost)) return;
         const idx = draft.hands.alliance.indexOf(a.cardId);
         if (idx < 0) return;
         draft.hands.alliance.splice(idx, 1);
@@ -382,8 +382,7 @@ export function allianceLegalActions(state: GameState): Action[] {
         const card = getCard(id);
         if (card.category !== 'item' && card.category !== 'persistent' && card.category !== 'favor') continue;
         if (Object.keys(card.craftCost).length === 0) continue;
-        const canCraft = Object.entries(card.craftCost).every(([s, n]) => (power[s as CardSuit] ?? 0) >= (n as number));
-        if (canCraft) out.push({ kind: 'alliance.craft', cardId: id });
+        if (canMeetCraftCost(power, card.craftCost)) out.push({ kind: 'alliance.craft', cardId: id });
       }
     }
     out.push({ kind: 'alliance.endDaylight' });

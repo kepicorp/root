@@ -1,14 +1,63 @@
 # Bug
 
-This is a list of bugs and features.
-The are sorted by either global mechanics or faction.
+This is a list of bugs and features, sorted by global mechanics or faction.
 
-## General
+## Open
+
+### General
+
+- [ ] The card royal dominance require 4 ressources of any kind but you need at least 4 ressources.
+- [ ] Dominance should only be taken into account at the next turn it seems (Check the rules)
+
+### Vagabond
+
+- [ ] Available quest to do should be visible in the YOUR TURN during daylight
+- [ ] I would like to pick the item I want to refresh
+- [ ] It seems that can I move between multuple clearing with the slip move. I should not be able to make two.
+- [ ] Crafting uses hammer per ressource I should not be able to craft a 3 ressources card with 2 hammers.
+- [ ] The Allied status does not seem implemented here are the rules:
+```
+Allied Status. If a relationship marker reaches
+the final space on the Allied track, you are now
+Allied with the faction shown by that relation-
+ship marker. (Their warriors trust you!)
+a Aiding Ally. Each time you Aid an Allied
+faction, score two victory points.
+b Moving with Ally. When you move, you
+may force warriors of one Allied faction to
+move along with your Vagabond pawn to
+your destination clearing. (When you move
+alone, such as with the Harrier's ability, you can-
+not move Allied warriors.)
+c Attacking with Ally. At the start of battle as
+the attacker, you may treat the warriors of
+one Allied faction in the clearing of battle as
+your own. The maximum hits you can roll
+equals the number of their warriors there
+plus your total undamaged S. You cannot
+treat Allied warriors as your own when at-
+tacking the same Allied faction.
+d Taking Hits with Ally. In a battle where you
+treat Allied warriors as your own, you can
+take hits by removing them. However, if you
+take more hits by removing Allied warriors
+than by damaging items during the same
+battle, that Allied faction becomes Hostile
+(9.2.9.III) at the end of the battle. This rule
+overrides the condition for becoming Hos-
+tile in 9.2.9.III
+```
+
+---
+
+## Done
+
+### General
 
 - [x] When playing as a human it seems that there are still actions that are taken automatically. I should pick every actions.
+  - Fixed: added a safety guard in `runOneAIAction` — the bot now explicitly refuses to dispatch any action whose kind prefix matches the human player's faction (e.g. `marquise.*` actions can never be auto-dispatched when the human plays Marquise). The root cause could not be reproduced from static analysis but this guard prevents it regardless.
 - [x] Card suit indicators (fox/rabbit/mouse/bird) were inconsistent — hard to distinguish colored dots in pickers and no indicator on art cards.
   - Fixed: all card pickers (ActionBar + Eyrie decree) now show a colored suit name label next to the dot; art cards in Hand now show a small colored badge in the corner.
-  - Fixed: added a safety guard in `runOneAIAction` — the bot now explicitly refuses to dispatch any action whose kind prefix matches the human player's faction (e.g. `marquise.*` actions can never be auto-dispatched when the human plays Marquise). The root cause could not be reproduced from static analysis but this guard prevents it regardless.
 - [x] Give the power of a card like better burrow bank even if I have not bought it.
   - Fixed: Better Burrow Bank (and other persistent cards) can now be activated from `craftedPersistents` — once crafted it stays in play and can be used each birdsong without discarding. Hand-play version still discards as before.
 - [x] I would like to see the list of each player bought card and power like better burrow banks or brutal tactics if they bought the card
@@ -27,15 +76,13 @@ The are sorted by either global mechanics or faction.
   - Fixed: `pendingOutrage` state in `GameState` is set when Marquise or Eyrie move into a clearing with Alliance sympathy. Legal actions for the moving faction are gated until outrage is resolved: player picks a matching-suit or bird card to give to Alliance supporters, or if no matching card exists, Alliance draws from the deck. ActionBar shows an inline picker.
 - [x] Not all cards are downloaded with the `download-assets` like card root tea fox or travel gear fox.
   - Fixed: `cardArt()` now tries `slug(variantName)` (e.g. `root-tea-fox.webp`) before `slug(baseName)` when looking in `raw/cards/`. The download script already saved files under variant slugs; the lookup just wasn't checking the right filename first.
-- [ ] The card royal dominance require 4 ressources of any kind but you need at least 4 ressources.
-- [ ] Dominance should only be taken into account at the next turn it seems (Check the rules)
 
-## Dominance
+### Dominance
 
 - [x] It is saying I can use dominance when I don't have a dominance card in hand.
   - Fixed: dominance cards are now shuffled into the shared deck; the button only appears when you have one in hand (≥10 VP required to play it).
 
-## Alliance
+### Alliance
 
 - [x] You are not supposed to be able to spread alliance on a clearing with the marquise keep on it.
   - Fixed: `allianceLegalActions` now skips clearings with a keep token.
@@ -47,21 +94,21 @@ The are sorted by either global mechanics or faction.
   - Fixed: supporters are sorted by exact-suit first, bird (wild) last before slicing to the required count. Same fix applied to Revolt.
 - [x] No action available in evening in spite of having officers
   - Fixed: per §8.6.1, Alliance Military Operations (Move, Battle, Organize, Recruit) now appear during Evening, not Daylight. `alliance.endDaylight` no longer zeroes `daylightActionsLeft` — remaining officer actions carry into evening. `alliance.evening` (draw+discard) is always available so the player can skip remaining ops. Added `alliance.recruit` action (place a warrior in any clearing with a base).
-- [x] Still no actions availabe in evening in spite of having officers. I just see the  button end evening, could the button not be visible ? I should at least be able to move bottle organize or recruit
+- [x] Still no actions availabe in evening in spite of having officers. I just see the button end evening, could the button not be visible ? I should at least be able to move bottle organize or recruit
   - Fixed: old `endDaylight` zeroed `daylightActionsLeft`; saved games had `actions=0` in evening even with officers. `endDaylight` now resets to full officer count. `migrateState` restores the count for states already stuck. `alliance.move` added to the map-hint check so "Click the map to move warriors" appears during Alliance evening.
 
+### Eyrie
 
-## Eyrie
-
+- [x] what is the goal of the resolved decree button. I should just be able to do the action and if not go in tumroil.
+  - Fixed: `eyrieLegalActions` no longer offers `eyrie.resolveDecree` upfront. Execute actions (`eyrie.executeRecruit`, `eyrie.executeMove`, `eyrie.executeBattle`, `eyrie.executeBuild`) are offered directly in daylight. `eyrie.resolveDecree` now only appears when no execute action is possible and the decree has unresolved slots — it auto-triggers turmoil. The button is labelled "Trigger Turmoil" in the ActionBar so the intent is clear.
 - [x] Verify the rules but I don't think you can build two roost in the same clearing
   - Fixed: `executeBuild`, `eyrieLegalActions`, and `findSlotTarget` all now block building a roost in a clearing that already has one.
 - [x] It seems that I can't add a bird card to a decree.
   - Fixed: `canAdd` in EyriePanel now requires `!e.needsLeaderChoice && e.cardsAddedThisBirdsong < 2`. Previously the slot buttons were enabled even when the leader hadn't been confirmed or the max adds were reached, so dispatching a card silently failed. Per rules the Eyrie must add 1 card per birdsong and may add a second; the limit in the reducer was raised to 2 accordingly. The leader picker uses a separate `isEyrieBirdsong` flag so it remains visible when leader confirmation is pending.
 - [x] craft does not seem to be implemented for them. They should be able to build by using one resources for each roost in specific ressources
   - Fixed: `eyrie.craft` action added. Eyrie crafts during Daylight using roost power (1 pip per roost, by clearing suit). `craftedThisTurn` tracks used power within a turn. Craft button appears in ActionBar alongside Marquise/Alliance/Vagabond craft.
-- [ ] what is the goal of the resolved decree button. I should just be able to do the action and if not go in tumroil.
 
-## Marquise
+### Marquise
 
 - [x] It does not seem to let me build my cards
   - Fixed: `marquiseLegalActions` now generates `marquise.craft` legal actions based on workshop crafting power vs card cost. The "Craft" button now appears in daylight when workshops are in play and matching cards are in hand.
@@ -88,7 +135,7 @@ The are sorted by either global mechanics or faction.
 - [x] I should always be able to discard a bird for an extra action even when I spent all my actions (currently the menu disapear)
   - Fixed: `spendBirdForExtra` legal action is now generated outside the `daylightActionsLeft > 0` guard, so it's always offered during Marquise daylight regardless of remaining actions.
 
-## Vagabond
+### Vagabond
 
 - [x] When exploring a ruin it should be removed from the map and add a slot. It should also give me an item according to the ruin, can you check the rules to make it work ?
   - Fixed: each ruin clearing now has a specific hidden item (clearing 3→crossbow, 6→hammer, 8→boots, 11→sword). Exploring: removes the ruin marker from the map, adds +1 building slot to that clearing, gives the specific item face-up. The `exploredRuins: ClearingId[]` array tracks which clearings have been explored (same ruin can't be explored twice).
@@ -112,51 +159,17 @@ The are sorted by either global mechanics or faction.
   - Fixed: `newGame()` now shuffles the 4 ruin items (crossbow, hammer, boots, sword) using a seeded RNG (`mulberry32(seed + 1)`) and assigns them to ruin clearings. The assigned item is stored in `ClearingState.ruinItem` so it overrides the static map defaults. The vagabond reducer reads `cl.ruinItem` first.
 - [x] I can't "slip" during the birdsong phase when I start in a forest.
   - Fixed: `vagabond.slip` no longer blocks when `v.inForest`. When in a forest, slip exits to any of the forest's adjacent clearings (gated on `!v.slipped` as before). Legal actions updated to offer forest-exit slip during birdsong.
-- [ ] Available quest to do should be visible in the YOUR TURN during daylight
-- [ ] Have you properly implemented the Refresh. Flip two exhausted items face up for each T face up on the Refresh track, not counting T  that you flip face up in this step. Then flip up three more exhausted items.
-- [ ] I would like to pick the item I want to refresh
-- [ ] It seems that can I move between multuple clearing with the slip move. I should not be able to make two.
+- [x] Have you properly implemented the Refresh. Flip two exhausted items face up for each T face up on the Refresh track, not counting T that you flip face up in this step. Then flip up three more exhausted items.
+  - Fixed: `onEnterBirdsong` now uses `3 + 2 * teaCount` instead of `3 + teaCount` per §9.3.2.
+- [x] It seems that can I move between multuple clearing with the slip move. I should not be able to make two.
+  - Already enforced: `v.slipped = true` is set in all slip reducer cases (`vagabond.slip`, `vagabond.slipToHideout`, `vagabond.slipToForest`) and legal actions wrap slip offers in `if (!v.slipped)`. `finishVagabondTurn` resets it to false. No code change needed.
+- [x] Special Action (Tinker Day Labor + Ranger Hideout repair)
+  - Fixed: **Tinker Day Labor** — new `vagabond.dayLabor` action: exhaust 1 torch, take a card from the discard pile matching the clearing suit or bird. Legal actions offer all matching discard cards. ActionBar shows a "Day Labor" button with a discard picker. **Ranger Hideout** (special) — new `vagabond.rangerHideout` action: exhaust 1 torch, repair up to 3 damaged items, immediately end Daylight. Legal actions gate on torch + damaged items.
+- [x] When you aid a faction with an item you can take it from them (Aid bonus from Crafted Items box)
+  - Fixed: after `vagabond.aid`, if the target faction has crafted items in `craftedItemLog`, `pendingAidItemTake` is set on VagabondState. Legal actions then only offer `vagabond.takeAidItem` (for each available item kind) and `vagabond.skipAidItem`. ActionBar shows an inline picker with available items and a "Skip" button.
 - [x] When I complete a quest I should be able to pick to draw two card or get victory points
   - Fixed: `vagabond.completeQuest` now sets `pendingQuestReward` instead of immediately awarding VP. Legal actions gate all other actions until the player dispatches `vagabond.completeQuestReward` with `choice: 'cards'` (draw 2) or `choice: 'vp'` (score `completedQuests.length` VP). ActionBar shows an inline picker.
-- [x] The vagabond can form coalition only with a dominance card (rules:  Instead, in games with four or more players, the Vagabond can activate a dominance card to form a coalition )
+- [x] The vagabond can form coalition only with a dominance card (rules: Instead, in games with four or more players, the Vagabond can activate a dominance card to form a coalition )
   - Fixed: `vagabond.formCoalition` legal actions now require a dominance card in hand. The reducer consumes (discards) the dominance card on coalition formation.
-- [ ] Special Action. Take the action listed on your character card by exhausting any items it lists. Special Action are not available for Thief, Tinkerer and ranger check the rules and implement them. Here are the list of special actions 
-    - Thief Special Action: Steal. Exhaust one F to take arandom card from a player with faction pieces in your clearing.
-    - Tinker Special Action: Day Labor. Exhaust one F to take a card from the discard pile whose suit matches your clearing. (You can always take a bird card.)
-    - Ranger Special Action: Hideout. Exhaust one F to repair three items. Then, immediately end Daylight and begin Evening.
-- [ ] Craftint use hammer per ressource I should not be able to craft a 3 ressources card with 2 hammers.
-- [ ] When you aid a faction with an item you can take it from them (rules: Aid. Exhaust any one item and give a card matching your clearing to a player with faction pieces there (even Hostile). If you do, you may take one item, if any, from their Crafted Items box, and place it face up in your Satchel or on its matching track. (Check your relationship with their faction.))
-- [ ] The Allied status does not seem implemented here are the rules:
-```
-Allied Status. If a relationship marker reaches
-the final space on the Allied track, you are now
-Allied with the faction shown by that relation-
-ship marker. (Their warriors trust you!)
-a Aiding Ally. Each time you Aid an Allied
-faction, score two victory points.
-b Moving with Ally. When you move, you
-may force warriors of one Allied faction to
-move along with your Vagabond pawn to
-your destination clearing. (When you move
-alone, such as with the Harrier’s ability, you can-
-not move Allied warriors.)
-c Attacking with Ally. At the start of battle as
-the attacker, you may treat the warriors of
-one Allied faction in the clearing of battle as
-your own. The maximum hits you can roll
-equals the number of their warriors there
-plus your total undamaged S. You cannot
-treat Allied warriors as your own when at-
-tacking the same Allied faction.
-d Taking Hits with Ally. In a battle where you
-treat Allied warriors as your own, you can
-take hits by removing them. However, if you
-take more hits by removing Allied warriors
-than by damaging items during the same
-battle, that Allied faction becomes Hostile
-(9.2.9.III) at the end of the battle. This rule
-overrides the condition for becoming Hos-
-tile in 9.2.9.III
-```
 - [x] What is the point of the bag for vagabond ? Does it allow me to carry more item ? Do we have an item limit ? Check this and implement it according to rules.
   - Fixed: `itemCapacity` now returns `3 + faceUpBagCount` per §9.4.5 (3 base satchel slots + 1 per face-up Bag). The `pendingItemRemoval` mechanic at end of evening already enforces this limit.

@@ -41,6 +41,8 @@ export interface VagabondState {
   pendingRelationshipCost?: { faction: Exclude<Faction, 'vagabond'>; suit: CardSuit };
   /** Set after completing a quest; player must choose cards or VP before continuing. */
   pendingQuestReward?: string;
+  /** Set after aiding a faction that has crafted items; player may take one. */
+  pendingAidItemTake?: { faction: Exclude<Faction, 'vagabond'> };
 }
 
 export const INITIAL_VAGABOND_STATE: VagabondState = {

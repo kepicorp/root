@@ -25,4 +25,8 @@ export type VagabondAction =
   | { kind: 'vagabond.discardCard'; cardId: CardId }
   | { kind: 'vagabond.removeItem'; itemIdx: number }
   | { kind: 'vagabond.payRelationshipCost'; cardId: CardId }
-  | { kind: 'vagabond.acceptHostility' };
+  | { kind: 'vagabond.acceptHostility' }
+  | { kind: 'vagabond.dayLabor'; cardId: CardId }
+  | { kind: 'vagabond.rangerHideout' }
+  | { kind: 'vagabond.takeAidItem'; item: ItemKind }
+  | { kind: 'vagabond.skipAidItem' };
