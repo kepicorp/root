@@ -118,6 +118,7 @@ const ACTION_META: Record<string, ActionMeta> = {
   'alliance.mobilize':            { label: 'Mobilize',            group: 'main' },
   'alliance.organize':            { label: 'Organize',            group: 'main' },
   'alliance.battle':              { label: 'Battle',              group: 'main' },
+  'alliance.recruit':             { label: 'Recruit',             group: 'main' },
   'alliance.endDaylight':         { label: 'End daylight',        group: 'end' },
   'alliance.evening':             { label: 'End evening',         group: 'end',         primary: true },
   // Vagabond

@@ -151,7 +151,7 @@ export function allianceReducer(state: GameState, action: Action): GameState {
       });
 
     case 'alliance.battle': {
-      if (state.phase !== 'daylight') return state;
+      if (state.phase !== 'daylight' && state.phase !== 'evening') return state;
       const al = state.factions.alliance!;
       if (al.daylightActionsLeft <= 0) return state;
       const pre = produce(state, draft => {
@@ -161,9 +161,25 @@ export function allianceReducer(state: GameState, action: Action): GameState {
       return declareBattle(pre, { clearing: a.clearing, attacker: 'alliance', defender: a.defender });
     }
 
+    case 'alliance.recruit':
+      return produce(state, draft => {
+        if (draft.phase !== 'evening' && draft.phase !== 'daylight') return;
+        const al = draft.factions.alliance!;
+        if (al.daylightActionsLeft <= 0) return;
+        if (al.warriorSupply <= 0) return;
+        const clMeta = AUTUMN_MAP.clearings.find(c => c.id === a.clearing);
+        if (!clMeta) return;
+        if (al.bases[clMeta.suit] === undefined) return;
+        draft.map.clearings[a.clearing]!.warriors.alliance =
+          (draft.map.clearings[a.clearing]!.warriors.alliance ?? 0) + 1;
+        al.warriorSupply -= 1;
+        al.daylightActionsLeft -= 1;
+        draft.log.push({ turn: draft.turn, faction: 'alliance', message: `Recruited a warrior to clearing ${a.clearing}.` });
+      });
+
     case 'alliance.move':
       return produce(state, draft => {
-        if (draft.phase !== 'daylight') return;
+        if (draft.phase !== 'daylight' && draft.phase !== 'evening') return;
         const al = draft.factions.alliance!;
         if (al.daylightActionsLeft <= 0) return;
         if (!getAdjacent(AUTUMN_MAP, a.from).includes(a.to)) return;
@@ -232,7 +248,7 @@ export function allianceReducer(state: GameState, action: Action): GameState {
 
     case 'alliance.endDaylight':
       return produce(state, draft => {
-        draft.factions.alliance!.daylightActionsLeft = 0;
+        // Do NOT zero daylightActionsLeft — remaining officer actions carry into evening (§8.6.1).
         draft.phase = 'evening';
       });
 
@@ -369,30 +385,6 @@ export function allianceLegalActions(state: GameState): Action[] {
         if (canCraft) out.push({ kind: 'alliance.craft', cardId: id });
       }
     }
-    // ── Officer-limited actions (Organize / Battle / Move) ──────────────────
-    if (al.daylightActionsLeft > 0) {
-      for (const c of AUTUMN_MAP.clearings) {
-        const cl = state.map.clearings[c.id]!;
-        if ((cl.warriors.alliance ?? 0) > 0 && !al.sympathy.includes(c.id)) {
-          out.push({ kind: 'alliance.organize', clearing: c.id });
-        }
-        if ((cl.warriors.alliance ?? 0) > 0) {
-          for (const f of ['marquise', 'eyrie', 'vagabond'] as const) {
-            if ((cl.warriors[f] ?? 0) > 0 || cl.buildings.some(b => b.faction === f)) {
-              out.push({ kind: 'alliance.battle', clearing: c.id, defender: f });
-            }
-          }
-        }
-        const have = cl.warriors.alliance ?? 0;
-        if (have > 0) {
-          for (const nb of getAdjacent(AUTUMN_MAP, c.id)) {
-            if (allianceRules(state, c.id) || allianceRules(state, nb)) {
-              out.push({ kind: 'alliance.move', from: c.id, to: nb, count: have });
-            }
-          }
-        }
-      }
-    }
     out.push({ kind: 'alliance.endDaylight' });
   }
   if (state.phase === 'evening') {
@@ -401,6 +393,40 @@ export function allianceLegalActions(state: GameState): Action[] {
         out.push({ kind: 'alliance.discardCard', cardId });
       }
     } else {
+      // §8.6.1 Military Operations — up to officer count, before drawing.
+      if (al.daylightActionsLeft > 0) {
+        for (const c of AUTUMN_MAP.clearings) {
+          const cl = state.map.clearings[c.id]!;
+          if ((cl.warriors.alliance ?? 0) > 0 && !al.sympathy.includes(c.id)) {
+            out.push({ kind: 'alliance.organize', clearing: c.id });
+          }
+          if ((cl.warriors.alliance ?? 0) > 0) {
+            for (const f of ['marquise', 'eyrie', 'vagabond'] as const) {
+              if ((cl.warriors[f] ?? 0) > 0 || cl.buildings.some(b => b.faction === f)) {
+                out.push({ kind: 'alliance.battle', clearing: c.id, defender: f });
+              }
+            }
+          }
+          const have = cl.warriors.alliance ?? 0;
+          if (have > 0) {
+            for (const nb of getAdjacent(AUTUMN_MAP, c.id)) {
+              if (allianceRules(state, c.id) || allianceRules(state, nb)) {
+                out.push({ kind: 'alliance.move', from: c.id, to: nb, count: have });
+              }
+            }
+          }
+        }
+        // Recruit: place a warrior in any clearing with a base.
+        if (al.warriorSupply > 0) {
+          for (const [suit, clearing] of Object.entries(al.bases) as [string, number | undefined][]) {
+            if (clearing != null) {
+              out.push({ kind: 'alliance.recruit', clearing: clearing as number });
+            }
+            void suit;
+          }
+        }
+      }
+      // Draw + discard is always available (player may skip remaining military ops — "up to").
       out.push({ kind: 'alliance.evening' });
     }
   }

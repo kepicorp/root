@@ -43,6 +43,8 @@ The are sorted by either global mechanics or faction.
   - Fixed: `AllianceState` now tracks `craftedThisTurn`; craft legal actions and the reducer compute remaining sympathy power per suit (total sympathy pips minus already-consumed pips this turn) before offering or allowing each craft.
 - [x] Spread Sympathy should use the suit card first then the bird card.
   - Fixed: supporters are sorted by exact-suit first, bird (wild) last before slicing to the required count. Same fix applied to Revolt.
+- [x] No action available in evening in spite of having officers
+  - Fixed: per §8.6.1, Alliance Military Operations (Move, Battle, Organize, Recruit) now appear during Evening, not Daylight. `alliance.endDaylight` no longer zeroes `daylightActionsLeft` — remaining officer actions carry into evening. `alliance.evening` (draw+discard) is always available so the player can skip remaining ops. Added `alliance.recruit` action (place a warrior in any clearing with a base).
 
 ## Eyrie
 

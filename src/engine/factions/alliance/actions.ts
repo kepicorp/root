@@ -10,6 +10,7 @@ export type AllianceAction =
   | { kind: 'alliance.move'; from: ClearingId; to: ClearingId; count: number }
   | { kind: 'alliance.craft'; cardId: CardId }
   | { kind: 'alliance.trainOfficer'; cardId: CardId }
+  | { kind: 'alliance.recruit'; clearing: ClearingId }
   | { kind: 'alliance.endDaylight' }
   | { kind: 'alliance.evening' }
   | { kind: 'alliance.discardCard'; cardId: CardId };
