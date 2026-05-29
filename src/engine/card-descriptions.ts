@@ -48,7 +48,7 @@ const BY_NAME: Record<string, string> = {
   'Codebreakers':   'Daylight: look at another player\'s hand once this turn.',
 
   // ── Persistent: evening action ────────────────────────────────────────────
-  'Cobbler': 'Evening start: may take one free move action.',
+  'Cobbler': 'Evening: move 2 warriors to any clearing, then discard this card.',
 
   // ── Persistent: movement helpers (return to hand) ─────────────────────────
   'Supply Train':    'After moving: return to hand to take one more move to or from your destination.',

@@ -127,9 +127,10 @@ export function cardEffectsReducer(state: GameState, action: CardAction): GameSt
         .filter(id => factionRules(state, faction, Number(id))).length;
       return produce(state, draft => {
         draft.scores[faction] = (draft.scores[faction] ?? 0) + ruled;
+        discardCrafted(draft, faction, action.cardId);
         draft.log.push({
           turn: draft.turn, faction,
-          message: `Royal Claim: scored ${ruled} VP (rules ${ruled} clearing${ruled !== 1 ? 's' : ''}).`,
+          message: `Royal Claim: scored ${ruled} VP (rules ${ruled} clearing${ruled !== 1 ? 's' : ''}). Card discarded.`,
         });
       });
     }
@@ -246,9 +247,10 @@ export function cardEffectsReducer(state: GameState, action: CardAction): GameSt
           delete draft.map.clearings[from]!.warriors[faction];
         const dest = draft.map.clearings[to]!;
         dest.warriors[faction] = (dest.warriors[faction] ?? 0) + count;
+        discardCrafted(draft, faction, action.cardId);
         draft.log.push({
           turn: draft.turn, faction,
-          message: `Cobbler: moved ${count} warrior${count > 1 ? 's' : ''} from clearing ${from} to ${to}.`,
+          message: `Cobbler: moved ${count} warrior${count > 1 ? 's' : ''} from clearing ${from} to ${to}. Card discarded.`,
         });
       });
     }
