@@ -65,6 +65,8 @@ const MAP_DRIVEN: ReadonlySet<string> = new Set([
   'vagabond.dayLabor',
   'vagabond.takeAidItem',
   'vagabond.skipAidItem',
+  'vagabond.moveAllyWarriors',
+  'vagabond.skipAllyMove',
   'vagabond.pickRefreshItem',
   'vagabond.skipRefreshItem',
   'system.resolveOutrage',
@@ -372,6 +374,9 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
   const dayLaborCards = new Set<string>();
   const aidItemTakeItems = new Set<string>();
   let canSkipAidItem = false;
+  const allyMoveOptions: number[] = [];
+  let canSkipAllyMove = false;
+  const allyBattleOptions: Array<{ defender: Faction; allyFaction: Faction; clearing: number }> = [];
   const discardCardIds = new Set<string>();
   const removeItemIdxs: Array<{ itemIdx: number; kind: string; state: string }> = [];
   const payRelCostCards = new Set<string>();
@@ -396,7 +401,10 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
     else if (a.kind === 'marquise.overwork')   overworkCards.add(a.cardId);
     else if (a.kind === 'alliance.battle')     allianceBattleDefenders.add(a.defender);
     else if (a.kind === 'alliance.mobilize')   mobilizeCards.add(a.cardId);
-    else if (a.kind === 'vagabond.battle')     vagabondBattleDefenders.add(a.defender);
+    else if (a.kind === 'vagabond.battle') {
+      if (a.allyFaction) allyBattleOptions.push({ defender: a.defender, allyFaction: a.allyFaction as Faction, clearing: a.clearing });
+      else vagabondBattleDefenders.add(a.defender);
+    }
     else if (a.kind === 'vagabond.strike')     vagabondStrikeDefenders.add(a.faction);
     else if (a.kind === 'alliance.spreadSympathy') canSpreadSympathy = true;
     else if (a.kind === 'alliance.revolt')         canRevolt = true;
@@ -440,6 +448,8 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
     else if (a.kind === 'vagabond.dayLabor')         dayLaborCards.add(a.cardId);
     else if (a.kind === 'vagabond.takeAidItem')      aidItemTakeItems.add(a.item);
     else if (a.kind === 'vagabond.skipAidItem')      canSkipAidItem = true;
+    else if (a.kind === 'vagabond.moveAllyWarriors') allyMoveOptions.push(a.count);
+    else if (a.kind === 'vagabond.skipAllyMove')     canSkipAllyMove = true;
     else if (a.kind === 'vagabond.discardCard')      discardCardIds.add(a.cardId);
     else if (a.kind === 'vagabond.removeItem') {
       const item = state.factions.vagabond?.items[a.itemIdx];
@@ -679,6 +689,8 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
         const showEyrieLeader      = g === 'birdsong' && eyrieLeaderLegals.length > 0;
         const showQuests           = g === 'main'     && completeQuestActions.length > 0;
         const showRefreshPicker    = g === 'birdsong' && refreshableItemIdxs.length > 0;
+        const showAllyMove         = g === 'main'     && (allyMoveOptions.length > 0 || canSkipAllyMove);
+        const showAllyBattle       = g === 'main'     && allyBattleOptions.length > 0;
         if (list.length === 0 && ibs.length === 0
             && !showOverwork && !showMobilize && !showCraft
             && !showSpendBird && !showAid && !showRepair && !showTrain
@@ -693,6 +705,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
             && !showPayRelationship && !showOutrage
             && !showEyrieDecree && !showEyrieLeader
             && !showQuests && !showRefreshPicker
+            && !showAllyMove && !showAllyBattle
             && greyedBuildings.length === 0) return null;
         const overworkArmed = mapIntent?.kind === 'marquise.overwork';
         return (
@@ -1875,6 +1888,38 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                 </div>
               </div>
             )}
+            {showAllyMove && (
+              <div className="action-card-picker">
+                <div className="action-card-picker-title">
+                  ⚔ <strong>Move with Ally</strong> (§9.7.b) — bring allied warriors to your destination?
+                  {state.factions.vagabond?.pendingAllyMove && (
+                    <span className="dim"> {state.factions.vagabond.pendingAllyMove.faction} warriors at clearing {state.factions.vagabond.pendingAllyMove.from}</span>
+                  )}
+                </div>
+                <div className="action-card-picker-list">
+                  {allyMoveOptions.slice().sort((a,b)=>b-a).map(count => (
+                    <button key={count} className="action-card-pick"
+                      onClick={() => dispatch({ kind: 'vagabond.moveAllyWarriors', count })}>
+                      <span className="action-card-pick-name">Bring {count} warrior{count !== 1 ? 's' : ''}</span>
+                    </button>
+                  ))}
+                  {canSkipAllyMove && (
+                    <button className="action-card-pick" style={{ borderColor: '#888' }}
+                      onClick={() => dispatch({ kind: 'vagabond.skipAllyMove' })}>
+                      <span className="action-card-pick-name" style={{ color: '#888' }}>Leave them behind</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+            {showAllyBattle && allyBattleOptions.map((opt, i) => (
+              <button key={i}
+                className={`btn action-btn faction-vagabond`}
+                onClick={() => dispatch({ kind: 'vagabond.battle', defender: opt.defender as Exclude<Faction,'vagabond'>, clearing: opt.clearing, allyFaction: opt.allyFaction as Exclude<Faction,'vagabond'> })}
+                title={`Battle ${opt.defender} using ${opt.allyFaction} warriors as your own (§9.7.c)`}>
+                <span className="action-label">Battle {FACTION_LABEL[opt.defender as Faction]} with {FACTION_LABEL[opt.allyFaction as Faction]} ally</span>
+              </button>
+            ))}
             {showDiscard && (
               <div className="action-card-picker">
                 <div className="action-card-picker-title">

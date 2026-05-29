@@ -9,7 +9,9 @@ export type VagabondAction =
   | { kind: 'vagabond.enterForest'; forestId: ForestId }
   | { kind: 'vagabond.exitForest'; to: ClearingId }
   | { kind: 'vagabond.exploreRuin' }
-  | { kind: 'vagabond.battle'; defender: Exclude<Faction, 'vagabond'>; clearing: ClearingId }
+  | { kind: 'vagabond.battle'; defender: Exclude<Faction, 'vagabond'>; clearing: ClearingId; allyFaction?: Exclude<Faction, 'vagabond'> }
+  | { kind: 'vagabond.moveAllyWarriors'; count: number }
+  | { kind: 'vagabond.skipAllyMove' }
   | { kind: 'vagabond.aid'; faction: Exclude<Faction, 'vagabond'>; cardId: CardId; itemKind: ItemKind }
   | { kind: 'vagabond.stealCard'; faction: Exclude<Faction, 'vagabond'>; itemKind: ItemKind }
   | { kind: 'vagabond.strike'; clearing: ClearingId; faction: Exclude<Faction, 'vagabond'> }

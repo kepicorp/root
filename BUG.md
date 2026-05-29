@@ -23,38 +23,12 @@ This is a list of bugs and features, sorted by global mechanics or faction.
   - Already correctly implemented: `vagabond.craft` reducer computes `hammersNeeded` as the sum of all cost entries and exhausts that many hammers (or face-up items for Tinker). Legal actions gate on `availableCraftPower >= powerNeeded`.
 - [x] Aiding Ally should score 2 VP (§9.7.a)
   - Fixed: `vagabond.aid` reducer now checks `wasAllied` before bumping the relationship; if already allied it always awards 2 VP. Aid picker VP hint updated to show +2 VP for allied factions.
-- [ ] The Allied status does not seem implemented here are the rules:
-```
-Allied Status. If a relationship marker reaches
-the final space on the Allied track, you are now
-Allied with the faction shown by that relation-
-ship marker. (Their warriors trust you!)
-a Aiding Ally. Each time you Aid an Allied
-faction, score two victory points.
-b Moving with Ally. When you move, you
-may force warriors of one Allied faction to
-move along with your Vagabond pawn to
-your destination clearing. (When you move
-alone, such as with the Harrier's ability, you can-
-not move Allied warriors.)
-c Attacking with Ally. At the start of battle as
-the attacker, you may treat the warriors of
-one Allied faction in the clearing of battle as
-your own. The maximum hits you can roll
-equals the number of their warriors there
-plus your total undamaged S. You cannot
-treat Allied warriors as your own when at-
-tacking the same Allied faction.
-d Taking Hits with Ally. In a battle where you
-treat Allied warriors as your own, you can
-take hits by removing them. However, if you
-take more hits by removing Allied warriors
-than by damaging items during the same
-battle, that Allied faction becomes Hostile
-(9.2.9.III) at the end of the battle. This rule
-overrides the condition for becoming Hos-
-tile in 9.2.9.III
-```
+- [x] The Allied status does not seem implemented here are the rules:
+  - Fixed:
+    - **(a) Aiding Ally** — already done: scoring 2 VP each time you Aid an Allied faction.
+    - **(b) Moving with Ally** — after the Vagabond moves, `pendingAllyMove` is set if an allied faction has warriors at the source clearing. The player chooses how many to bring (count picker in ActionBar) or skips. Bot prefers bringing them.
+    - **(c) Attacking with Ally** — `vagabond.battle` now accepts optional `allyFaction`. When set, max attacker hits = ally warriors in clearing + undamaged swords. ActionBar shows a "Battle [X] with [Ally] ally" button alongside the normal battle.
+    - **(d) Taking Hits with Ally** — defender hits damage vagabond items first; overflow removes ally warriors. If ally warriors removed > items damaged in the same battle, that faction becomes Hostile (§9.7.d).
 
 ---
 

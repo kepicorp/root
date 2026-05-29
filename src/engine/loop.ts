@@ -36,7 +36,7 @@ export function advancePhase(state: GameState): GameState {
     if (active === 'marquise' && m && m.pendingDiscard > 0) return;
     if (active === 'eyrie' && e && e.pendingDiscard > 0) return;
     if (active === 'alliance' && al && al.pendingDiscard > 0) return;
-    if (active === 'vagabond' && v && (v.pendingDiscard > 0 || v.pendingItemRemoval > 0 || v.pendingRelationshipCost)) return;
+    if (active === 'vagabond' && v && (v.pendingDiscard > 0 || v.pendingItemRemoval > 0 || v.pendingRelationshipCost || v.pendingAllyMove)) return;
     const i = PHASE_SEQUENCE.indexOf(draft.phase);
     if (i < 0) return;
     if (i < PHASE_SEQUENCE.length - 1) {

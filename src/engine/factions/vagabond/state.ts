@@ -45,6 +45,9 @@ export interface VagabondState {
   pendingAidItemTake?: { faction: Exclude<Faction, 'vagabond'> };
   /** Number of items still to be picked for refresh during birdsong. */
   pendingRefresh: number;
+  /** Set after a move when an allied faction has warriors at the source clearing.
+   *  Player must choose how many (if any) to bring along before continuing. */
+  pendingAllyMove?: { from: ClearingId; to: ClearingId; faction: Exclude<Faction, 'vagabond'> };
 }
 
 export const INITIAL_VAGABOND_STATE: VagabondState = {

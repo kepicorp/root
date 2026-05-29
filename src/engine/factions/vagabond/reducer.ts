@@ -188,17 +188,45 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
         // Hostile destination: exhaust extra boot — Thief (Nimble) is exempt.
         if (v.character !== 'thief') {
           const destCl = draft.map.clearings[a.to]!;
-          const hostilePresent = (['marquise', 'eyrie', 'alliance'] as const).some(f => {
-            return v.relationships[f] === 'hostile' && (destCl.warriors[f] ?? 0) > 0;
-          });
+          const hostilePresent = (['marquise', 'eyrie', 'alliance'] as const).some(f =>
+            v.relationships[f] === 'hostile' && (destCl.warriors[f] ?? 0) > 0,
+          );
           if (hostilePresent) {
             if (!exhaustItem(v.items, 'boots')) return;
           }
         }
-        draft.map.clearings[v.clearing]!.vagabondHere = false;
+        const from = v.clearing;
+        draft.map.clearings[from]!.vagabondHere = false;
         v.clearing = a.to;
         draft.map.clearings[a.to]!.vagabondHere = true;
         v.daylightActionsLeft -= 1;
+        // §9.7.b Moving with Ally: if an allied faction has warriors at the source
+        // clearing, offer to bring them along.
+        for (const f of ['marquise', 'eyrie', 'alliance'] as const) {
+          if (v.relationships[f] === 'allied' && (draft.map.clearings[from]!.warriors[f] ?? 0) > 0) {
+            v.pendingAllyMove = { from, to: a.to, faction: f };
+            break;
+          }
+        }
+      });
+
+    case 'vagabond.moveAllyWarriors':
+      return produce(state, draft => {
+        const v = draft.factions.vagabond!;
+        if (!v.pendingAllyMove) return;
+        const { from, to, faction } = v.pendingAllyMove;
+        const available = draft.map.clearings[from]!.warriors[faction] ?? 0;
+        const count = Math.min(a.count, available);
+        if (count <= 0) { v.pendingAllyMove = undefined; return; }
+        draft.map.clearings[from]!.warriors[faction] = available - count;
+        draft.map.clearings[to]!.warriors[faction] = (draft.map.clearings[to]!.warriors[faction] ?? 0) + count;
+        v.pendingAllyMove = undefined;
+        draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Moved ${count} ${faction} warriors (ally) from ${from} to ${to}.` });
+      });
+
+    case 'vagabond.skipAllyMove':
+      return produce(state, draft => {
+        draft.factions.vagabond!.pendingAllyMove = undefined;
       });
 
     case 'vagabond.exploreRuin':
@@ -240,14 +268,17 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
           || cl.buildings.some(b => b.faction === a.defender)
           || cl.tokens.some(t => t.faction === a.defender);
         if (!hasPieces) return;
-        // Roll dice using the shared rngStep counter.
         const rng = mulberry32(mixSeed(state.seed, state.rngStep + 1));
         draft.rngStep += 1;
         const d1 = rollDie(rng);
         const d2 = rollDie(rng);
         const defenseless = defWarriors === 0;
-        // Vagabond pawn counts as 1 warrior for hit purposes.
-        const attHits = Math.min(1, Math.max(d1, d2) + (defenseless ? 1 : 0));
+        // §9.7.c Attacking with Ally: if an allied faction's warriors are here,
+        // hit cap = allyWarriors + undamaged swords. Otherwise cap = 1 (pawn only).
+        const allyWarriorsHere = a.allyFaction ? (cl.warriors[a.allyFaction] ?? 0) : 0;
+        const undamagedSwords = v.items.filter(i => i.kind === 'sword' && i.state === 'face-up').length;
+        const hitCap = a.allyFaction ? (allyWarriorsHere + undamagedSwords) : 1;
+        const attHits = Math.min(hitCap, Math.max(d1, d2) + (defenseless ? 1 : 0));
         const defHits = Math.min(Math.min(d1, d2), defWarriors);
         // Apply attacker hits: warriors → buildings → tokens.
         let hitsLeft = attHits;
@@ -267,18 +298,27 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
           const tIdx = cl.tokens.findIndex(t => t.faction === a.defender);
           if (tIdx >= 0) { cl.tokens.splice(tIdx, 1); draft.scores.vagabond += 1; piecesRemoved += 1; }
         }
-        // Removing pieces from a non-hostile faction requires the player to either
-        // discard a matching card or accept hostility.
         if (piecesRemoved > 0 && v.relationships[a.defender] !== 'hostile') {
           const meta = AUTUMN_MAP.clearings.find(c => c.id === v.clearing)!;
           v.pendingRelationshipCost = { faction: a.defender, suit: meta.suit as CardSuit };
         }
-        // Apply defender hits: damage vagabond items (face-up → damaged, then face-down → damaged).
+        // §9.7.d Taking Hits with Ally: defender hits damage vagabond items first;
+        // overflow can remove ally warriors. If ally warriors removed > items damaged → hostile.
         let toDamage = defHits;
-        for (const it of v.items) { if (toDamage <= 0) break; if (it.state === 'face-up')   { it.state = 'damaged'; toDamage -= 1; } }
-        for (const it of v.items) { if (toDamage <= 0) break; if (it.state === 'face-down') { it.state = 'damaged'; toDamage -= 1; } }
+        let itemsDamaged = 0;
+        for (const it of v.items) { if (toDamage <= 0) break; if (it.state === 'face-up')   { it.state = 'damaged'; toDamage -= 1; itemsDamaged += 1; } }
+        for (const it of v.items) { if (toDamage <= 0) break; if (it.state === 'face-down') { it.state = 'damaged'; toDamage -= 1; itemsDamaged += 1; } }
+        let allyWarriorsLost = 0;
+        if (toDamage > 0 && a.allyFaction && allyWarriorsHere > 0) {
+          allyWarriorsLost = Math.min(toDamage, allyWarriorsHere);
+          returnWarriors(draft, v.clearing, a.allyFaction, allyWarriorsLost);
+        }
+        if (a.allyFaction && allyWarriorsLost > itemsDamaged) {
+          v.relationships[a.allyFaction] = 'hostile';
+          draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `${a.allyFaction} became hostile — more ally warriors lost than vagabond items damaged (§9.7.d).` });
+        }
         v.daylightActionsLeft -= 1;
-        draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Battled ${a.defender}: rolled [${d1},${d2}] → dealt ${attHits} hit(s), took ${defHits} hit(s).` });
+        draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Battled ${a.defender}${a.allyFaction ? ` (with ${a.allyFaction} ally)` : ''}: rolled [${d1},${d2}] → dealt ${attHits} hit(s), took ${defHits} hit(s).` });
       });
 
     case 'vagabond.aid':
@@ -714,6 +754,17 @@ export function vagabondLegalActions(state: GameState): Action[] {
     return out;
   }
 
+  // §9.7.b: pending ally move — must resolve before other actions
+  if (v.pendingAllyMove) {
+    const { from, faction } = v.pendingAllyMove;
+    const available = state.map.clearings[from]?.warriors[faction] ?? 0;
+    for (let count = 1; count <= available; count++) {
+      out.push({ kind: 'vagabond.moveAllyWarriors', count });
+    }
+    out.push({ kind: 'vagabond.skipAllyMove' });
+    return out;
+  }
+
   // Pending discard / item removal gates everything else, regardless of phase
   if (v.pendingItemRemoval > 0) {
     v.items.forEach((item, idx) => {
@@ -823,7 +874,15 @@ export function vagabondLegalActions(state: GameState): Action[] {
           const hasPieces = (cl.warriors[f] ?? 0) > 0
             || cl.buildings.some(b => b.faction === f)
             || cl.tokens.some(t => t.faction === f);
-          if (hasPieces) out.push({ kind: 'vagabond.battle', defender: f, clearing: v.clearing });
+          if (hasPieces) {
+            out.push({ kind: 'vagabond.battle', defender: f, clearing: v.clearing });
+            // §9.7.c Attacking with Ally: offer to use allied faction's warriors
+            for (const ally of ['marquise', 'eyrie', 'alliance'] as const) {
+              if (ally !== f && v.relationships[ally] === 'allied' && (cl.warriors[ally] ?? 0) > 0) {
+                out.push({ kind: 'vagabond.battle', defender: f, clearing: v.clearing, allyFaction: ally });
+              }
+            }
+          }
         }
       }
       // Aid (costs 1 face-up item; recipient must have any pieces here)
