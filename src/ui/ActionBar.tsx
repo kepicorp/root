@@ -5,6 +5,7 @@ import { getLegalActions } from '../engine/legal';
 import { getCard } from '../engine/cards';
 import type { MapIntent } from './Board';
 import { buildCost } from '../engine/factions/marquise/scoring';
+import { SYMPATHY_COST } from '../engine/factions/alliance/state';
 import type { DecreeSlot, EyrieLeader } from '../engine/factions/eyrie/state';
 
 const SUIT_COLOR: Record<CardSuit, string> = {
@@ -532,6 +533,37 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
           Actions left: <strong>{state.factions.vagabond.daylightActionsLeft}</strong>
         </div>
       )}
+
+      {active === 'alliance' && state.factions.alliance && (state.phase === 'birdsong' || state.phase === 'daylight') && (() => {
+        const al = state.factions.alliance!;
+        const cost = (SYMPATHY_COST as readonly number[])[Math.min(al.sympathy.length, SYMPATHY_COST.length - 1)] ?? 4;
+        const suitCounts: Record<string, number> = {};
+        for (const id of al.supporters) {
+          try { const s = getCard(id).suit; suitCounts[s] = (suitCounts[s] ?? 0) + 1; } catch { /* stale id */ }
+        }
+        const hasSpreads = canSpreadSympathy || canRevolt;
+        return (
+          <div className="actionbar-supporters">
+            <span className="actionbar-supporters-label">Supporters ({al.supporters.length}):</span>
+            {al.supporters.length === 0
+              ? <span className="dim"> none</span>
+              : Object.entries(suitCounts).map(([suit, n]) => (
+                  <span key={suit} className="supporter-pip-group">
+                    {Array.from({ length: n }).map((_, i) => (
+                      <span key={i} className="supporter-pip" style={{ background: SUIT_COLOR[suit as 'fox'|'mouse'|'rabbit'|'bird'] }} title={suit} />
+                    ))}
+                  </span>
+                ))
+            }
+            {state.phase === 'birdsong' && !hasSpreads && al.supporters.length > 0 && (
+              <span className="dim actionbar-supporters-hint"> — need {cost} matching to spread</span>
+            )}
+            {state.phase === 'birdsong' && !hasSpreads && al.supporters.length === 0 && (
+              <span className="dim actionbar-supporters-hint"> — mobilize cards to gain supporters</span>
+            )}
+          </div>
+        );
+      })()}
 
       {marchMovesLeft > 0 && (
         <div className="actionbar-hint map-hint" style={{ borderColor: '#f0c060', color: '#f0e2c2' }}>

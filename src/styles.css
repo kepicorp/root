@@ -1076,6 +1076,11 @@ body { background: var(--bg); color: var(--paper); }
 .action-btn { font-size: 11px; padding: 4px 8px; }
 .actionbar-label { font-weight: 700; }
 .actionbar-hint { color: #b8a37a; font-style: italic; font-size: 11px; }
+.actionbar-supporters { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; font-size: 11px; color: var(--paper); padding: 3px 8px; margin-bottom: 4px; }
+.actionbar-supporters-label { color: #b8a37a; font-weight: 600; margin-right: 2px; }
+.actionbar-supporters-hint { font-size: 10px; color: #7a6a50; margin-left: 4px; }
+.supporter-pip-group { display: inline-flex; gap: 3px; }
+.supporter-pip { display: inline-block; width: 10px; height: 10px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.2); }
 .actionbar-counter {
   font-size: 0.82rem;
   padding: 2px 8px;
