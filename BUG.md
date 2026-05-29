@@ -45,6 +45,8 @@ The are sorted by either global mechanics or faction.
   - Fixed: supporters are sorted by exact-suit first, bird (wild) last before slicing to the required count. Same fix applied to Revolt.
 - [x] No action available in evening in spite of having officers
   - Fixed: per §8.6.1, Alliance Military Operations (Move, Battle, Organize, Recruit) now appear during Evening, not Daylight. `alliance.endDaylight` no longer zeroes `daylightActionsLeft` — remaining officer actions carry into evening. `alliance.evening` (draw+discard) is always available so the player can skip remaining ops. Added `alliance.recruit` action (place a warrior in any clearing with a base).
+- [ ] Still no actions availabe in evening in spite of having officers. I just see the  button end evening, could the button not be visible ? I should at least be able to move bottle organize or recruit
+
 
 ## Eyrie
 

@@ -279,6 +279,7 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
   const filtered = allLegals.filter(a => !MAP_DRIVEN.has(a.kind) && a.kind !== 'system.advancePhase' && a.kind !== 'system.endTurn');
   const hasMapMoves = isHuman && allLegals.some(a =>
     a.kind === 'marquise.march'
+    || a.kind === 'alliance.move'
     || a.kind === 'vagabond.move'
     || a.kind === 'vagabond.slip'
     || a.kind === 'vagabond.enterForest'
@@ -575,7 +576,9 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
             ? <>move warriors</>
             : active === 'vagabond'
               ? <>move the Vagabond</>
-              : <>resolve a Decree move</>}.
+              : active === 'alliance'
+                ? <>move warriors</>
+                : <>resolve a Decree move</>}.
         </div>
       )}
 

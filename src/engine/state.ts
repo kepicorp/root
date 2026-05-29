@@ -110,8 +110,15 @@ import type { CardAction } from './card-effects';
 function migrateState(state: GameState): GameState {
   let s = state;
   if (!s.craftedItemLog) s = { ...s, craftedItemLog: [] };
-  if (s.factions.alliance && !(s.factions.alliance as any).craftedThisTurn) {
-    s = { ...s, factions: { ...s.factions, alliance: { ...s.factions.alliance, craftedThisTurn: [] } } };
+  const al = s.factions.alliance;
+  if (al) {
+    let newAl = al;
+    if (!(newAl as any).craftedThisTurn) newAl = { ...newAl, craftedThisTurn: [] };
+    // Old endDaylight zeroed daylightActionsLeft; restore ops if stuck in evening with officers.
+    if (s.phase === 'evening' && newAl.officers > 0 && newAl.daylightActionsLeft === 0) {
+      newAl = { ...newAl, daylightActionsLeft: newAl.officers };
+    }
+    if (newAl !== al) s = { ...s, factions: { ...s.factions, alliance: newAl } };
   }
   return s;
 }

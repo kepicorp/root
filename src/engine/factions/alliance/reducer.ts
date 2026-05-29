@@ -248,7 +248,8 @@ export function allianceReducer(state: GameState, action: Action): GameState {
 
     case 'alliance.endDaylight':
       return produce(state, draft => {
-        // Do NOT zero daylightActionsLeft — remaining officer actions carry into evening (§8.6.1).
+        // Always reset to full officer count so evening starts with all ops available (§8.6.1).
+        draft.factions.alliance!.daylightActionsLeft = draft.factions.alliance!.officers;
         draft.phase = 'evening';
       });
 
