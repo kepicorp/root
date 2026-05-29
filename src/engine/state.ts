@@ -108,8 +108,12 @@ import type { CardAction } from './card-effects';
 
 /** Migrate state saved by older engine versions to the current shape. */
 function migrateState(state: GameState): GameState {
-  if (state.craftedItemLog) return state;
-  return { ...state, craftedItemLog: [] };
+  let s = state;
+  if (!s.craftedItemLog) s = { ...s, craftedItemLog: [] };
+  if (s.factions.alliance && !(s.factions.alliance as any).craftedThisTurn) {
+    s = { ...s, factions: { ...s.factions, alliance: { ...s.factions.alliance, craftedThisTurn: [] } } };
+  }
+  return s;
 }
 
 export function reduce(state: GameState, action: Action): GameState {

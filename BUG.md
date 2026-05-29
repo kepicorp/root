@@ -25,6 +25,8 @@ The are sorted by either global mechanics or faction.
   - Fixed: `advancePhase` (triggered by the "Advance phase →" button) now refuses to advance when the active faction has a pending discard, pending item removal, pending relationship cost, or pending outrage — so the player can no longer skip the discard step. `Hand.tsx` now shows `(current/limit)` — e.g. `(3/5)` or `(4/6)` for Vagabond with bags. Crafted persistent cards are removed from hand on craft and shown in the faction panel via `CraftedCards`.
 - [x] when moving (or marching) inside a controled alliance spot with sympathy I should be prompted to give a card to supporter group following the ruleset (matching the clearing suit or a bird or a supported is added from the deck)
   - Fixed: `pendingOutrage` state in `GameState` is set when Marquise or Eyrie move into a clearing with Alliance sympathy. Legal actions for the moving faction are gated until outrage is resolved: player picks a matching-suit or bird card to give to Alliance supporters, or if no matching card exists, Alliance draws from the deck. ActionBar shows an inline picker.
+- [x] Not all cards are downloaded with the `download-assets` like card root tea fox or travel gear fox.
+  - Fixed: `cardArt()` now tries `slug(variantName)` (e.g. `root-tea-fox.webp`) before `slug(baseName)` when looking in `raw/cards/`. The download script already saved files under variant slugs; the lookup just wasn't checking the right filename first.
 
 ## Dominance
 
@@ -37,6 +39,10 @@ The are sorted by either global mechanics or faction.
   - Fixed: `allianceLegalActions` now skips clearings with a keep token.
 - [x] Add a wood counter to know how much wood I can spend.
   - Fixed: Marquise panel now shows both "Wood supply" (tokens not yet placed) and "Wood on board" (placed tokens spendable for building). Note: this is a Marquise mechanic; Alliance does not use wood.
+- [x] I should only be able to craft item if I have enough sympathy in the clearings. I can't use sympathy on a town twice in the same turn so if I have own sympathy in one two rabbits I can't craft an item for 1 rabbit and another one for two.
+  - Fixed: `AllianceState` now tracks `craftedThisTurn`; craft legal actions and the reducer compute remaining sympathy power per suit (total sympathy pips minus already-consumed pips this turn) before offering or allowing each craft.
+- [x] Spread Sympathy should use the suit card first then the bird card.
+  - Fixed: supporters are sorted by exact-suit first, bird (wild) last before slicing to the required count. Same fix applied to Revolt.
 
 ## Eyrie
 
@@ -59,7 +65,8 @@ The are sorted by either global mechanics or faction.
   - Fixed: ActionBar now shows disabled building buttons (opacity 0.45) for buildings that are slot-available but have insufficient wood, with a "need N more wood" detail label.
 - [x] on my third turn I could not place wood. I should be able to place wood until I have no more wood token available. So if I could place 4 wood but have only 2 wood available it should place just so 2 wood not disable the action.
   - Fixed: `marquise.placeWood` now checks `m.wood > 0` before each token and stops early when supply is exhausted. `payWood` now returns spent tokens to `m.wood`. The action always advances birdsong even when wood=0.
-- [ ] at some point on turn 14 I had no action available during daylight which should not be possible. Maybe add a debug panel where I can see explicitely the counter and all
+- [x] at some point on turn 14 I had no action available during daylight which should not be possible. Maybe add a debug panel where I can see explicitely the counter and all
+  - Fixed (root cause): pending-discard stuck state was the culprit — now all faction `legalActions` check `pendingDiscard > 0` before phase, so discards are always resolvable. Debug panel added: a collapsed "🔍 debug" toggle at the bottom of the ActionBar shows turn, phase, active faction, all per-faction counters (actions left, wood, discard, march, officers), pending outrage, and the full list of current legal action kinds with counts.
 - [x] I should be able to spend any bird card for an extra action even a dominance card. Verify with the official rule.
   - Fixed: `marquiseLegalActions` no longer excludes dominance-category bird cards from the `spendBirdForExtra` check. Any bird-suit card is now valid.
 - [x] I would like to see a counter with all the actions I have taken and how many are left during daylight.

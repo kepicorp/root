@@ -10,6 +10,7 @@ export interface AllianceState {
   daylightActionsLeft: number;
   birdsongDone: boolean;
   pendingDiscard: number;
+  craftedThisTurn: CardId[];  // tracks which cards were crafted this turn to deduct used sympathy power
 }
 
 export const INITIAL_ALLIANCE_STATE: AllianceState = {
@@ -21,6 +22,7 @@ export const INITIAL_ALLIANCE_STATE: AllianceState = {
   daylightActionsLeft: 0,  // officer-limited actions (Organize/Battle/Move); free actions (Craft/Mobilize/Train) ignore this
   birdsongDone: false,
   pendingDiscard: 0,
+  craftedThisTurn: [],
 };
 
 export const SYMPATHY_VP_TRACK = [1, 1, 1, 2, 2, 3, 3, 4, 4, 5] as const;

@@ -157,12 +157,13 @@ export function boardArt(): string | null {
   return lookup(rawBoardFiles, './raw/board/', builtinBoardFiles, './builtin/board/', 'autumn');
 }
 
-/** Card art by Card object. Priority: raw/ → CDN → builtin/. */
+/** Card art by Card object. Priority: raw/ → CDN → builtin/.
+ *  For suit-variant cards the download-assets script saves files as
+ *  slug(variantName) e.g. root-tea-fox.webp, so we try that first. */
 export function cardArt(card: Card): string | null {
-  // For cards with suit variants (Crossbow, Root Tea, Travel Gear), try looking up
-  // the variant first, then fall back to the base name.
   const suitVariantName = `${card.name} (${card.suit})`;
   return (
+    lookupIn(rawCardFiles, './raw/cards/', slug(suitVariantName)) ??
     lookupIn(rawCardFiles, './raw/cards/', slug(card.name)) ??
     cdnCardUrl(suitVariantName) ??
     cdnCardUrl(card.name) ??

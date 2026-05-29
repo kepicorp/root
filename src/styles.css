@@ -1298,6 +1298,11 @@ circle.pulse {
 
 .undo-btn { margin-bottom: 6px; align-self: flex-start; }
 
+.debug-panel { margin-top: 6px; border-top: 1px solid #2a1d10; padding-top: 4px; }
+.debug-panel-toggle { background: none; border: none; color: #6a5640; font-size: 10px; cursor: pointer; padding: 2px 4px; font-family: inherit; }
+.debug-panel-toggle:hover { color: #b8a37a; }
+.debug-panel-body { font-size: 10px; color: #6a5640; line-height: 1.6; padding: 4px 0; word-break: break-all; }
+.debug-panel-body strong { color: #b8a37a; }
 .action-system-row {
   margin-top: 4px;
   display: flex;

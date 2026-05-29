@@ -1737,6 +1737,38 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
           Advance phase →
         </button>
       </div>
+
+      <DebugPanel state={state} allLegals={allLegals} />
+    </div>
+  );
+}
+
+function DebugPanel({ state, allLegals }: { state: GameState; allLegals: Action[] }) {
+  const [open, setOpen] = useState(false);
+  const active = state.factionOrder[state.activeIndex];
+  const m = state.factions.marquise;
+  const al = state.factions.alliance;
+  const v = state.factions.vagabond;
+  const e = state.factions.eyrie;
+  const kindCounts: Record<string, number> = {};
+  for (const a of allLegals) kindCounts[a.kind] = (kindCounts[a.kind] ?? 0) + 1;
+
+  return (
+    <div className="debug-panel">
+      <button className="debug-panel-toggle" onClick={() => setOpen(o => !o)}>
+        🔍 debug {open ? '▲' : '▼'}
+      </button>
+      {open && (
+        <div className="debug-panel-body">
+          <div><strong>turn</strong> {state.turn} · <strong>phase</strong> {state.phase} · <strong>active</strong> {active}</div>
+          {m && <div>marquise: actions={m.daylightActionsLeft} wood={m.wood} discard={m.pendingDiscard} march={m.marchMovesLeft}</div>}
+          {al && <div>alliance: officers={al.officers} actions={al.daylightActionsLeft} discard={al.pendingDiscard}</div>}
+          {v && <div>vagabond: actions={v.daylightActionsLeft} discard={v.pendingDiscard} removeItem={v.pendingItemRemoval}</div>}
+          {e && <div>eyrie: discard={e.pendingDiscard}</div>}
+          {state.pendingOutrage && <div>⚡ outrage: {state.pendingOutrage.faction} clearing {state.pendingOutrage.clearing}</div>}
+          <div><strong>legal ({allLegals.length}):</strong> {Object.entries(kindCounts).map(([k, n]) => `${k}${n > 1 ? ` ×${n}` : ''}`).join(', ') || '—'}</div>
+        </div>
+      )}
     </div>
   );
 }

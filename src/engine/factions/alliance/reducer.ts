@@ -1,5 +1,5 @@
 import { produce } from 'immer';
-import type { GameState, Action, ClearingId, Faction } from '../../types';
+import type { GameState, Action, ClearingId, Faction, CardSuit } from '../../types';
 import { getCard, type CardId } from '../../cards';
 import { AUTUMN_MAP, getAdjacent } from '../../map';
 import { declareBattle } from '../../combat';
@@ -186,12 +186,23 @@ export function allianceReducer(state: GameState, action: Action): GameState {
         const al = draft.factions.alliance!;
         const card = getCard(a.cardId);
         if (card.category !== 'item' && card.category !== 'persistent' && card.category !== 'favor') return;
-        // Alliance crafts using sympathy as power — requires at least one
-        // sympathy token on the board.
-        if (al.sympathy.length <= 0) return;
+        // Compute remaining sympathy power per suit (each sympathy token provides 1 pip of its clearing's suit).
+        const power: Partial<Record<CardSuit, number>> = {};
+        for (const cid of al.sympathy) {
+          const suit = AUTUMN_MAP.clearings.find(c => c.id === cid)!.suit;
+          power[suit] = (power[suit] ?? 0) + 1;
+        }
+        for (const craftedId of al.craftedThisTurn) {
+          for (const [s, n] of Object.entries(getCard(craftedId).craftCost)) {
+            power[s as CardSuit] = Math.max(0, (power[s as CardSuit] ?? 0) - (n as number));
+          }
+        }
+        const canCraft = Object.entries(card.craftCost).every(([s, n]) => (power[s as CardSuit] ?? 0) >= (n as number));
+        if (!canCraft) return;
         const idx = draft.hands.alliance.indexOf(a.cardId);
         if (idx < 0) return;
         draft.hands.alliance.splice(idx, 1);
+        al.craftedThisTurn.push(a.cardId);
         if (card.craftVp) draft.scores.alliance += card.craftVp;
         if (card.item) { draft.itemSupply.push(card.item); draft.craftedItemLog.push({ faction: 'alliance', item: card.item }); }
         if (card.category === 'persistent') draft.craftedPersistents.push({ faction: 'alliance', cardId: a.cardId });
@@ -265,10 +276,9 @@ export function allianceReducer(state: GameState, action: Action): GameState {
 function finishAllianceTurn(draft: GameState, _draws: number): void {
   const al = draft.factions.alliance!;
   al.birdsongDone = false;
-  // Officer-limited actions (Organize / Battle / Move) get exactly al.officers
-  // slots; free actions (Craft / Mobilize / Train) ignore this counter.
   al.daylightActionsLeft = al.officers;
   al.pendingDiscard = 0;
+  al.craftedThisTurn = [];
   draft.activeIndex = (draft.activeIndex + 1) % draft.factionOrder.length;
   if (draft.activeIndex === 0) draft.turn += 1;
   draft.phase = 'birdsong';
@@ -297,7 +307,10 @@ export function allianceLegalActions(state: GameState): Action[] {
       const cl = state.map.clearings[c.id]!;
       // Cannot spread sympathy to a clearing containing the Marquise keep.
       if (cl.tokens.some(t => t.kind === 'keep')) continue;
-      const matching = al.supporters.filter(id => matchesSuit(id, c.suit));
+      // Sort: exact-suit cards first, bird (wild) cards last.
+      const matching = al.supporters
+        .filter(id => matchesSuit(id, c.suit))
+        .sort((a, b) => (getCard(a).suit === c.suit ? 0 : 1) - (getCard(b).suit === c.suit ? 0 : 1));
       const need = SYMPATHY_COST[Math.min(al.sympathy.length, SYMPATHY_COST.length - 1)] ?? 4;
       if (matching.length >= need) {
         out.push({ kind: 'alliance.spreadSympathy', clearing: c.id, supporterCards: matching.slice(0, need) });
@@ -307,7 +320,9 @@ export function allianceLegalActions(state: GameState): Action[] {
     for (const cid of al.sympathy) {
       const suit = clearingSuit(cid);
       if (al.bases[suit] !== undefined) continue;
-      const matching = al.supporters.filter(id => matchesSuit(id, suit));
+      const matching = al.supporters
+        .filter(id => matchesSuit(id, suit))
+        .sort((a, b) => (getCard(a).suit === suit ? 0 : 1) - (getCard(b).suit === suit ? 0 : 1));
       if (matching.length >= 2) {
         out.push({ kind: 'alliance.revolt', clearing: cid, supporterCards: matching.slice(0, 2) });
       }
@@ -334,13 +349,24 @@ export function allianceLegalActions(state: GameState): Action[] {
         }
       }
     }
-    // Craft (free action) — needs at least one sympathy on the board.
+    // Craft (free action) — limited by remaining sympathy power this turn.
     if (al.sympathy.length > 0) {
+      const power: Partial<Record<CardSuit, number>> = {};
+      for (const cid of al.sympathy) {
+        const suit = AUTUMN_MAP.clearings.find(c => c.id === cid)!.suit;
+        power[suit] = (power[suit] ?? 0) + 1;
+      }
+      for (const craftedId of al.craftedThisTurn) {
+        for (const [s, n] of Object.entries(getCard(craftedId).craftCost)) {
+          power[s as CardSuit] = Math.max(0, (power[s as CardSuit] ?? 0) - (n as number));
+        }
+      }
       for (const id of state.hands.alliance) {
         const card = getCard(id);
-        if (card.category === 'item' || card.category === 'persistent' || card.category === 'favor') {
-          out.push({ kind: 'alliance.craft', cardId: id });
-        }
+        if (card.category !== 'item' && card.category !== 'persistent' && card.category !== 'favor') continue;
+        if (Object.keys(card.craftCost).length === 0) continue;
+        const canCraft = Object.entries(card.craftCost).every(([s, n]) => (power[s as CardSuit] ?? 0) >= (n as number));
+        if (canCraft) out.push({ kind: 'alliance.craft', cardId: id });
       }
     }
     // ── Officer-limited actions (Organize / Battle / Move) ──────────────────
