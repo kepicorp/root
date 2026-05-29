@@ -268,7 +268,11 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
   }
 
   const active = activeFaction(state);
-  const isHuman = active === playerFaction;
+  // Human must also respond to pending prompts (e.g. defender ambush) even when
+  // the active faction is the AI attacker.
+  const pendingForHuman = state.pendingPrompts.length > 0
+    && state.pendingPrompts[0]!.faction === playerFaction;
+  const isHuman = active === playerFaction || pendingForHuman;
   const allLegals = isHuman ? getLegalActions(state) : [];
   const filtered = allLegals.filter(a => !MAP_DRIVEN.has(a.kind) && a.kind !== 'system.advancePhase' && a.kind !== 'system.endTurn');
   const hasMapMoves = isHuman && allLegals.some(a =>
@@ -502,7 +506,10 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
   return (
     <div className="actionbar your-turn">
       <div className="actionbar-title">
-        Your turn <span className="dim">({state.phase})</span>
+        {pendingForHuman
+          ? <>⚔ Defend! <span className="dim">({active} is attacking you)</span></>
+          : <>Your turn <span className="dim">({state.phase})</span></>
+        }
       </div>
 
       {canUndo && onUndo && (

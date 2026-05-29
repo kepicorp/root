@@ -87,6 +87,8 @@ export function playUntilHuman(
     if (s.phase === 'setup' || s.phase === 'gameOver') return s;
     const active = s.factionOrder[s.activeIndex];
     if (active === humanFaction) return s;
+    // Also stop when the human must respond to a pending prompt (e.g. defender ambush).
+    if (humanFaction && s.pendingPrompts.length > 0 && s.pendingPrompts[0]!.faction === humanFaction) return s;
     const a = pickAction(s);
     if (!a) return s;
     const next = reducer(s, a);
