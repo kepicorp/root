@@ -16,15 +16,15 @@ const BOARD_W = 1000;
 const BOARD_H = 800;
 
 const SUIT_COLOR: Record<Suit, string> = {
-  fox:    '#d97a3c',
-  mouse:  '#e6c34a',
-  rabbit: '#9bbd58',
+  fox:    '#c03428',
+  mouse:  '#e07858',
+  rabbit: '#f0c030',
 };
 
 const FACTION_COLOR: Record<string, string> = {
-  marquise: '#d97a3c',
-  eyrie:    '#7da3c9',
-  alliance: '#9bbd58',
+  marquise: '#c03428',
+  eyrie:    '#5aabaa',
+  alliance: '#f0c030',
   vagabond: '#e0d4b0',
 };
 
@@ -446,7 +446,7 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
           const occupied = vagabondInForest === f.id;
           const dimmed = mapIntent != null && !occupied;
           const strokeColor = occupied ? '#f0c060'
-                            : enterable ? '#9bbd58'
+                            : enterable ? '#f0c030'
                             : '#3a4a25';
           const strokeWidth = (occupied || enterable) ? 5 : 2;
           const fill = occupied ? '#2a3a20' : '#1d2812';

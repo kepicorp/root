@@ -10,7 +10,7 @@ import { activeFaction } from '../engine/loop';
 import { CardIcon, CardDetails } from './CardIcon';
 
 const SUIT_COLOR: Record<CardSuit, string> = {
-  fox: '#d97a3c', mouse: '#e6c34a', rabbit: '#9bbd58', bird: '#7da3c9',
+  fox: '#c03428', mouse: '#e07858', rabbit: '#f0c030', bird: '#5aabaa',
 };
 
 interface Props {

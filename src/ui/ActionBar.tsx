@@ -8,7 +8,7 @@ import { buildCost } from '../engine/factions/marquise/scoring';
 import type { DecreeSlot, EyrieLeader } from '../engine/factions/eyrie/state';
 
 const SUIT_COLOR: Record<CardSuit, string> = {
-  fox: '#d97a3c', mouse: '#e6c34a', rabbit: '#9bbd58', bird: '#7da3c9',
+  fox: '#c03428', mouse: '#e07858', rabbit: '#f0c030', bird: '#5aabaa',
 };
 
 interface ActionBarProps {
@@ -1678,10 +1678,10 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                   {outrageAutoResolve && (
                     <button
                       className="action-card-pick"
-                      style={{ borderColor: '#7da3c9' }}
+                      style={{ borderColor: '#5aabaa' }}
                       onClick={() => dispatch({ kind: 'system.resolveOutrage' })}
                     >
-                      <span className="action-card-pick-name" style={{ color: '#7da3c9' }}>No matching card — Alliance draws from deck</span>
+                      <span className="action-card-pick-name" style={{ color: '#5aabaa' }}>No matching card — Alliance draws from deck</span>
                     </button>
                   )}
                 </div>

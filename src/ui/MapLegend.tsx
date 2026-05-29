@@ -11,15 +11,15 @@ const FACTION_LABEL: Record<Faction, string> = {
   vagabond: 'Vagabond',
 };
 const FACTION_COLOR: Record<Faction, string> = {
-  marquise: '#d97a3c',
-  eyrie:    '#7da3c9',
-  alliance: '#9bbd58',
+  marquise: '#c03428',
+  eyrie:    '#5aabaa',
+  alliance: '#f0c030',
   vagabond: '#e0d4b0',
 };
 const SUIT_COLOR: Record<string, string> = {
-  fox: '#d97a3c',
-  mouse: '#e6c34a',
-  rabbit: '#9bbd58',
+  fox: '#c03428',
+  mouse: '#e07858',
+  rabbit: '#f0c030',
 };
 
 interface MapLegendProps {

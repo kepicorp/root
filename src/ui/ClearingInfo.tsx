@@ -12,9 +12,9 @@ const FACTION_LABEL: Record<Faction, string> = {
   vagabond: 'Vagabond',
 };
 const FACTION_COLOR: Record<Faction, string> = {
-  marquise: '#d97a3c',
-  eyrie:    '#7da3c9',
-  alliance: '#9bbd58',
+  marquise: '#c03428',
+  eyrie:    '#5aabaa',
+  alliance: '#f0c030',
   vagabond: '#e0d4b0',
 };
 const BUILDING_LABEL: Record<string, string> = {
@@ -133,7 +133,7 @@ export function ClearingInfo({ state, clearingId, isSelectedAsSource, onClose }:
 }
 
 function suitColor(s: string): string {
-  if (s === 'fox') return '#d97a3c';
-  if (s === 'mouse') return '#e6c34a';
-  return '#9bbd58';
+  if (s === 'fox') return '#c03428';
+  if (s === 'mouse') return '#e07858';
+  return '#f0c030';
 }
