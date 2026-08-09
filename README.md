@@ -153,6 +153,66 @@ or
 docker start Root-Board-Game-Container && docker logs --follow Root-Board-Game-Container
 ```
 
+
+### Optional Alternative: put Caddy in front for host-IP access on ports 80/443
+
+Use this when you want people on your LAN (or forwarded external traffic) to hit your host machine IP and have Caddy proxy to the game container.
+
+First run:
+
+```bash
+docker build -t root-board-game .
+```
+
+1. Create a shared Docker network:
+
+```bash
+docker network create root-net
+```
+
+2. Run the game container on that network (no published app port needed):
+
+```bash
+docker run -d
+  --name Root-Board-Game-Container
+  --network root-net
+  --network-alias root
+  -e EXTERNAL_SCHEME=https
+  -e EXTERNAL_PORT=443
+  -e DEVICE_IP=<host-ip>
+  -e ADMIN_PASSWORD=<admin-secret>
+  -e SITE_PASSWORD=<site-secret>
+  root-board-game
+```
+
+3. Run Caddy on the same network and publish 80/443 on the host:
+
+```bash
+docker run -d
+  --name Root-Caddy
+  --network root-net
+  -p 80:80
+  -p 443:443
+  -e CADDY_HOST=<host-ip>
+  -v "<repo-path>/caddy/Caddyfile:/etc/caddy/Caddyfile:ro"
+  -v root-caddy-data:/data
+  -v root-caddy-config:/config
+  caddy:2-alpine
+```
+
+4. Verify logs:
+
+```bash
+docker logs --follow Root-Caddy
+```
+
+Notes:
+
+- Set `<host-ip>` to the host computer's actual LAN IP (for example `192.168.1.50`).
+- Set `<repo-path>` to your absolute local path to this repo.
+- Open firewall/NAT for TCP 80 and 443 to the host machine if needed.
+- HTTPS here uses Caddy local certs (`tls internal`), so other devices may need to trust Caddy's local CA to avoid certificate warnings.
+
 ### Hosted without Docker
 
 ```bash
@@ -174,7 +234,7 @@ LAN/web URL:  See console output
 ## Multiplayer
 
 1. Visit the homepage → **Create game**. A 6-character room code is allocated and the URL updates to `/r/<code>`.
-2. Share the link. Others click it or paste the code into **Join a game**.
+2. Share the link if formatting is correct. Others can click it or paste the code into **Join a game**.
 3. When creating the room, choose whether unclaimed seats should be auto-filled with bots. If bot fill is off, the empty seats stay empty.
 4. The server validates every action against the player's seat and broadcasts state to all clients.
 

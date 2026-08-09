@@ -181,7 +181,6 @@ export class Room {
           }
         }
         existing.clientId = clientId;
-        existing.displayName = displayName;
         existing.online = true;
         this.players.set(clientId, existing);
         this.subscribers.set(clientId, sub);
@@ -266,6 +265,17 @@ export class Room {
     player.token = null;
     this.broadcastLobby();
     this.touched();
+  }
+
+  setDisplayName(clientId: ClientId, displayName: string): string | null {
+    const player = this.players.get(clientId);
+    if (!player) return 'not connected';
+    const trimmed = displayName.trim();
+    if (!trimmed) return 'display name cannot be empty';
+    player.displayName = trimmed.slice(0, 32);
+    this.broadcastLobby();
+    this.touched();
+    return null;
   }
 
   chooseVagabondCharacter(character: VagabondCharacter): void {

@@ -2,7 +2,7 @@
 // starts. Each connected player can claim one faction seat; unclaimed seats
 // will be filled by AI bots.
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Faction } from '../engine/types';
 import { ALL_FACTIONS } from '../engine/types';
 import type { VagabondCharacter } from '../engine/factions/vagabond/state';
@@ -27,10 +27,16 @@ const CHARACTERS: VagabondCharacter[] = ['thief', 'tinker', 'ranger'];
 export function Lobby() {
   const net = useNetGame((s) => s.net);
   const [showVagabondPicker, setShowVagabondPicker] = useState(false);
-  if (!net.lobby) return null;
+  const [draftName, setDraftName] = useState('');
+  const lobby = net.lobby;
   const myId = net.clientId;
   const yourFaction = net.yourFaction;
-  const lobby = net.lobby;
+  const me = myId && lobby ? lobby.players.find((p) => p.clientId === myId) : null;
+  const currentName = me?.displayName ?? 'Player';
+  useEffect(() => {
+    setDraftName(currentName);
+  }, [currentName]);
+  if (!lobby) return null;
   const claimedCount = Object.values(net.lobby.seats).filter((seat) => seat !== null).length;
   const canStart = claimedCount > 0;
 
@@ -45,6 +51,26 @@ export function Lobby() {
       </p>
 
       <div className="lobby-players">
+        <div className="lobby-section-label">Your name</div>
+        <div className="character-row">
+          <input
+            className="home-input"
+            value={draftName}
+            maxLength={32}
+            onChange={(e) => setDraftName(e.target.value)}
+            placeholder="Choose a name"
+            aria-label="Your display name"
+          />
+          <button
+            className="btn"
+            onClick={() => {
+              netClient.setDisplayName(draftName);
+            }}
+            disabled={draftName.trim().length === 0 || draftName.trim() === currentName}
+          >
+            Save name
+          </button>
+        </div>
         <div className="lobby-section-label">Players</div>
         {net.lobby.players.length === 0 && <em className="dim">no players yet</em>}
         {net.lobby.players.map((p) => (

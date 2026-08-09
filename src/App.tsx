@@ -89,6 +89,13 @@ export function App() {
   const state = online ? netState : localState;
   const playerFaction = online ? net.yourFaction : localPlayerFaction;
   const dispatch = online ? netDispatch : localDispatch;
+  const activeTurnName = (() => {
+    if (!online || !state || !net.lobby) return null;
+    const active = state.factionOrder[state.activeIndex];
+    const seatClientId = net.lobby.seats[active];
+    if (!seatClientId) return 'AI';
+    return net.lobby.players.find(p => p.clientId === seatClientId)?.displayName ?? 'AI';
+  })();
 
   if (!state || state.phase === 'setup') {
     return (
@@ -150,6 +157,7 @@ export function App() {
         <ActionBar
           state={state}
           playerFaction={playerFaction}
+          activeTurnName={activeTurnName}
           dispatch={dispatch}
           onBegin={begin}
           mapIntent={mapIntent}

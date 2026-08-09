@@ -205,7 +205,7 @@ function lookup(
 
 /** Board backdrop. */
 export function boardArt(): string | null {
-  const user = getUserAssetUrl('board/autumn.png');
+  const user = getUserAssetUrlFor('board/', 'autumn');
   if (user) return user;
   return lookup(
     rawBoardFiles,

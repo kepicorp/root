@@ -243,7 +243,6 @@ export function marquiseReducer(state: GameState, action: Action): GameState {
         if (card.category !== 'item' && card.category !== 'persistent' && card.category !== 'favor') return;
         const m = draft.factions.marquise!;
         if (m.daylightActionsLeft <= 0) return;
-        if (m.buildings.workshop <= 0) return;
         // Verify per-suit workshop power, accounting for already-used power this turn.
         const power: Partial<Record<CardSuit, number>> = {};
         for (const c of AUTUMN_MAP.clearings) {
@@ -439,26 +438,24 @@ export function marquiseLegalActions(state: GameState): Action[] {
         }
       }
       // Craft — using workshop power (workshops in each suit clearing)
-      if (m.buildings.workshop > 0) {
-        const power: Partial<Record<CardSuit, number>> = {};
-        for (const c of AUTUMN_MAP.clearings) {
-          const cl = state.map.clearings[c.id]!;
-          const ws = cl.buildings.filter(b => b.faction === 'marquise' && b.kind === 'workshop').length;
-          if (ws > 0) power[c.suit] = (power[c.suit] ?? 0) + ws;
+      const power: Partial<Record<CardSuit, number>> = {};
+      for (const c of AUTUMN_MAP.clearings) {
+        const cl = state.map.clearings[c.id]!;
+        const ws = cl.buildings.filter(b => b.faction === 'marquise' && b.kind === 'workshop').length;
+        if (ws > 0) power[c.suit] = (power[c.suit] ?? 0) + ws;
+      }
+      // Subtract power already consumed this turn
+      for (const craftedId of m.craftedThisTurn) {
+        for (const [s, n] of Object.entries(getCard(craftedId).craftCost)) {
+          power[s as CardSuit] = Math.max(0, (power[s as CardSuit] ?? 0) - (n ?? 0));
         }
-        // Subtract power already consumed this turn
-        for (const craftedId of m.craftedThisTurn) {
-          for (const [s, n] of Object.entries(getCard(craftedId).craftCost)) {
-            power[s as CardSuit] = Math.max(0, (power[s as CardSuit] ?? 0) - (n ?? 0));
-          }
-        }
-        for (const cardId of state.hands.marquise) {
-          const card = getCard(cardId);
-          if (card.category !== 'item' && card.category !== 'persistent' && card.category !== 'favor') continue;
-          const cost = card.craftCost;
-          if (!cost || Object.keys(cost).length === 0) continue;
-          if (canMeetCraftCost(power, cost)) out.push({ kind: 'marquise.craft', cardId });
-        }
+      }
+      for (const cardId of state.hands.marquise) {
+        const card = getCard(cardId);
+        if (card.category !== 'item' && card.category !== 'persistent' && card.category !== 'favor') continue;
+        const cost = card.craftCost;
+        if (!cost || Object.keys(cost).length === 0) continue;
+        if (canMeetCraftCost(power, cost)) out.push({ kind: 'marquise.craft', cardId });
       }
     }
     // Bird card for extra action (any bird card including dominance is valid per rules)

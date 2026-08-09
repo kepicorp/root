@@ -25,6 +25,7 @@ import { metrics } from './telemetry';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const DEVICE_IP = process.env.DEVICE_IP ?? ifaceIp();
+const EXTERNAL_SCHEME = (process.env.EXTERNAL_SCHEME ?? 'http').toLowerCase();
 const EXTERNAL_PORT = Number(process.env.EXTERNAL_PORT ?? PORT);
 const DIST_DIR = resolve(process.env.DIST_DIR ?? './dist');
 const DATA_DIR = resolve(process.env.DATA_DIR ?? './data/rooms');
@@ -166,6 +167,11 @@ function attachToRoom(ws: WebSocket, room: Room): void {
         displayName = msg.displayName || clientId;
         room.connect(clientId, displayName, subscriber, msg.rejoinToken);
         break;
+      case 'setDisplayName': {
+        const err = room.setDisplayName(clientId, msg.displayName);
+        if (err) send(ws, { kind: 'error', message: err });
+        break;
+      }
       case 'claimSeat': {
         const err = room.claimSeat(clientId, msg.faction, msg.vagabondCharacter);
         if (err) send(ws, { kind: 'error', message: err });
@@ -248,13 +254,16 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
 httpServer.listen(PORT, () => {
+  const localUrl = `${EXTERNAL_SCHEME}://localhost:${EXTERNAL_PORT}/`;
+  const lanUrl = `${EXTERNAL_SCHEME}://${DEVICE_IP}:${EXTERNAL_PORT}/`;
+  const adminUrl = `${EXTERNAL_SCHEME}://${DEVICE_IP}:${EXTERNAL_PORT}/admin`;
   console.log(
     `\n  Root server listening.\n` +
-    `  Local:    http://localhost:${EXTERNAL_PORT}/\n` +
-    `  LAN/web:  http://${DEVICE_IP}:${EXTERNAL_PORT}/\n` +
+    `  Local:    ${localUrl}\n` +
+    `  LAN/web:  ${lanUrl}\n` +
     `  Data dir: ${DATA_DIR}\n` +
     `  Stale rooms older than ${MAX_ROOM_AGE_DAYS} days are pruned every 6h.\n` +
-    `  Admin:    ${ADMIN_FEATURE_ENABLED ? `enabled — visit http://${DEVICE_IP}:${EXTERNAL_PORT}/admin` : 'disabled (set ADMIN_PASSWORD to enable)'}\n`,
+    `  Admin:    ${ADMIN_FEATURE_ENABLED ? `enabled — visit ${adminUrl}` : 'disabled (set ADMIN_PASSWORD to enable)'}\n`,
   );
 });
 

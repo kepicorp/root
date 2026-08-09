@@ -53,14 +53,6 @@ interface BoardProps {
   backgroundSrc?: string;
 }
 
-// Pre-resolved per-faction warrior art (null if file missing).
-const WARRIOR_ART: Record<Faction, string | null> = {
-  marquise: warriorArt('marquise'),
-  eyrie:    warriorArt('eyrie'),
-  alliance: warriorArt('alliance'),
-  vagabond: warriorArt('vagabond'),
-};
-
 /** Movement-like actions that should be driven by clicking the map. */
 function getMovementActions(actions: Action[]): Action[] {
   return actions.filter(a =>
@@ -603,7 +595,7 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
                   <g transform="translate(0, 4)">
                     {present.map((f, i) => {
                       const count = cl.warriors[f] ?? 0;
-                      const art = WARRIOR_ART[f];
+                      const art = warriorArt(f);
                       const cx = startX + i * (size + gap);
                       return (
                         <g key={f} transform={`translate(${cx}, 0)`}>

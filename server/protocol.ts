@@ -29,6 +29,7 @@ export interface LobbyState {
 
 export type ClientMessage =
   | { kind: 'hello'; displayName: string; rejoinToken?: string }
+  | { kind: 'setDisplayName'; displayName: string }
   | { kind: 'claimSeat'; faction: Faction; vagabondCharacter?: VagabondCharacter }
   | { kind: 'releaseSeat' }
   | { kind: 'chooseVagabondCharacter'; character: VagabondCharacter }

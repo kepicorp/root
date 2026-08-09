@@ -16,6 +16,7 @@ const SUIT_COLOR: Record<CardSuit, string> = {
 interface ActionBarProps {
   state: GameState;
   playerFaction: Faction | null;
+  activeTurnName?: string | null;
   dispatch: (action: Action) => void;
   onBegin: (f: Faction) => void;
   mapIntent: MapIntent | null;
@@ -102,6 +103,13 @@ const EYRIE_LEADER_ABILITY: Record<EyrieLeader, string> = {
   builder:     'Ignore Disdain for Trade when Crafting',
 };
 
+const EYRIE_LEADER_VIZIERS: Record<EyrieLeader, string> = {
+  despot: 'Move + Build',
+  commander: 'Move + Battle',
+  charismatic: 'Recruit + Battle',
+  builder: 'Recruit + Move',
+};
+
 /** Per-action display metadata. */
 interface ActionMeta { label: string; group: string; primary?: boolean; }
 const ACTION_META: Record<string, ActionMeta> = {
@@ -167,7 +175,7 @@ function actionDetail(a: Action): string {
   return parts.join(' · ');
 }
 
-export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, setMapIntent, onUndo, canUndo }: ActionBarProps) {
+export function ActionBar({ state, playerFaction, activeTurnName, dispatch, onBegin, mapIntent, setMapIntent, onUndo, canUndo }: ActionBarProps) {
   // Two-step intents like Overwork / Mobilize / Craft ("pick a card, then
   // go") use tiny local picker states. Esc dismisses any open picker.
   const [overworkPicking, setOverworkPicking] = useState(false);
@@ -549,9 +557,10 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
   }
 
   if (!isHuman) {
+    const turnLabel = activeTurnName?.trim() || 'AI';
     return (
       <div className="actionbar ai-thinking">
-        <div className="actionbar-title">AI turn — <em>{active}</em></div>
+        <div className="actionbar-title">{turnLabel}'s turn — <em>{active}</em></div>
         <div className="ai-pulse"><span /><span /><span /></div>
       </div>
     );
@@ -729,11 +738,11 @@ export function ActionBar({ state, playerFaction, dispatch, onBegin, mapIntent, 
                     <button
                       key={leader}
                       className={`btn action-btn faction-eyrie`}
-                      title={EYRIE_LEADER_ABILITY[leader]}
+                      title={`Viziers: ${EYRIE_LEADER_VIZIERS[leader]} · ${EYRIE_LEADER_ABILITY[leader]}`}
                       onClick={() => dispatch({ kind: 'eyrie.chooseLeader', leader })}
                     >
                       <span className="action-label">{leader}</span>
-                      <span className="action-detail">{EYRIE_LEADER_ABILITY[leader]}</span>
+                      <span className="action-detail">Viziers: {EYRIE_LEADER_VIZIERS[leader]}</span>
                     </button>
                   ))}
                 </div>

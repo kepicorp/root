@@ -1,0 +1,23 @@
+{
+	# For LAN-only HTTPS, issue certs from Caddy's local CA.
+	# Trust this CA on each client device for warning-free access.
+	local_certs
+	# Some clients omit SNI when connecting to an IP literal.
+	# Pin a default so handshake can still select the right cert.
+	default_sni {$CADDY_HOST}
+}
+
+{$CADDY_HOST} {
+	reverse_proxy root:8787
+}
+
+# Fallback listeners for direct host-IP traffic.
+# This ensures requests still reach the app when Host does not match CADDY_HOST.
+http:// {
+	reverse_proxy root:8787
+}
+
+https:// {
+	tls internal
+	reverse_proxy root:8787
+}

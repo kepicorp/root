@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { produce } from 'immer';
 import { newGame, reduce } from '../../../state';
+import { BASE_SHARED_DECK, getCard } from '../../../cards';
+import { AUTUMN_MAP } from '../../../map';
 import { setupMarquise, MARQUISE_CORNER, EYRIE_CORNER } from '../setup';
 import { marquiseLegalActions } from '../reducer';
 import { startGame, advancePhase } from '../../../loop';
@@ -96,5 +98,43 @@ describe('Marquise actions', () => {
     let s = makeGame();
     s = advancePhase(s);
     expect(marquiseLegalActions(s).some(a => a.kind === 'marquise.endDaylight')).toBe(true);
+  });
+
+  it('shows craft actions from board workshops even if workshop track is stale', () => {
+    let s = makeGame();
+    s = advancePhase(s);
+    const workshopClearing = Object.entries(s.map.clearings).find(([, cl]) =>
+      cl.buildings.some(b => b.faction === 'marquise' && b.kind === 'workshop'),
+    );
+    expect(workshopClearing).toBeTruthy();
+    const suit = workshopClearing
+      ? (AUTUMN_MAP.clearings.find(c => c.id === Number(workshopClearing[0]))?.suit ?? 'fox')
+      : 'fox';
+    const craftable = BASE_SHARED_DECK.find(card => {
+      if (card.category !== 'item' && card.category !== 'persistent' && card.category !== 'favor') return false;
+      const entries = Object.entries(card.craftCost);
+      return entries.length === 1 && entries[0]![0] === suit && entries[0]![1] === 1;
+    });
+    expect(craftable).toBeTruthy();
+
+    s = produce(s, draft => {
+      // Simulate a stale tracker bug: board still has a workshop but count says 0.
+      draft.factions.marquise!.buildings.workshop = 0;
+      const id = craftable!.id;
+      const inHand = draft.hands.marquise.includes(id);
+      if (!inHand) {
+        const deckIdx = draft.deck.indexOf(id);
+        if (deckIdx >= 0) {
+          draft.deck.splice(deckIdx, 1);
+          draft.hands.marquise.push(id);
+        }
+      }
+    });
+
+    const legalCraft = marquiseLegalActions(s).find(a => a.kind === 'marquise.craft') as { kind: 'marquise.craft'; cardId: string } | undefined;
+    expect(legalCraft).toBeTruthy();
+    const next = reduce(s, legalCraft!);
+    expect(next.hands.marquise.includes(legalCraft!.cardId)).toBe(false);
+    expect(next.log.some(entry => entry.faction === 'marquise' && entry.message.includes(`Crafted ${getCard(legalCraft!.cardId).name}`))).toBe(true);
   });
 });

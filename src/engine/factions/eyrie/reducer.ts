@@ -21,6 +21,10 @@ const NEXT_LEADER: Record<EyrieLeader, EyrieLeader> = {
 
 const RESOLUTION_ORDER: DecreeSlot[] = ['recruit', 'move', 'battle', 'build'];
 
+function eyrieRecruitCount(e: EyrieState): number {
+  return e.leader === 'charismatic' ? 2 : 1;
+}
+
 function ensureResolution(e: EyrieState): void {
   if (e.resolutionLeft) return;
   e.resolutionLeft = {
@@ -163,10 +167,15 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
         const hasRoost = cl.buildings.some(b => b.faction === 'eyrie' && b.kind === 'roost');
         if (!hasRoost) return;
         if (e.warriorSupply <= 0) return;
-        cl.warriors.eyrie = (cl.warriors.eyrie ?? 0) + 1;
-        e.warriorSupply -= 1;
+        const toPlace = Math.min(eyrieRecruitCount(e), e.warriorSupply);
+        cl.warriors.eyrie = (cl.warriors.eyrie ?? 0) + toPlace;
+        e.warriorSupply -= toPlace;
         e.resolutionLeft!.recruit -= 1;
-        draft.log.push({ turn: draft.turn, faction: 'eyrie', message: `Recruited 1 at clearing ${a.clearing}.` });
+        draft.log.push({
+          turn: draft.turn,
+          faction: 'eyrie',
+          message: `Recruited ${toPlace} at clearing ${a.clearing}.`,
+        });
         maybeFinishResolution(draft);
       });
 
@@ -309,8 +318,9 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
             s = produce(s, draft => {
               const cl = draft.map.clearings[target]!;
               const ee = draft.factions.eyrie!;
-              cl.warriors.eyrie = (cl.warriors.eyrie ?? 0) + 1;
-              ee.warriorSupply -= 1;
+              const toPlace = Math.min(eyrieRecruitCount(ee), ee.warriorSupply);
+              cl.warriors.eyrie = (cl.warriors.eyrie ?? 0) + toPlace;
+              ee.warriorSupply -= toPlace;
               ee.resolutionLeft!.recruit -= 1;
             });
           } else { // build
@@ -448,7 +458,7 @@ export function eyrieLegalActions(state: GameState): Action[] {
   }
 
   if (state.phase === 'birdsong') {
-    // Official rule: exactly one card added to the Decree per birdsong.
+    // Official rule in this ruleset: add one or two cards to the Decree each birdsong.
     if (!e.needsLeaderChoice && e.cardsAddedThisBirdsong < 2) {
       for (const cardId of state.hands.eyrie) {
         for (const slot of ['recruit', 'move', 'battle', 'build'] as const) {
@@ -528,7 +538,9 @@ export function eyrieLegalActions(state: GameState): Action[] {
         } else if (slot === 'build') {
           if (!eyrieRules(state, cm.id)) continue;
           if (cl.buildings.some(b => b.faction === 'eyrie' && b.kind === 'roost')) continue;
-          const used = cl.buildings.length + cl.tokens.filter(t => t.kind === 'keep').length;
+          const used = cl.buildings.length
+            + cl.tokens.filter(t => t.kind === 'keep').length
+            + (cm.hasRuin && !cl.ruinExplored ? 1 : 0);
           if (used < cm.buildingSlots && e.roosts.length < 7) {
             out.push({ kind: 'eyrie.executeBuild', clearing: cm.id });
           }
