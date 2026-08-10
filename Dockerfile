@@ -22,6 +22,7 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=8787
+ENV HOST=0.0.0.0
 ENV DIST_DIR=/app/dist
 
 COPY package*.json ./
@@ -32,7 +33,7 @@ COPY --from=builder /app/server ./server
 COPY --from=builder /app/src ./src
 COPY --from=builder /app/tsconfig.json ./
 
-EXPOSE 8787
+EXPOSE ${PORT}
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD wget -qO- http://localhost:${PORT}/healthz || exit 1

@@ -1,0 +1,58 @@
+x-dd-env: &dd-env
+  DD_ENV: ${DD_ENV:-home}
+  DD_AGENT_HOST: host.docker.internal
+  DD_TRACE_AGENT_PORT: ${DD_TRACE_AGENT_PORT:-8126}
+  DD_TRACE_ENABLED: ${DD_TRACE_ENABLED:-true}
+  DD_SITE: ${DD_SITE:-datadoghq.com}
+
+services:
+  root:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: root-game-local
+    expose:
+      - "8787"
+    volumes:
+      - root-data-local:/app/data/rooms
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      <<: *dd-env
+      PORT: 8787
+      EXTERNAL_SCHEME: https
+      EXTERNAL_PORT: ${CADDY_HTTPS_PORT:-443}
+      DATA_DIR: /app/data/rooms
+      MAX_ROOM_AGE_DAYS: 90
+      DD_SERVICE: root-game
+      DD_VERSION: ${DD_VERSION:-local}
+    env_file:
+      - path: .env
+        required: false
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8787/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: root-caddy-local
+    restart: unless-stopped
+    depends_on:
+      - root
+    ports:
+      - "${CADDY_HTTP_PORT:-80}:80"
+      - "${CADDY_HTTPS_PORT:-443}:443"
+    environment:
+      # Set to your LAN DNS name or host IP, e.g. 192.168.1.50
+      CADDY_HOST: ${CADDY_HOST:-localhost}
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data-local:/data
+      - caddy-config-local:/config
+
+volumes:
+  root-data-local:
+  caddy-data-local:
+  caddy-config-local:

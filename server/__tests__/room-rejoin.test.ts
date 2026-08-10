@@ -16,6 +16,31 @@ describe('Room — rejoin tokens', () => {
     expect(typeof snap.rejoinToken).toBe('string');
   });
 
+  it('can start a no-bot game with just the claimed factions', () => {
+    const room = new Room('test');
+    room.connect('c1', 'Alice', sub());
+    room.connect('c2', 'Bob', sub());
+    room.setAutoFillBots('c1', false);
+    room.claimSeat('c1', 'marquise');
+    room.claimSeat('c2', 'eyrie');
+    expect(room.startGame()).toBeNull();
+    const snap = room.snapshotFor('c1');
+    expect(snap.state.factionOrder).toEqual(['marquise', 'eyrie']);
+    expect(snap.lobby.autoFillBots).toBe(false);
+  });
+
+  it('can start a bot-filled game with fewer than four claimed seats', () => {
+    const room = new Room('test');
+    room.connect('c1', 'Alice', sub());
+    room.connect('c2', 'Bob', sub());
+    room.setAutoFillBots('c1', true);
+    room.claimSeat('c1', 'marquise');
+    room.claimSeat('c2', 'eyrie');
+    expect(room.startGame()).toBeNull();
+    const snap = room.snapshotFor('c1');
+    expect(snap.state.factionOrder).toEqual(['marquise', 'eyrie', 'alliance', 'vagabond']);
+  });
+
   it('lobby disconnect frees the seat (no stickiness before startGame)', () => {
     const room = new Room('test');
     room.connect('c1', 'Alice', sub());
@@ -99,6 +124,7 @@ describe('Room — rejoin tokens', () => {
 
     const persisted = room.toSnapshot();
     expect(persisted.seats.marquise).toEqual({ token, displayName: 'Alice' });
+    expect(persisted.autoFillBots).toBe(true);
 
     const revived = Room.fromSnapshot(persisted);
     revived.connect('cFresh', 'Outsider', sub());

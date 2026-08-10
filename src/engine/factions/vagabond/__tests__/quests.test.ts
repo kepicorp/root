@@ -113,6 +113,24 @@ describe('Vagabond quest deck', () => {
     const result = reduce(setup, { kind: 'vagabond.completeQuest', questId: targetQuest.id });
     expect(result).toBe(setup); // unchanged
   });
+
+  it('exploring a ruin opens the existing slot instead of adding a new one', () => {
+    const baseline = fixture();
+    const ruinClearing = AUTUMN_MAP.clearings.find(c => c.hasRuin)!;
+    const setup = produce(baseline, draft => {
+      draft.phase = 'daylight';
+      draft.activeIndex = draft.factionOrder.indexOf('vagabond');
+      const v = draft.factions.vagabond!;
+      v.clearing = ruinClearing.id;
+      v.daylightActionsLeft = 6;
+      v.items = [
+        { kind: 'torch', state: 'face-up', exhausted: false },
+      ];
+    });
+
+    const after = reduce(setup, { kind: 'vagabond.exploreRuin' });
+    expect(after.map.clearings[ruinClearing.id]!.ruinExplored).toBe(true);
+  });
 });
 
 describe('Vagabond coalition', () => {

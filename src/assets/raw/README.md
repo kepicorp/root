@@ -1,7 +1,10 @@
 # Asset drop folder
 
-Place your private Root scans here. This folder is gitignored — nothing
-in it will be committed, distributed, or pushed.
+This file shows the reference structure for the browser ZIP upload. It is also gitignored. Nothing in it should be committed, distributed, or pushed.
+
+When uploading a ZIP from the frontend startup page, upload the `raw/` folder with the same structure shown below. The server never sees the uploaded art.
+
+All paths below are prepended with `raw/`:
 
 ## Naming
 
@@ -57,6 +60,9 @@ Each faction has its own subfolder:
 - `items/coin.png`
 - `items/torch.png`
 
+### Tokens
+- `tokens/wood.png` — optional custom wood token art. If omitted, the app falls back to a brown circle everywhere wood is shown.
+
 ### Dominance
 - `dominance/fox.png`
 - `dominance/mouse.png`
@@ -65,6 +71,5 @@ Each faction has its own subfolder:
 
 ## Legal
 
-The art is Leder Games' copyright. This folder is for private/local use
-only — never check it in, never serve it publicly. The `.gitignore`
+The art is Leder Games' copyright. This folder is for private/local use only — never check it in, never serve it publicly. The `.gitignore`
 already excludes `src/assets/raw/`.

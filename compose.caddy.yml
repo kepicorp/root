@@ -1,0 +1,56 @@
+x-dd-env: &dd-env
+  DD_ENV: ${DD_ENV:-home}
+  DD_TRACE_AGENT_URL: unix:///var/run/datadog/apm.socket
+  DD_TRACE_ENABLED: ${DD_TRACE_ENABLED:-true}
+  DD_SITE: ${DD_SITE:-datadoghq.com}
+
+services:
+  root:
+    image: docker.kepi.site/root-game:latest
+    pull_policy: always
+    container_name: root-game
+    restart: unless-stopped
+    expose:
+      - "8787"
+    volumes:
+      - root-data:/app/data/rooms
+      - /var/run/datadog:/var/run/datadog:ro
+    environment:
+      <<: *dd-env
+      PORT: 8787
+      EXTERNAL_SCHEME: https
+      EXTERNAL_PORT: ${CADDY_HTTPS_PORT:-443}
+      DATA_DIR: /app/data/rooms
+      MAX_ROOM_AGE_DAYS: 90
+      DD_SERVICE: root-game
+      DD_VERSION: ${DD_VERSION:-}
+    env_file:
+      - path: .env
+        required: false
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8787/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: root-caddy
+    restart: unless-stopped
+    depends_on:
+      - root
+    ports:
+      - "${CADDY_HTTP_PORT:-80}:80"
+      - "${CADDY_HTTPS_PORT:-443}:443"
+    environment:
+      # Set to your LAN DNS name or host IP, e.g. 192.168.1.50
+      CADDY_HOST: ${CADDY_HOST:-localhost}
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  root-data:
+  caddy-data:
+  caddy-config:

@@ -3,7 +3,7 @@ import { AUTUMN_MAP, getAdjacent } from '../engine/map';
 import type { ClearingId, Suit, Action, Faction, GameState } from '../engine/types';
 import { getLegalActions } from '../engine/legal';
 import { activeFaction } from '../engine/loop';
-import { boardArt, warriorArt, buildingArt } from '../assets';
+import { boardArt, warriorArt, buildingArt, woodArt } from '../assets';
 import { Trees } from './Trees';
 import { MapLegend } from './MapLegend';
 import { ClearingInfo } from './ClearingInfo';
@@ -53,14 +53,6 @@ interface BoardProps {
   backgroundSrc?: string;
 }
 
-// Pre-resolved per-faction warrior art (null if file missing).
-const WARRIOR_ART: Record<Faction, string | null> = {
-  marquise: warriorArt('marquise'),
-  eyrie:    warriorArt('eyrie'),
-  alliance: warriorArt('alliance'),
-  vagabond: warriorArt('vagabond'),
-};
-
 /** Movement-like actions that should be driven by clicking the map. */
 function getMovementActions(actions: Action[]): Action[] {
   return actions.filter(a =>
@@ -107,6 +99,7 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
   // Set to true when a drag commits; suppresses the click event that follows pointerup.
   const suppressClickRef = useRef(false);
   const bgSrc = backgroundSrc ?? boardArt() ?? undefined;
+  const woodSrc = woodArt();
 
   // viewBox: zoom shrinks the visible area, pan offsets its center.
   const vbW = BOARD_W / zoom;
@@ -556,8 +549,9 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
               </g>
               {/* Slot indicator (empty plots shown as outlined squares; filled overlays appear below) */}
               {(() => {
-                const totalSlots = c.buildingSlots + (cl.extraBuildingSlots ?? 0);
-                const usedSlots = cl.buildings.length + cl.tokens.filter(t => t.kind === 'keep').length;
+                const ruinOccupied = c.hasRuin && !cl.ruinExplored ? 1 : 0;
+                const totalSlots = c.buildingSlots;
+                const usedSlots = cl.buildings.length + cl.tokens.filter(t => t.kind === 'keep').length + ruinOccupied;
                 const free = Math.max(0, totalSlots - usedSlots);
                 const dotR = 4;
                 const totalWidth = (totalSlots - 1) * 12;
@@ -565,17 +559,17 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
                   <g transform={`translate(${-totalWidth / 2} -16)`} aria-label={`${usedSlots} of ${totalSlots} slots used`}>
                     {Array.from({ length: totalSlots }).map((_, i) => {
                       const filled = i < usedSlots;
-                      // Extra slots from ruin exploration are shown with a lighter stroke
-                      const isExtra = i >= c.buildingSlots;
                       return (
-                        <circle
+                        <rect
                           key={i}
-                          cx={i * 12}
-                          cy={0}
-                          r={dotR}
+                          x={i * 12 - dotR}
+                          y={-dotR}
+                          width={dotR * 2}
+                          height={dotR * 2}
+                          rx={1}
                           fill={filled ? '#3b2a18' : '#f5e9d0'}
-                          stroke={isExtra ? '#b8a37a' : '#3b2a18'}
-                          strokeWidth={isExtra ? 2 : 1.5}
+                          stroke='#3b2a18'
+                          strokeWidth={1.5}
                           opacity={filled ? 0.85 : 0.75}
                         />
                       );
@@ -601,7 +595,7 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
                   <g transform="translate(0, 4)">
                     {present.map((f, i) => {
                       const count = cl.warriors[f] ?? 0;
-                      const art = WARRIOR_ART[f];
+                      const art = warriorArt(f);
                       const cx = startX + i * (size + gap);
                       return (
                         <g key={f} transform={`translate(${cx}, 0)`}>
@@ -653,11 +647,27 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
               {/* Wood tokens, sympathy, keep — small overlays on the side */}
               <g>
                 {cl.tokens.filter(t => t.kind === 'wood').slice(0, 5).map((_, idx) => (
-                  <circle
-                    key={`w${idx}`}
-                    cx={42} cy={-14 + idx * 9} r={6}
-                    fill="#7c5c2e" stroke="#3b2a18" strokeWidth={1.2}
-                  />
+                  woodSrc ? (
+                    <image
+                      key={`w${idx}`}
+                      href={woodSrc}
+                      x={36}
+                      y={-20 + idx * 10}
+                      width={12}
+                      height={12}
+                      preserveAspectRatio="xMidYMid meet"
+                    />
+                  ) : (
+                    <circle
+                      key={`w${idx}`}
+                      cx={42}
+                      cy={-14 + idx * 9}
+                      r={6}
+                      fill="#7c5c2e"
+                      stroke="#3b2a18"
+                      strokeWidth={1.2}
+                    />
+                  )
                 ))}
                 {cl.tokens.filter(t => t.kind === 'sympathy').map((_, idx) => {
                   const art = buildingArt('alliance', 'sympathy');
@@ -725,9 +735,6 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
           </button>
         </div>
       )}
-
-      {/* Count picker — shown after the player clicks a destination on a
-          multi-warrior move, so they can choose how many to march. */}
       {pendingMove && (
         <div className="count-picker" role="dialog" aria-label="Choose how many warriors to move">
           <div className="count-picker-title">

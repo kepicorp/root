@@ -2,7 +2,7 @@
 // starts. Each connected player can claim one faction seat; unclaimed seats
 // will be filled by AI bots.
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Faction } from '../engine/types';
 import { ALL_FACTIONS } from '../engine/types';
 import type { VagabondCharacter } from '../engine/factions/vagabond/state';
@@ -27,9 +27,18 @@ const CHARACTERS: VagabondCharacter[] = ['thief', 'tinker', 'ranger'];
 export function Lobby() {
   const net = useNetGame((s) => s.net);
   const [showVagabondPicker, setShowVagabondPicker] = useState(false);
-  if (!net.lobby) return null;
+  const [draftName, setDraftName] = useState('');
+  const lobby = net.lobby;
   const myId = net.clientId;
   const yourFaction = net.yourFaction;
+  const me = myId && lobby ? lobby.players.find((p) => p.clientId === myId) : null;
+  const currentName = me?.displayName ?? 'Player';
+  useEffect(() => {
+    setDraftName(currentName);
+  }, [currentName]);
+  if (!lobby) return null;
+  const claimedCount = Object.values(net.lobby.seats).filter((seat) => seat !== null).length;
+  const canStart = claimedCount > 0;
 
   return (
     <div className="lobby">
@@ -42,6 +51,26 @@ export function Lobby() {
       </p>
 
       <div className="lobby-players">
+        <div className="lobby-section-label">Your name</div>
+        <div className="character-row">
+          <input
+            className="home-input"
+            value={draftName}
+            maxLength={32}
+            onChange={(e) => setDraftName(e.target.value)}
+            placeholder="Choose a name"
+            aria-label="Your display name"
+          />
+          <button
+            className="btn"
+            onClick={() => {
+              netClient.setDisplayName(draftName);
+            }}
+            disabled={draftName.trim().length === 0 || draftName.trim() === currentName}
+          >
+            Save name
+          </button>
+        </div>
         <div className="lobby-section-label">Players</div>
         {net.lobby.players.length === 0 && <em className="dim">no players yet</em>}
         {net.lobby.players.map((p) => (
@@ -58,6 +87,18 @@ export function Lobby() {
       </div>
 
       <div className="lobby-section-label">Pick a faction</div>
+      <div className="lobby-mode">
+        <span className="lobby-section-label">Empty seats</span>
+        <label className="home-toggle">
+          <input
+            type="checkbox"
+            checked={lobby.autoFillBots}
+            disabled={lobby.started}
+            onChange={(e) => netClient.setAutoFillBots(e.target.checked)}
+          />
+          Auto-fill with bots
+        </label>
+      </div>
       <div className="lobby-seats">
         {ALL_FACTIONS.map((f) => {
           const claimedBy = net.lobby!.seats[f];
@@ -88,7 +129,7 @@ export function Lobby() {
               <div>
                 <div className="lobby-seat-name">{FACTION_LABEL[f]}</div>
                 <div className="lobby-seat-state">
-                  {claimedByMe ? 'you' : claimedByOther ? `taken: ${claimingPlayer?.displayName ?? '?'}` : 'AI bot will fill'}
+                  {claimedByMe ? 'you' : claimedByOther ? `taken: ${claimingPlayer?.displayName ?? '?'}` : lobby.autoFillBots ? 'AI bot will fill' : 'empty seat'}
                 </div>
               </div>
             </button>
@@ -115,11 +156,15 @@ export function Lobby() {
         <button
           className="btn primary"
           onClick={() => netClient.startGame()}
-          disabled={net.lobby.players.length === 0}
+          disabled={!canStart}
         >
           Start game
         </button>
-        <span className="dim">Any unclaimed faction becomes a bot.</span>
+        <span className="dim">
+          {lobby.autoFillBots
+            ? 'Any unclaimed faction becomes a bot.'
+            : 'Empty seats stay empty.'}
+        </span>
       </div>
 
       {net.lastError && <div className="lobby-error">{net.lastError}</div>}

@@ -2,8 +2,7 @@
 // is fine for non-Eyrie factions, but the Eyrie's Decree is a long-horizon
 // commitment and the dumb "pick the first highest-priority legal" picker
 // happily stuffs cards into slots it can't fulfill — leading straight to
-// Turmoil. This module picks the *safest* addToDecree (and adds at most one
-// card per birdsong, so the Decree grows at the rate the bot draws).
+// Turmoil. This module picks the safest addToDecree choices.
 
 import type { GameState, Action } from '../engine/types';
 import { getCard } from '../engine/cards';
@@ -48,20 +47,18 @@ export function pickEyrieAction(state: GameState, legals: Action[]): Action | nu
     if (rd) return rd;
   }
   if (state.phase !== 'birdsong') return null;
-  // Must choose a leader first. Commander (Move + Battle viziers) works
-  // best for the bot: Move sets up the Battle, and combat removes warriors
-  // from the board — preventing supply exhaustion that plagues Recruit-
-  // heavy leaders like Builder.
+  // Must choose a leader first. Charismatic's Recruit + Battle viziers give
+  // the bot a stable economy and now correctly place two warriors per Recruit
+  // decree step, which improves early board presence.
   if (eyrie.needsLeaderChoice) {
-    const preferred: Action = { kind: 'eyrie.chooseLeader', leader: 'commander' };
-    const hasIt = legals.some(a => a.kind === 'eyrie.chooseLeader' && (a as typeof preferred).leader === 'commander');
+    const preferred: Action = { kind: 'eyrie.chooseLeader', leader: 'charismatic' };
+    const hasIt = legals.some(a => a.kind === 'eyrie.chooseLeader' && (a as typeof preferred).leader === 'charismatic');
     if (hasIt) return preferred;
     return null; // fall through
   }
 
-  // One safe add per birdsong is plenty — keeps the Decree manageable and
-  // gives the bot a cushion against the map shifting around it.
-  if (eyrie.cardsAddedThisBirdsong >= 1) {
+  // This ruleset allows up to two adds each birdsong.
+  if (eyrie.cardsAddedThisBirdsong >= 2) {
     return legals.find(a => a.kind === 'eyrie.endBirdsong') ?? null;
   }
 
@@ -76,8 +73,7 @@ export function pickEyrieAction(state: GameState, legals: Action[]): Action | nu
 
   if (candidates.length === 0) {
     // Every option would force a Decree action we can't fulfill. Better to
-    // skip the add this turn — yes, that violates the strict "must add"
-    // rule, but it avoids the guaranteed Turmoil that would follow.
+    // end birdsong once we've added at least one card.
     return legals.find(a => a.kind === 'eyrie.endBirdsong') ?? null;
   }
 

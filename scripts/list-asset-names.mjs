@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Print every filename the asset loader will look for under src/assets/raw/.
-// Run: node scripts/list-asset-names.mjs
+// Print every filename the asset loader will look for inside the ZIP-uploaded
+// raw folder. Run: node scripts/list-asset-names.mjs
 
 function slug(name) {
   return name
@@ -42,6 +42,8 @@ console.log('\n## Items');
 for (const i of items) console.log(`items/${i}.png`);
 console.log('\n## Dominance');
 for (const s of dominance) console.log(`dominance/${s}.png`);
+console.log('\n## Tokens');
+console.log('tokens/wood.png');
 console.log('\n## Factions');
 for (const [faction, names] of Object.entries(buildings)) {
   for (const n of names) console.log(`factions/${faction}/${n}.png`);

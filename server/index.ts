@@ -19,10 +19,14 @@ import { RoomManager, NINETY_DAYS_MS } from './rooms';
 import type { Room } from './room';
 import { makeStaticHandler } from './static';
 import { handleAdmin, ADMIN_FEATURE_ENABLED } from './admin';
+import { handleSiteAuth, hasSiteAccess, requireSiteAccess } from './site-auth';
 import type { ClientMessage, ServerMessage } from './protocol';
 import { metrics } from './telemetry';
 
 const PORT = Number(process.env.PORT ?? 8787);
+const DEVICE_IP = process.env.DEVICE_IP ?? ifaceIp();
+const EXTERNAL_SCHEME = (process.env.EXTERNAL_SCHEME ?? 'http').toLowerCase();
+const EXTERNAL_PORT = Number(process.env.EXTERNAL_PORT ?? PORT);
 const DIST_DIR = resolve(process.env.DIST_DIR ?? './dist');
 const DATA_DIR = resolve(process.env.DATA_DIR ?? './data/rooms');
 const MAX_ROOM_AGE_DAYS = Number(process.env.MAX_ROOM_AGE_DAYS ?? 90);
@@ -49,13 +53,27 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
 
   if (path === '/healthz') { res.writeHead(200); res.end('ok'); return; }
 
+  if (await handleSiteAuth(req, res, path)) return;
+
+  if ((path.startsWith('/api/rooms') || path.startsWith('/api/admin/') || path === '/ws') && !requireSiteAccess(req, res)) {
+    return;
+  }
+
   // Admin endpoints (password-protected). Tried first so they win over the
   // SPA fallback.
   if (await handleAdmin(req, res, path, manager)) return;
 
   // POST /api/rooms — create a new room
   if (req.method === 'POST' && path === '/api/rooms') {
-    const room = manager.create();
+    let body: { autoFillBots?: boolean } = {};
+    try {
+      const raw = await readJsonBody(req);
+      body = (raw ?? {}) as typeof body;
+    } catch {
+      sendJson(res, 400, { error: 'bad json' });
+      return;
+    }
+    const room = manager.create({ autoFillBots: body.autoFillBots ?? true });
     sendJson(res, 201, { id: room.id });
     return;
   }
@@ -73,12 +91,35 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
   res.end('UI bundle not found at ' + DIST_DIR + ' — run `npm run build`.');
 }
 
+async function readJsonBody(req: http.IncomingMessage, maxBytes = 64 * 1024): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > maxBytes) { reject(new Error('body too large')); req.destroy(); return; }
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      const raw = Buffer.concat(chunks).toString('utf8');
+      if (!raw) return resolve({});
+      try { resolve(JSON.parse(raw)); }
+      catch { reject(new Error('bad json')); }
+    });
+    req.on('error', reject);
+  });
+}
+
 const wss = new WebSocketServer({ noServer: true });
 
 httpServer.on('upgrade', (req, socket, head) => {
   if (!req.url) { socket.destroy(); return; }
   const url = new URL(req.url, `http://${req.headers.host}`);
   if (url.pathname !== '/ws') { socket.destroy(); return; }
+  if (!hasSiteAccess(req)) {
+    socket.destroy();
+    return;
+  }
   const roomId = url.searchParams.get('room');
   if (!roomId) { socket.destroy(); return; }
   const room = manager.get(roomId);
@@ -126,6 +167,11 @@ function attachToRoom(ws: WebSocket, room: Room): void {
         displayName = msg.displayName || clientId;
         room.connect(clientId, displayName, subscriber, msg.rejoinToken);
         break;
+      case 'setDisplayName': {
+        const err = room.setDisplayName(clientId, msg.displayName);
+        if (err) send(ws, { kind: 'error', message: err });
+        break;
+      }
       case 'claimSeat': {
         const err = room.claimSeat(clientId, msg.faction, msg.vagabondCharacter);
         if (err) send(ws, { kind: 'error', message: err });
@@ -137,6 +183,11 @@ function attachToRoom(ws: WebSocket, room: Room): void {
       case 'chooseVagabondCharacter':
         room.chooseVagabondCharacter(msg.character);
         break;
+      case 'setAutoFillBots': {
+        const err = room.setAutoFillBots(clientId, msg.autoFillBots);
+        if (err) send(ws, { kind: 'error', message: err });
+        break;
+      }
       case 'startGame': {
         const err = room.startGame();
         if (err) send(ws, { kind: 'error', message: err });
@@ -203,14 +254,16 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
 httpServer.listen(PORT, () => {
-  const host = ifaceIp();
+  const localUrl = `${EXTERNAL_SCHEME}://localhost:${EXTERNAL_PORT}/`;
+  const lanUrl = `${EXTERNAL_SCHEME}://${DEVICE_IP}:${EXTERNAL_PORT}/`;
+  const adminUrl = `${EXTERNAL_SCHEME}://${DEVICE_IP}:${EXTERNAL_PORT}/admin`;
   console.log(
     `\n  Root server listening.\n` +
-    `  Local:    http://localhost:${PORT}/\n` +
-    `  LAN/web:  http://${host}:${PORT}/\n` +
+    `  Local:    ${localUrl}\n` +
+    `  LAN/web:  ${lanUrl}\n` +
     `  Data dir: ${DATA_DIR}\n` +
     `  Stale rooms older than ${MAX_ROOM_AGE_DAYS} days are pruned every 6h.\n` +
-    `  Admin:    ${ADMIN_FEATURE_ENABLED ? `enabled — visit http://${host}:${PORT}/admin` : 'disabled (set ADMIN_PASSWORD to enable)'}\n`,
+    `  Admin:    ${ADMIN_FEATURE_ENABLED ? `enabled — visit ${adminUrl}` : 'disabled (set ADMIN_PASSWORD to enable)'}\n`,
   );
 });
 

@@ -44,6 +44,7 @@ export interface RoomSnapshot {
   id: string;
   createdAt: number;
   lastActivityAt: number;
+  autoFillBots: boolean;
   // Persisted as {token, displayName} per seat. Old snapshots used
   // `ClientId | null` and were reset to all-null on load — those still load
   // fine, they just won't restore identity.
@@ -62,6 +63,7 @@ export class Room {
   readonly id: string;
   readonly createdAt: number;
   lastActivityAt: number;
+  private autoFillBots = true;
 
   private players = new Map<ClientId, PlayerRecord>();
   private seats: Record<Faction, ClientId | null> = {
@@ -75,12 +77,13 @@ export class Room {
   private onChange: ((room: Room) => void) | null = null;
   private syntheticIdCounter = 0;
 
-  constructor(id: string, opts: { createdAt?: number; state?: GameState; started?: boolean } = {}) {
+  constructor(id: string, opts: { createdAt?: number; state?: GameState; started?: boolean; autoFillBots?: boolean } = {}) {
     this.id = id;
     this.createdAt = opts.createdAt ?? Date.now();
     this.lastActivityAt = Date.now();
     this.state = opts.state ?? newGame({ seed: Math.floor(Math.random() * 1e9) });
     this.started = opts.started ?? false;
+    this.autoFillBots = opts.autoFillBots ?? true;
   }
 
   /** Registered by the manager so every state change schedules a disk write. */
@@ -94,7 +97,12 @@ export class Room {
   // ─── Hydrate from / serialize to disk ────────────────────────────────────
 
   static fromSnapshot(snap: RoomSnapshot): Room {
-    const r = new Room(snap.id, { createdAt: snap.createdAt, state: snap.state, started: snap.started });
+    const r = new Room(snap.id, {
+      createdAt: snap.createdAt,
+      state: snap.state,
+      started: snap.started,
+      autoFillBots: snap.autoFillBots ?? true,
+    });
     r.lastActivityAt = snap.lastActivityAt;
     r.vagabondCharacter = snap.vagabondCharacter;
     // Rehydrate offline player records from persisted seat tokens. They sit
@@ -131,6 +139,7 @@ export class Room {
       id: this.id,
       createdAt: this.createdAt,
       lastActivityAt: this.lastActivityAt,
+      autoFillBots: this.autoFillBots,
       seats: persistedSeats,
       vagabondCharacter: this.vagabondCharacter,
       state: this.state,
@@ -172,7 +181,6 @@ export class Room {
           }
         }
         existing.clientId = clientId;
-        existing.displayName = displayName;
         existing.online = true;
         this.players.set(clientId, existing);
         this.subscribers.set(clientId, sub);
@@ -238,6 +246,15 @@ export class Room {
     return null;
   }
 
+  setAutoFillBots(clientId: ClientId, autoFillBots: boolean): string | null {
+    if (this.started) return 'game already started';
+    if (!this.players.has(clientId)) return 'not connected';
+    this.autoFillBots = autoFillBots;
+    this.broadcastLobby();
+    this.touched();
+    return null;
+  }
+
   releaseSeat(clientId: ClientId): void {
     const player = this.players.get(clientId);
     if (!player || !player.faction) return;
@@ -250,6 +267,17 @@ export class Room {
     this.touched();
   }
 
+  setDisplayName(clientId: ClientId, displayName: string): string | null {
+    const player = this.players.get(clientId);
+    if (!player) return 'not connected';
+    const trimmed = displayName.trim();
+    if (!trimmed) return 'display name cannot be empty';
+    player.displayName = trimmed.slice(0, 32);
+    this.broadcastLobby();
+    this.touched();
+    return null;
+  }
+
   chooseVagabondCharacter(character: VagabondCharacter): void {
     this.vagabondCharacter = character;
     this.broadcastLobby();
@@ -260,7 +288,10 @@ export class Room {
 
   startGame(): string | null {
     if (this.started) return 'already started';
-    let base = newGame({ seed: Math.floor(Math.random() * 1e9) });
+    const claimedFactions = ALL_FACTIONS.filter((f) => this.seats[f] !== null);
+    if (claimedFactions.length === 0) return 'need at least one claimed seat';
+    const factions = this.autoFillBots ? ALL_FACTIONS : claimedFactions;
+    let base = newGame({ seed: Math.floor(Math.random() * 1e9), factions });
     base = produce(base, draft => {
       if (draft.factions.vagabond) {
         // Only set the character; setupVagabond() will add the correct starting items.
@@ -326,6 +357,7 @@ export class Room {
     this.aiTimer = null;
     if (!this.started || this.state.winner) return;
     if (this.state.phase === 'setup' || this.state.phase === 'gameOver') return;
+    if (!this.autoFillBots) return;
     // A pending prompt (e.g. defender ambush) pauses the active-faction
     // turn — the respondent is the one to act. Check their seat first.
     let actingFaction: Faction | undefined;
@@ -371,6 +403,7 @@ export class Room {
         .filter(p => p.online)
         .map(({ clientId, displayName, faction }) => ({ clientId, displayName, faction })),
       seats: { ...this.seats },
+      autoFillBots: this.autoFillBots,
       vagabondCharacter: this.vagabondCharacter,
       started: this.started,
     };

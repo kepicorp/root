@@ -14,9 +14,12 @@ import { Home } from './ui/Home';
 import { Admin } from './ui/Admin';
 import { useGame } from './ui/store';
 import { useNetGame, useNetBridge } from './ui/networkStore';
-import { netClient } from './ui/network';
+import { autoConnectFromUrl, netClient } from './ui/network';
 import { FactionPanels } from './ui/factions';
 import { ALL_FACTIONS } from './engine/types';
+import { useSiteAuth } from './ui/siteAuth';
+import { useUserAssetPackVersion } from './assets/user-pack';
+import { useEffect } from 'react';
 
 export function App() {
   // Admin page lives outside the game state machine entirely.
@@ -25,6 +28,8 @@ export function App() {
   }
 
   useNetBridge();
+  const site = useSiteAuth();
+  useUserAssetPackVersion();
   const [offlineRequested, setOfflineRequested] = useState(false);
   const [mapIntent, setMapIntent] = useState<MapIntent | null>(null);
 
@@ -42,11 +47,26 @@ export function App() {
 
   const online = net.mode !== 'off' && net.mode !== 'disconnected';
 
-  // Landing page: shown when offline and the user hasn't chosen to play solo yet.
-  if (!online && !offlineRequested && localState.phase === 'setup') {
+  useEffect(() => {
+    if (!site.checking && site.authed) autoConnectFromUrl();
+  }, [site.authed, site.checking]);
+
+  if (site.checking) {
     return (
       <div className="app setup-only">
-        <Home onStartOffline={() => setOfflineRequested(true)} />
+        <div className="home loading">
+          <h1 className="home-title">Root</h1>
+          <p className="home-tagline">Checking site access…</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Landing page: shown when offline and the user hasn't chosen to play solo yet.
+  if (!site.authed || (!online && !offlineRequested && localState.phase === 'setup')) {
+    return (
+      <div className="app setup-only">
+        <Home onStartOffline={() => setOfflineRequested(true)} site={site} />
       </div>
     );
   }
@@ -69,6 +89,13 @@ export function App() {
   const state = online ? netState : localState;
   const playerFaction = online ? net.yourFaction : localPlayerFaction;
   const dispatch = online ? netDispatch : localDispatch;
+  const activeTurnName = (() => {
+    if (!online || !state || !net.lobby) return null;
+    const active = state.factionOrder[state.activeIndex];
+    const seatClientId = net.lobby.seats[active];
+    if (!seatClientId) return 'AI';
+    return net.lobby.players.find(p => p.clientId === seatClientId)?.displayName ?? 'AI';
+  })();
 
   if (!state || state.phase === 'setup') {
     return (
@@ -130,6 +157,7 @@ export function App() {
         <ActionBar
           state={state}
           playerFaction={playerFaction}
+          activeTurnName={activeTurnName}
           dispatch={dispatch}
           onBegin={begin}
           mapIntent={mapIntent}

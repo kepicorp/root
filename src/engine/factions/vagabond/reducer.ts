@@ -240,9 +240,7 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
         // Mark the ruin as explored (removes it visually).
         v.exploredRuins.push(v.clearing);
         draft.map.clearings[v.clearing]!.ruinExplored = true;
-        // The clearing gains a free building slot where the ruin token was.
         const cl = draft.map.clearings[v.clearing]!;
-        cl.extraBuildingSlots = (cl.extraBuildingSlots ?? 0) + 1;
         // Give the specific item hidden under this ruin (random assignment in newGame overrides static map).
         const itemKind: ItemKind = cl.ruinItem ?? meta.ruinItem ?? (draft.itemSupply.shift() as ItemKind | undefined) ?? 'torch';
         // Track items (T/X/B) go face-up on their track if room; otherwise satchel.

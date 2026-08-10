@@ -10,11 +10,13 @@
 //   src/assets/raw/factions/<faction>/icon.png       → faction symbol
 //   src/assets/raw/factions/<faction>/warrior.png    → token
 //   src/assets/raw/factions/<faction>/<building>.png → 'sawmill', 'roost', etc.
+//   src/assets/raw/tokens/wood.png                   → wood token
 //   src/assets/raw/items/<item>.png                  → 'sword', 'boots', etc.
 //   src/assets/raw/dominance/<suit>.png              → 'fox', 'mouse', etc.
 
 import type { Faction, ItemKind, Suit } from "../engine/types";
 import type { Card } from "../engine/cards";
+import { getUserAssetCount, getUserAssetUrl, getUserAssetUrlFor } from './user-pack';
 
 // ─── Leder Games CDN ────────────────────────────────────────────────────────
 // Official card images served by Leder Games at cards.ledergames.com.
@@ -123,6 +125,11 @@ const rawFactionFiles = import.meta.glob(
   "./raw/factions/**/*.{png,jpg,jpeg,webp,svg}",
   { eager: true, query: "?url", import: "default" },
 ) as Record<string, string>;
+const rawTokenFiles = import.meta.glob("./raw/tokens/*.{png,jpg,jpeg,webp,svg}", {
+  eager: true,
+  query: "?url",
+  import: "default",
+}) as Record<string, string>;
 const rawItemFiles = import.meta.glob("./raw/items/*.{png,jpg,jpeg,webp,svg}", {
   eager: true,
   query: "?url",
@@ -198,6 +205,8 @@ function lookup(
 
 /** Board backdrop. */
 export function boardArt(): string | null {
+  const user = getUserAssetUrlFor('board/', 'autumn');
+  if (user) return user;
   return lookup(
     rawBoardFiles,
     "./raw/board/",
@@ -212,6 +221,10 @@ export function boardArt(): string | null {
  *  slug(variantName) e.g. root-tea-fox.webp, so we try that first. */
 export function cardArt(card: Card): string | null {
   const suitVariantName = `${card.name} (${card.suit})`;
+  const user =
+    getUserAssetUrlFor('cards/', slug(suitVariantName)) ??
+    getUserAssetUrlFor('cards/', slug(card.name));
+  if (user) return user;
   return (
     lookupIn(rawCardFiles, "./raw/cards/", slug(suitVariantName)) ??
     lookupIn(rawCardFiles, "./raw/cards/", slug(card.name)) ??
@@ -223,6 +236,8 @@ export function cardArt(card: Card): string | null {
 
 /** Generic card back. */
 export function cardBackArt(): string | null {
+  const user = getUserAssetUrl('cards/back.png');
+  if (user) return user;
   return lookup(
     rawCardFiles,
     "./raw/cards/",
@@ -234,6 +249,8 @@ export function cardBackArt(): string | null {
 
 /** Faction symbol. */
 export function factionIcon(faction: Faction): string | null {
+  const user = getUserAssetUrlFor(`factions/${faction}/`, 'icon');
+  if (user) return user;
   return lookup(
     rawFactionFiles,
     `./raw/factions/${faction}/`,
@@ -245,6 +262,8 @@ export function factionIcon(faction: Faction): string | null {
 
 /** Warrior token sprite. */
 export function warriorArt(faction: Faction): string | null {
+  const user = getUserAssetUrlFor(`factions/${faction}/`, 'warrior');
+  if (user) return user;
   return lookup(
     rawFactionFiles,
     `./raw/factions/${faction}/`,
@@ -254,8 +273,15 @@ export function warriorArt(faction: Faction): string | null {
   );
 }
 
+/** Wood token art. Maintainers can override this with src/assets/raw/tokens/wood.png. */
+export function woodArt(): string | null {
+  return getUserAssetUrlFor('tokens/', 'wood') ?? lookupIn(rawTokenFiles, "./raw/tokens/", "wood");
+}
+
 /** Building art (e.g., 'sawmill', 'roost', 'base-fox'). */
 export function buildingArt(faction: Faction, kind: string): string | null {
+  const user = getUserAssetUrlFor(`factions/${faction}/`, kind);
+  if (user) return user;
   return lookup(
     rawFactionFiles,
     `./raw/factions/${faction}/`,
@@ -267,6 +293,8 @@ export function buildingArt(faction: Faction, kind: string): string | null {
 
 /** Item icon. */
 export function itemArt(kind: ItemKind): string | null {
+  const user = getUserAssetUrlFor('items/', kind);
+  if (user) return user;
   return lookup(
     rawItemFiles,
     "./raw/items/",
@@ -278,6 +306,8 @@ export function itemArt(kind: ItemKind): string | null {
 
 /** Dominance-card art by suit. */
 export function dominanceArt(suit: Suit | "bird"): string | null {
+  const user = getUserAssetUrlFor('dominance/', suit);
+  if (user) return user;
   return lookup(
     rawDomFiles,
     "./raw/dominance/",
@@ -293,6 +323,7 @@ export function assetReport(): {
   factionArt: number;
   items: number;
   board: boolean;
+  customAssets: number;
   rawCards: number;
   rawFaction: number;
   rawItems: number;
@@ -306,6 +337,7 @@ export function assetReport(): {
     items:
       Object.keys(rawItemFiles).length + Object.keys(builtinItemFiles).length,
     board: boardArt() !== null,
+    customAssets: getUserAssetCount(),
     rawCards: Object.keys(rawCardFiles).length,
     rawFaction: Object.keys(rawFactionFiles).length,
     rawItems: Object.keys(rawItemFiles).length,

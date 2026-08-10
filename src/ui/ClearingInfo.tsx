@@ -3,7 +3,7 @@
 
 import { AUTUMN_MAP } from '../engine/map';
 import type { ClearingId, GameState, Faction } from '../engine/types';
-import { warriorArt, buildingArt, factionIcon } from '../assets';
+import { warriorArt, buildingArt, factionIcon, woodArt } from '../assets';
 
 const FACTION_LABEL: Record<Faction, string> = {
   marquise: 'Marquise',
@@ -39,8 +39,9 @@ export function ClearingInfo({ state, clearingId, isSelectedAsSource, onClose }:
   const cl = state.map.clearings[clearingId];
   if (!meta || !cl) return null;
 
-  const usedSlots = cl.buildings.length + cl.tokens.filter(t => t.kind === 'keep').length;
-  const freeSlots = meta.buildingSlots - usedSlots;
+  const ruinOccupied = meta.hasRuin && !cl.ruinExplored ? 1 : 0;
+  const usedSlots = cl.buildings.length + cl.tokens.filter(t => t.kind === 'keep').length + ruinOccupied;
+  const freeSlots = Math.max(0, meta.buildingSlots - usedSlots);
 
   const factionsHere = (['marquise', 'eyrie', 'alliance', 'vagabond'] as const).filter(f => {
     const hasWarriors = (cl.warriors[f] ?? 0) > 0;
@@ -123,7 +124,16 @@ export function ClearingInfo({ state, clearingId, isSelectedAsSource, onClose }:
 
       {(woodCount > 0 || sympathyHere || keepHere) && (
         <div className="clearing-info-tokens">
-          {woodCount > 0 && <span className="badge wood">{woodCount} wood</span>}
+          {woodCount > 0 && (
+            <span className="badge wood">
+              {woodArt() ? (
+                <img src={woodArt()!} alt="" className="badge-icon wood" />
+              ) : (
+                <span className="badge-icon wood fallback" />
+              )}
+              <span>{woodCount} wood</span>
+            </span>
+          )}
           {sympathyHere && <span className="badge sympathy">sympathy</span>}
           {keepHere && <span className="badge keep">keep</span>}
         </div>

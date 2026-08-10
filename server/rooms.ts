@@ -15,6 +15,10 @@ export interface RoomManagerOptions {
   dataDir: string;
 }
 
+export interface CreateRoomOptions {
+  autoFillBots?: boolean;
+}
+
 export class RoomManager {
   private rooms = new Map<string, Room>();
   private pendingPersist = new Map<string, ReturnType<typeof setTimeout>>();
@@ -39,10 +43,10 @@ export class RoomManager {
 
   // ─── CRUD ───────────────────────────────────────────────────────────────
 
-  create(): Room {
+  create(opts: CreateRoomOptions = {}): Room {
     let id = this.generateId();
     while (this.rooms.has(id)) id = this.generateId();
-    const room = new Room(id);
+    const room = new Room(id, { autoFillBots: opts.autoFillBots ?? true });
     room.onPersist((r) => this.schedulePersist(r));
     this.rooms.set(id, room);
     this.schedulePersist(room);

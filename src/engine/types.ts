@@ -54,6 +54,8 @@ export interface Forest {
   /** Clearings that ring this forest — the Vagabond can enter from any
    *  one of them and exit to any one of them. */
   clearings: readonly ClearingId[];
+  /** Bordering paths used to determine forest adjacency. */
+  borderPaths: readonly Path[];
   x: number;
   y: number;
 }
@@ -81,8 +83,6 @@ export interface ClearingState {
   buildings: BuildingInstance[];
   tokens: TokenInstance[];
   vagabondHere: boolean;
-  /** Bonus building slots added when a ruin in this clearing was explored. */
-  extraBuildingSlots?: number;
   /** True once the Vagabond has explored the ruin here (removes the marker). */
   ruinExplored?: boolean;
   /** Item hidden under the ruin in this clearing (assigned randomly at game start). */

@@ -214,9 +214,9 @@ Biggest faction by mechanic count.
 - Riverfolk box factions.
 - Replay/undo (would require storing the action log, not just state).
 
-### Phase 10 — LAN multiplayer with bot fill (≈1 week, post-v1)
+### Phase 10 — LAN multiplayer with bot fill toggle (≈1 week, post-v1)
 
-Goal: 2–4 humans on the **same local network** share a game; any unfilled seats are taken by the existing bots. No internet, no public hosting, no accounts. The single-player experience continues to work offline.
+Goal: 2–4 humans on the **same local network** share a game. Room creators can toggle whether unclaimed seats are auto-filled with bots. Bot-filled rooms keep the existing AI behavior; bot-free rooms leave empty seats empty. No internet, no public hosting, no accounts. The single-player experience continues to work offline.
 
 Since this is LAN-only (functionally equivalent to playing the physical board game on someone's coffee table), there are no new legal implications around the assets — same private-use model as v1.
 

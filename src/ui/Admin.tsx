@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from 'react';
 import type { Faction } from '../engine/types';
+import { MapEditor } from './MapEditor';
 
 const TOKEN_KEY = 'root-admin-token';
 
@@ -45,7 +46,8 @@ async function api(path: string, token: string, init: RequestInit = {}): Promise
 export function Admin() {
   const [token, setToken] = useState<string>(() => localStorage.getItem(TOKEN_KEY) ?? '');
   const [passwordInput, setPasswordInput] = useState('');
-  const [authed, setAuthed] = useState(false);
+  const devAdmin = import.meta.env.DEV;
+  const [authed, setAuthed] = useState(devAdmin);
   const [checking, setChecking] = useState(true);
   const [serverDisabled, setServerDisabled] = useState(false);
 
@@ -59,6 +61,12 @@ export function Admin() {
 
   // Validate the stored token on mount.
   useEffect(() => {
+    if (devAdmin && !token) {
+      setAuthed(true);
+      refresh();
+      setChecking(false);
+      return;
+    }
     if (!token) { setAuthed(false); setChecking(false); return; }
     api('/api/admin/check', token, { method: 'POST' }).then(async (r) => {
       if (r.status === 503) {
@@ -215,6 +223,8 @@ export function Admin() {
         </div>
         {pruneResult && <div className="admin-result">{pruneResult}</div>}
       </section>
+
+      <MapEditor token={token} />
 
       <section className="admin-section">
         <h2>Rooms ({rooms.length})</h2>

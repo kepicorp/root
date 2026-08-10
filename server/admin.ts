@@ -7,9 +7,11 @@ import { timingSafeEqual } from 'node:crypto';
 import type { RoomManager } from './rooms';
 import type { Faction } from '../src/engine/types';
 import { ALL_FACTIONS } from '../src/engine/types';
+import { writeMapFiles, type EditorMap } from './map-editor';
 
 const ADMIN_PASSWORD = (process.env.ADMIN_PASSWORD ?? '').trim();
-const ADMIN_ENABLED = ADMIN_PASSWORD.length > 0;
+const DEV_ADMIN_ALLOWED = process.env.ALLOW_DEV_ADMIN === '1';
+const ADMIN_ENABLED = ADMIN_PASSWORD.length > 0 || DEV_ADMIN_ALLOWED;
 
 export interface RoomInfo {
   id: string;
@@ -28,6 +30,7 @@ function send(res: ServerResponse, status: number, body: unknown): void {
 /** Constant-time check of the Bearer token against ADMIN_PASSWORD. */
 function checkAuth(req: IncomingMessage): boolean {
   if (!ADMIN_ENABLED) return false;
+  if (DEV_ADMIN_ALLOWED) return true;
   const auth = req.headers.authorization;
   if (!auth || !auth.startsWith('Bearer ')) return false;
   const provided = auth.slice('Bearer '.length);
@@ -134,6 +137,21 @@ export async function handleAdmin(
   // POST /api/admin/check — verify the token without listing anything.
   if (req.method === 'POST' && path === '/api/admin/check') {
     send(res, 200, { ok: true });
+    return true;
+  }
+
+  // POST /api/admin/map — overwrite the map source files with an edited layout.
+  if (req.method === 'POST' && path === '/api/admin/map') {
+    let body: { map?: EditorMap } = {};
+    try { body = (await readJsonBody(req, 256 * 1024)) as typeof body; }
+    catch (e) { send(res, 400, { error: String(e) }); return true; }
+    if (!body.map) { send(res, 400, { error: 'missing map payload' }); return true; }
+    try {
+      writeMapFiles(body.map);
+      send(res, 200, { ok: true });
+    } catch (e) {
+      send(res, 500, { error: e instanceof Error ? e.message : String(e) });
+    }
     return true;
   }
 

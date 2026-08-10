@@ -32,10 +32,25 @@ function saveRejoinToken(roomId: string | null, token: string | null): void {
   else localStorage.removeItem(rejoinKey(roomId));
 }
 
+const NAME_KEY_PREFIX = 'root-name-v1:';
+function nameKey(roomId: string): string { return NAME_KEY_PREFIX + roomId; }
+function loadRoomDisplayName(roomId: string | null): string | null {
+  if (!roomId || typeof localStorage === 'undefined') return null;
+  return localStorage.getItem(nameKey(roomId));
+}
+function saveRoomDisplayName(roomId: string | null, displayName: string): void {
+  if (!roomId || typeof localStorage === 'undefined') return;
+  localStorage.setItem(nameKey(roomId), displayName);
+}
+
 type Listener = (s: NetState) => void;
 
 class NetClient {
   private ws: WebSocket | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private manualDisconnect = false;
+  private reconnectAttempts = 0;
   private state: NetState = {
     mode: 'off',
     endpoint: null,
@@ -48,6 +63,40 @@ class NetClient {
   };
   private listeners = new Set<Listener>();
   private displayName = 'Player';
+
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
+
+  private clearHeartbeat(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+  }
+
+  private startHeartbeat(): void {
+    this.clearHeartbeat();
+    this.heartbeatTimer = setInterval(() => {
+      this.send({ kind: 'ping' });
+    }, 25_000);
+  }
+
+  private scheduleReconnect(): void {
+    if (this.manualDisconnect) return;
+    const endpoint = this.state.endpoint;
+    if (!endpoint) return;
+    this.clearReconnectTimer();
+    const delay = Math.min(10_000, 1_000 + this.reconnectAttempts * 1_000);
+    this.reconnectAttempts += 1;
+    this.patch({ mode: 'connecting' });
+    this.reconnectTimer = setTimeout(() => {
+      this.connect(endpoint, this.displayName, this.state.roomId);
+    }, delay);
+  }
 
   subscribe(fn: Listener): () => void {
     this.listeners.add(fn);
@@ -66,21 +115,26 @@ class NetClient {
    *  endpoint should already include the `?room=` query (we just remember
    *  it for UI display). */
   connect(endpoint: string, displayName = 'Player', roomId: string | null = null): void {
+    this.clearReconnectTimer();
+    this.manualDisconnect = false;
     if (this.ws) this.ws.close();
-    this.displayName = displayName;
+    this.displayName = loadRoomDisplayName(roomId) ?? displayName;
     this.patch({ mode: 'connecting', endpoint, roomId, lastError: null });
     try { this.ws = new WebSocket(endpoint); }
     catch (e) { this.patch({ mode: 'disconnected', lastError: String(e) }); return; }
     this.ws.addEventListener('open', () => {
+      this.reconnectAttempts = 0;
+      this.startHeartbeat();
       const rejoinToken = loadRejoinToken(this.state.roomId);
       this.send({ kind: 'hello', displayName: this.displayName, ...(rejoinToken ? { rejoinToken } : {}) });
-      this.patch({ mode: 'lobby' });
     });
     this.ws.addEventListener('message', (ev) => {
       try { this.handle(JSON.parse(ev.data) as ServerMessage); } catch { /* drop */ }
     });
     this.ws.addEventListener('close', () => {
+      this.clearHeartbeat();
       this.patch({ mode: 'disconnected' });
+      this.scheduleReconnect();
     });
     this.ws.addEventListener('error', () => {
       this.patch({ lastError: 'connection error' });
@@ -88,8 +142,12 @@ class NetClient {
   }
 
   disconnect(): void {
+    this.manualDisconnect = true;
+    this.clearReconnectTimer();
+    this.clearHeartbeat();
     if (this.ws) this.ws.close();
     this.ws = null;
+    this.reconnectAttempts = 0;
     this.patch({ mode: 'off', state: null, lobby: null, yourFaction: null, clientId: null, roomId: null });
   }
 
@@ -138,6 +196,18 @@ class NetClient {
   chooseVagabondCharacter(character: 'thief' | 'tinker' | 'ranger'): void {
     this.send({ kind: 'chooseVagabondCharacter', character });
   }
+  setAutoFillBots(autoFillBots: boolean): void {
+    this.send({ kind: 'setAutoFillBots', autoFillBots });
+  }
+
+  setDisplayName(displayName: string): void {
+    const trimmed = displayName.trim();
+    if (!trimmed) return;
+    const capped = trimmed.slice(0, 32);
+    this.displayName = capped;
+    saveRoomDisplayName(this.state.roomId, capped);
+    this.send({ kind: 'setDisplayName', displayName: capped });
+  }
 
   getState(): NetState { return this.state; }
 }
@@ -179,8 +249,12 @@ export function autoConnectFromUrl(): void {
 
 // ─── REST helpers ───────────────────────────────────────────────────────────
 
-export async function createRoom(): Promise<string> {
-  const res = await fetch('/api/rooms', { method: 'POST' });
+export async function createRoom(autoFillBots = true): Promise<string> {
+  const res = await fetch('/api/rooms', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ autoFillBots }),
+  });
   if (!res.ok) throw new Error(`Failed to create room (HTTP ${res.status})`);
   const body = await res.json() as { id: string };
   return body.id;

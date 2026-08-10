@@ -1,7 +1,7 @@
 // HTML legend pinned to the top-left of the board pane — stays in place
 // when the player pans / zooms the map (similar to the zoom controls).
 
-import { warriorArt, factionIcon } from '../assets';
+import { warriorArt, buildingArt, woodArt } from '../assets';
 import type { Faction } from '../engine/types';
 
 const FACTION_LABEL: Record<Faction, string> = {
@@ -21,6 +21,23 @@ const SUIT_COLOR: Record<string, string> = {
   mouse: '#e07858',
   rabbit: '#f0c030',
 };
+
+function PieceImage({ src, label, fallbackColor }: { src: string | null; label: string; fallbackColor: string }) {
+  return src ? (
+    <img src={src} alt={label} className="map-legend-piece" />
+  ) : (
+    <span className="map-legend-piece map-legend-piece-fallback" style={{ background: fallbackColor }} />
+  );
+}
+
+function WoodImage() {
+  const src = woodArt();
+  return src ? (
+    <img src={src} alt="Wood" className="map-legend-wood" />
+  ) : (
+    <span className="map-legend-wood map-legend-wood-fallback" aria-hidden="true" />
+  );
+}
 
 interface MapLegendProps {
   open: boolean;
@@ -49,15 +66,71 @@ export function MapLegend({ open, onToggle }: MapLegendProps) {
           <div className="map-legend-section">
             <div className="map-legend-section-title">Factions</div>
             {(Object.keys(FACTION_LABEL) as Faction[]).map((f) => {
-              const icon = factionIcon(f) ?? warriorArt(f);
+              const warrior = warriorArt(f);
+              const color = FACTION_COLOR[f];
               return (
-                <div key={f} className="map-legend-row">
-                  {icon ? (
-                    <img src={icon} alt="" className="map-legend-icon" />
-                  ) : (
-                    <span className="map-legend-dot" style={{ background: FACTION_COLOR[f] }} />
-                  )}
-                  <span>{FACTION_LABEL[f]}</span>
+                <div key={f} className="map-legend-piece-group">
+                  <div className="map-legend-row map-legend-row-title">
+                    <span>{FACTION_LABEL[f]}</span>
+                  </div>
+                  <div className="map-legend-piece-rows">
+                    <div className="map-legend-row map-legend-row-subtle">
+                      <PieceImage src={warrior} label={`${FACTION_LABEL[f]} warrior`} fallbackColor={color} />
+                      <span>Warrior</span>
+                    </div>
+                    {f === 'marquise' && (
+                      <>
+                        <div className="map-legend-row map-legend-row-subtle">
+                          <PieceImage src={buildingArt('marquise', 'sawmill')} label="Sawmill" fallbackColor={color} />
+                          <span>Sawmill</span>
+                        </div>
+                        <div className="map-legend-row map-legend-row-subtle">
+                          <PieceImage src={buildingArt('marquise', 'workshop')} label="Workshop" fallbackColor={color} />
+                          <span>Workshop</span>
+                        </div>
+                        <div className="map-legend-row map-legend-row-subtle">
+                          <PieceImage src={buildingArt('marquise', 'recruiter')} label="Recruiter" fallbackColor={color} />
+                          <span>Recruiter</span>
+                        </div>
+                        <div className="map-legend-row map-legend-row-subtle">
+                          <PieceImage src={buildingArt('marquise', 'keep')} label="Keep" fallbackColor={color} />
+                          <span>Keep</span>
+                        </div>
+                      </>
+                    )}
+                    {f === 'eyrie' && (
+                      <div className="map-legend-row map-legend-row-subtle">
+                        <PieceImage src={buildingArt('eyrie', 'roost')} label="Roost" fallbackColor={color} />
+                        <span>Roost</span>
+                      </div>
+                    )}
+                    {f === 'alliance' && (
+                      <>
+                        <div className="map-legend-row map-legend-row-subtle">
+                          <PieceImage src={buildingArt('alliance', 'base-fox')} label="Base (fox)" fallbackColor={color} />
+                          <span>Base (fox)</span>
+                        </div>
+                        <div className="map-legend-row map-legend-row-subtle">
+                          <PieceImage src={buildingArt('alliance', 'base-mouse')} label="Base (mouse)" fallbackColor={color} />
+                          <span>Base (mouse)</span>
+                        </div>
+                        <div className="map-legend-row map-legend-row-subtle">
+                          <PieceImage src={buildingArt('alliance', 'base-rabbit')} label="Base (rabbit)" fallbackColor={color} />
+                          <span>Base (rabbit)</span>
+                        </div>
+                        <div className="map-legend-row map-legend-row-subtle">
+                          <PieceImage src={buildingArt('alliance', 'sympathy')} label="Sympathy" fallbackColor={color} />
+                          <span>Sympathy</span>
+                        </div>
+                      </>
+                    )}
+                    {f === 'vagabond' && (
+                      <div className="map-legend-row map-legend-row-subtle">
+                        <PieceImage src={warrior} label="Vagabond pawn" fallbackColor={color} />
+                        <span>Pawn</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -66,28 +139,28 @@ export function MapLegend({ open, onToggle }: MapLegendProps) {
           <div className="map-legend-section">
             <div className="map-legend-section-title">Tokens</div>
             <div className="map-legend-row">
-              <span className="map-legend-dot" style={{ background: '#7c5c2e' }} />
+              <WoodImage />
               <span>Wood</span>
             </div>
             <div className="map-legend-row">
-              <span className="map-legend-dot sympathy" />
+              <PieceImage src={buildingArt('alliance', 'sympathy')} label="Sympathy token" fallbackColor={FACTION_COLOR.alliance} />
               <span>Sympathy (Alliance)</span>
             </div>
             <div className="map-legend-row">
-              <span className="map-legend-dot keep" />
+              <PieceImage src={buildingArt('marquise', 'keep')} label="Keep token" fallbackColor={FACTION_COLOR.marquise} />
               <span>Marquise keep</span>
             </div>
           </div>
 
           <div className="map-legend-section">
-            <div className="map-legend-section-title">Other</div>
+            <div className="map-legend-section-title">Clearing spaces</div>
             <div className="map-legend-row">
-              <span className="map-legend-dot ruin" />
-              <span>Ruin (Vagabond can explore)</span>
+              <span className="map-legend-slot ruin" />
+              <span>Ruin-filled slot</span>
             </div>
             <div className="map-legend-row">
-              <span className="map-legend-dot target" />
-              <span>Valid move target (click)</span>
+              <span className="map-legend-slot empty" />
+              <span>Empty slot</span>
             </div>
           </div>
         </div>
