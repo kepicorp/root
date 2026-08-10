@@ -108,7 +108,7 @@ export function Home({ onStartOffline, site }: Props) {
   return (
     <div className="home">
       <h1 className="home-title">Root</h1>
-      <p className="home-tagline">A woodland faction war. Play solo, with 2 or 3 humans, or fill all 4 seats with bots.</p>
+      <p className="home-tagline">A woodland faction war. Play solo or with 2, 3, or 4 players.</p>
 
       {site.enabled && !site.authed && (
         <div className="home-card primary home-lock-card">
