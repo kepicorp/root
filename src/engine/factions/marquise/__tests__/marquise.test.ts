@@ -11,6 +11,12 @@ function makeGame() {
   return startGame(setupMarquise(newGame({ seed: 1 })));
 }
 
+function enterMarquiseDaylightActions(state: ReturnType<typeof makeGame>) {
+  let s = advancePhase(state);
+  s = reduce(s, { kind: 'marquise.craftDecision', decision: 'no' });
+  return s;
+}
+
 describe('Marquise setup', () => {
   it('places keep in clearing 1', () => {
     const s = setupMarquise(newGame({ seed: 1 }));
@@ -53,7 +59,7 @@ describe('Marquise actions', () => {
   it('recruit places 1 warrior per recruiter and is once-per-turn', () => {
     let s = makeGame();
     s = reduce(s, { kind: 'marquise.placeWood' });
-    s = advancePhase(s); // birdsong -> daylight
+    s = enterMarquiseDaylightActions(s); // birdsong -> daylight + skip craft
     const before = s.map.clearings[
       Object.keys(s.map.clearings).find(id => {
         const cl = s.map.clearings[Number(id)]!;
@@ -71,7 +77,7 @@ describe('Marquise actions', () => {
   it('build action uses wood and scores VP', () => {
     let s = makeGame();
     s = reduce(s, { kind: 'marquise.placeWood' });
-    s = advancePhase(s);
+    s = enterMarquiseDaylightActions(s);
     const scoreBefore = s.scores.marquise;
     // Find a legal build action
     const legals = marquiseLegalActions(s).filter(a => a.kind === 'marquise.build') as any[];
@@ -96,7 +102,7 @@ describe('Marquise actions', () => {
 
   it('legal actions include endDaylight', () => {
     let s = makeGame();
-    s = advancePhase(s);
+    s = enterMarquiseDaylightActions(s);
     expect(marquiseLegalActions(s).some(a => a.kind === 'marquise.endDaylight')).toBe(true);
   });
 
@@ -131,10 +137,22 @@ describe('Marquise actions', () => {
       }
     });
 
+    s = reduce(s, { kind: 'marquise.craftDecision', decision: 'yes' });
     const legalCraft = marquiseLegalActions(s).find(a => a.kind === 'marquise.craft') as { kind: 'marquise.craft'; cardId: string } | undefined;
     expect(legalCraft).toBeTruthy();
+    const actionsBefore = s.factions.marquise!.daylightActionsLeft;
     const next = reduce(s, legalCraft!);
+    expect(next.factions.marquise!.daylightActionsLeft).toBe(actionsBefore);
     expect(next.hands.marquise.includes(legalCraft!.cardId)).toBe(false);
     expect(next.log.some(entry => entry.faction === 'marquise' && entry.message.includes(`Crafted ${getCard(legalCraft!.cardId).name}`))).toBe(true);
+  });
+
+  it('locks crafting once the player closes the craft step', () => {
+    let s = makeGame();
+    s = reduce(s, { kind: 'marquise.placeWood' });
+    s = advancePhase(s);
+    expect(marquiseLegalActions(s).some(a => a.kind === 'marquise.craftDecision')).toBe(true);
+    s = reduce(s, { kind: 'marquise.craftDecision', decision: 'no' });
+    expect(marquiseLegalActions(s).some(a => a.kind === 'marquise.craft')).toBe(false);
   });
 });

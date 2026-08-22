@@ -36,6 +36,7 @@ interface Store {
   begin: (faction: Faction, opts?: BeginOptions) => void;
   loadSaved: () => boolean;
   hasSavedGame: () => boolean;
+  loadSnapshot: (state: GameState, playerFaction?: Faction | null) => void;
 }
 
 function postAction(prev: GameState, next: GameState, scoreTick: Record<Faction, number>): { state: GameState; scoreTick: Record<Faction, number> } {
@@ -131,6 +132,13 @@ export const useGame = create<Store>((set, get) => ({
   },
 
   hasSavedGame: () => loadFromStorage() !== null,
+
+  loadSnapshot: (state, playerFaction) => {
+    const resolvedPlayerFaction = playerFaction ?? get().playerFaction;
+    set({ state, playerFaction: resolvedPlayerFaction, scoreTick: ZERO_TICK, history: [] });
+    saveToStorage(state, resolvedPlayerFaction);
+    scheduleAITurn();
+  },
 }));
 
 let aiTimer: ReturnType<typeof setTimeout> | null = null;

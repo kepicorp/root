@@ -22,6 +22,8 @@ export interface LobbyState {
   autoFillBots: boolean;
   /** Vagabond character (only meaningful if vagabond seat is claimed). */
   vagabondCharacter: VagabondCharacter;
+  /** True when start game will hydrate from a loaded snapshot instead of new setup. */
+  hasLoadedState: boolean;
   started: boolean;
 }
 
@@ -35,6 +37,7 @@ export type ClientMessage =
   | { kind: 'chooseVagabondCharacter'; character: VagabondCharacter }
   | { kind: 'setAutoFillBots'; autoFillBots: boolean }
   | { kind: 'startGame' }
+  | { kind: 'exportState' }
   | { kind: 'action'; action: Action }
   | { kind: 'newGame' }
   | { kind: 'ping' };
@@ -48,5 +51,6 @@ export type ServerMessage =
   | { kind: 'session'; rejoinToken: string | null; faction: Faction | null }
   | { kind: 'lobby'; lobby: LobbyState }
   | { kind: 'gameState'; state: GameState; yourFaction: Faction | null }
+  | { kind: 'stateExport'; text: string }
   | { kind: 'error'; message: string }
   | { kind: 'pong' };

@@ -37,7 +37,7 @@ export function Lobby() {
     setDraftName(currentName);
   }, [currentName]);
   if (!lobby) return null;
-  const claimedCount = Object.values(net.lobby.seats).filter((seat) => seat !== null).length;
+  const claimedCount = Object.values(lobby.seats).filter((seat) => seat !== null).length;
   const canStart = claimedCount > 0;
 
   return (
@@ -72,8 +72,8 @@ export function Lobby() {
           </button>
         </div>
         <div className="lobby-section-label">Players</div>
-        {net.lobby.players.length === 0 && <em className="dim">no players yet</em>}
-        {net.lobby.players.map((p) => (
+        {lobby.players.length === 0 && <em className="dim">no players yet</em>}
+        {lobby.players.map((p) => (
           <div key={p.clientId} className={`lobby-player ${p.clientId === myId ? 'me' : ''}`}>
             <span className="lobby-player-name">{p.displayName}</span>
             {p.faction && (
@@ -137,7 +137,7 @@ export function Lobby() {
         })}
       </div>
 
-      {(yourFaction === 'vagabond' || showVagabondPicker) && net.lobby.seats.vagabond === myId && (
+      {(yourFaction === 'vagabond' || showVagabondPicker) && lobby.seats.vagabond === myId && (
         <div className="lobby-character">
           <div className="lobby-section-label">Vagabond character</div>
           <div className="character-row">
@@ -166,6 +166,12 @@ export function Lobby() {
             : 'Empty seats stay empty.'}
         </span>
       </div>
+
+      {lobby.hasLoadedState && (
+        <div className="home-success">
+          A state file is loaded for this room. Press Start game to resume from that snapshot.
+        </div>
+      )}
 
       {net.lastError && <div className="lobby-error">{net.lastError}</div>}
     </div>

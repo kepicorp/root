@@ -144,6 +144,6 @@ export function ClearingInfo({ state, clearingId, isSelectedAsSource, onClose }:
 
 function suitColor(s: string): string {
   if (s === 'fox') return '#c03428';
-  if (s === 'mouse') return '#e07858';
+  if (s === 'mouse') return '#D68860';
   return '#f0c030';
 }

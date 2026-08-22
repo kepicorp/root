@@ -63,6 +63,7 @@ class NetClient {
   };
   private listeners = new Set<Listener>();
   private displayName = 'Player';
+  private exportResolver: ((text: string) => void) | null = null;
 
   private clearReconnectTimer(): void {
     if (this.reconnectTimer) {
@@ -133,6 +134,10 @@ class NetClient {
     });
     this.ws.addEventListener('close', () => {
       this.clearHeartbeat();
+      if (this.exportResolver) {
+        this.exportResolver('');
+        this.exportResolver = null;
+      }
       this.patch({ mode: 'disconnected' });
       this.scheduleReconnect();
     });
@@ -147,6 +152,10 @@ class NetClient {
     this.clearHeartbeat();
     if (this.ws) this.ws.close();
     this.ws = null;
+    if (this.exportResolver) {
+      this.exportResolver('');
+      this.exportResolver = null;
+    }
     this.reconnectAttempts = 0;
     this.patch({ mode: 'off', state: null, lobby: null, yourFaction: null, clientId: null, roomId: null });
   }
@@ -173,7 +182,17 @@ class NetClient {
       case 'gameState':
         this.patch({ state: msg.state, yourFaction: msg.yourFaction, mode: 'in-game' });
         break;
+      case 'stateExport':
+        if (this.exportResolver) {
+          this.exportResolver(msg.text);
+          this.exportResolver = null;
+        }
+        break;
       case 'error':
+        if (this.exportResolver) {
+          this.exportResolver('');
+          this.exportResolver = null;
+        }
         this.patch({ lastError: msg.message });
         break;
       case 'pong':
@@ -193,6 +212,18 @@ class NetClient {
   startGame(): void { this.send({ kind: 'startGame' }); }
   newGame(): void { this.send({ kind: 'newGame' }); }
   dispatch(action: Action): void { this.send({ kind: 'action', action }); }
+  exportState(): Promise<string> {
+    if (this.exportResolver) {
+      return Promise.reject(new Error('export already in progress'));
+    }
+    return new Promise((resolve, reject) => {
+      this.exportResolver = (text: string) => {
+        if (text) resolve(text);
+        else reject(new Error(this.state.lastError ?? 'failed to export state'));
+      };
+      this.send({ kind: 'exportState' });
+    });
+  }
   chooseVagabondCharacter(character: 'thief' | 'tinker' | 'ranger'): void {
     this.send({ kind: 'chooseVagabondCharacter', character });
   }
@@ -249,11 +280,22 @@ export function autoConnectFromUrl(): void {
 
 // ─── REST helpers ───────────────────────────────────────────────────────────
 
-export async function createRoom(autoFillBots = true): Promise<string> {
+export interface CreateRoomOptions {
+  autoFillBots?: boolean;
+  loadStateText?: string;
+}
+
+export async function createRoom(opts: CreateRoomOptions = {}): Promise<string> {
+  const payload: { autoFillBots: boolean; loadStateText?: string } = {
+    autoFillBots: opts.autoFillBots ?? true,
+  };
+  if (opts.loadStateText && opts.loadStateText.trim().length > 0) {
+    payload.loadStateText = opts.loadStateText;
+  }
   const res = await fetch('/api/rooms', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ autoFillBots }),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error(`Failed to create room (HTTP ${res.status})`);
   const body = await res.json() as { id: string };

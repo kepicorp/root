@@ -22,6 +22,7 @@ import { handleAdmin, ADMIN_FEATURE_ENABLED } from './admin';
 import { handleSiteAuth, hasSiteAccess, requireSiteAccess } from './site-auth';
 import type { ClientMessage, ServerMessage } from './protocol';
 import { metrics } from './telemetry';
+import { parseStateSnapshotText } from '../src/engine/stateSnapshot';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const DEVICE_IP = process.env.DEVICE_IP ?? ifaceIp();
@@ -65,15 +66,24 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
 
   // POST /api/rooms — create a new room
   if (req.method === 'POST' && path === '/api/rooms') {
-    let body: { autoFillBots?: boolean } = {};
+    let body: { autoFillBots?: boolean; loadStateText?: string } = {};
     try {
-      const raw = await readJsonBody(req);
+      const raw = await readJsonBody(req, 2 * 1024 * 1024);
       body = (raw ?? {}) as typeof body;
     } catch {
       sendJson(res, 400, { error: 'bad json' });
       return;
     }
-    const room = manager.create({ autoFillBots: body.autoFillBots ?? true });
+    let pendingLoadedState = null;
+    if (typeof body.loadStateText === 'string' && body.loadStateText.trim().length > 0) {
+      try {
+        pendingLoadedState = parseStateSnapshotText(body.loadStateText).state;
+      } catch (e) {
+        sendJson(res, 400, { error: e instanceof Error ? e.message : 'invalid snapshot text' });
+        return;
+      }
+    }
+    const room = manager.create({ autoFillBots: body.autoFillBots ?? true, pendingLoadedState });
     sendJson(res, 201, { id: room.id });
     return;
   }
@@ -191,6 +201,12 @@ function attachToRoom(ws: WebSocket, room: Room): void {
       case 'startGame': {
         const err = room.startGame();
         if (err) send(ws, { kind: 'error', message: err });
+        break;
+      }
+      case 'exportState': {
+        const text = room.exportStateText(clientId);
+        if (!text) send(ws, { kind: 'error', message: 'not connected' });
+        else send(ws, { kind: 'stateExport', text });
         break;
       }
       case 'newGame':

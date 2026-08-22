@@ -13,7 +13,9 @@ const PRIORITY: Record<string, number> = {
   'marquise.beginMarch':             60,
   'marquise.march':                  60,
   'marquise.endMarch':               10,
+  'marquise.craftDecision':          95,
   'marquise.craft':                  90,
+  'marquise.finishCrafting':         20,
   'eyrie.chooseLeader':              95,   // must happen before decree adds
   'eyrie.resolveDecree':            100,   // only offered when turmoil is forced
   'eyrie.executeRecruit':           100,

@@ -5,6 +5,7 @@ import type { GameState, Action, Faction } from '../src/engine/types';
 import { metrics } from './telemetry';
 import { ALL_FACTIONS } from '../src/engine/types';
 import { newGame, reduce } from '../src/engine/state';
+import { buildStateSnapshot, serializeStateSnapshot } from '../src/engine/stateSnapshot';
 import { startGame, checkVictory } from '../src/engine/loop';
 import { performSetup } from '../src/engine/setup';
 import { checkCoalitionVictory } from '../src/engine/factions/vagabond/reducer';
@@ -51,6 +52,7 @@ export interface RoomSnapshot {
   seats: Record<Faction, SeatPersistence | null>;
   vagabondCharacter: VagabondCharacter;
   state: GameState;
+  pendingLoadedState?: GameState | null;
   started: boolean;
 }
 
@@ -71,17 +73,28 @@ export class Room {
   };
   private vagabondCharacter: VagabondCharacter = 'thief';
   private state: GameState;
+  private pendingLoadedState: GameState | null;
   private started = false;
   private subscribers = new Map<ClientId, Subscriber>();
   private aiTimer: ReturnType<typeof setTimeout> | null = null;
   private onChange: ((room: Room) => void) | null = null;
   private syntheticIdCounter = 0;
 
-  constructor(id: string, opts: { createdAt?: number; state?: GameState; started?: boolean; autoFillBots?: boolean } = {}) {
+  constructor(
+    id: string,
+    opts: {
+      createdAt?: number;
+      state?: GameState;
+      pendingLoadedState?: GameState | null;
+      started?: boolean;
+      autoFillBots?: boolean;
+    } = {},
+  ) {
     this.id = id;
     this.createdAt = opts.createdAt ?? Date.now();
     this.lastActivityAt = Date.now();
     this.state = opts.state ?? newGame({ seed: Math.floor(Math.random() * 1e9) });
+    this.pendingLoadedState = opts.pendingLoadedState ?? null;
     this.started = opts.started ?? false;
     this.autoFillBots = opts.autoFillBots ?? true;
   }
@@ -100,6 +113,7 @@ export class Room {
     const r = new Room(snap.id, {
       createdAt: snap.createdAt,
       state: snap.state,
+      pendingLoadedState: snap.pendingLoadedState ?? null,
       started: snap.started,
       autoFillBots: snap.autoFillBots ?? true,
     });
@@ -143,6 +157,7 @@ export class Room {
       seats: persistedSeats,
       vagabondCharacter: this.vagabondCharacter,
       state: this.state,
+      pendingLoadedState: this.pendingLoadedState,
       started: this.started,
     };
   }
@@ -290,16 +305,21 @@ export class Room {
     if (this.started) return 'already started';
     const claimedFactions = ALL_FACTIONS.filter((f) => this.seats[f] !== null);
     if (claimedFactions.length === 0) return 'need at least one claimed seat';
-    const factions = this.autoFillBots ? ALL_FACTIONS : claimedFactions;
-    let base = newGame({ seed: Math.floor(Math.random() * 1e9), factions });
-    base = produce(base, draft => {
-      if (draft.factions.vagabond) {
-        // Only set the character; setupVagabond() will add the correct starting items.
-        draft.factions.vagabond.character = this.vagabondCharacter;
-        draft.factions.vagabond.items = [];
-      }
-    });
-    this.state = startGame(performSetup(base));
+    if (this.pendingLoadedState) {
+      this.state = this.pendingLoadedState;
+      this.pendingLoadedState = null;
+    } else {
+      const factions = this.autoFillBots ? ALL_FACTIONS : claimedFactions;
+      let base = newGame({ seed: Math.floor(Math.random() * 1e9), factions });
+      base = produce(base, draft => {
+        if (draft.factions.vagabond) {
+          // Only set the character; setupVagabond() will add the correct starting items.
+          draft.factions.vagabond.character = this.vagabondCharacter;
+          draft.factions.vagabond.items = [];
+        }
+      });
+      this.state = startGame(performSetup(base));
+    }
     this.started = true;
     metrics.increment('root.game.started', { factions: this.state.factionOrder.join(',') });
     this.broadcastLobby();
@@ -312,10 +332,23 @@ export class Room {
   newGameReset(): void {
     if (this.aiTimer) { clearTimeout(this.aiTimer); this.aiTimer = null; }
     this.state = newGame({ seed: Math.floor(Math.random() * 1e9) });
+    this.pendingLoadedState = null;
     this.started = false;
     this.vagabondCharacter = 'thief';
     this.broadcastLobby();
     this.touched();
+  }
+
+  exportStateText(clientId: ClientId): string | null {
+    if (!this.players.has(clientId)) return null;
+    const player = this.players.get(clientId);
+    const snapshot = buildStateSnapshot(this.state, {
+      source: 'online',
+      roomId: this.id,
+      autoFillBots: this.autoFillBots,
+      playerFaction: player?.faction ?? null,
+    });
+    return serializeStateSnapshot(snapshot);
   }
 
   // ─── Actions ─────────────────────────────────────────────────────────────
@@ -405,6 +438,7 @@ export class Room {
       seats: { ...this.seats },
       autoFillBots: this.autoFillBots,
       vagabondCharacter: this.vagabondCharacter,
+      hasLoadedState: this.pendingLoadedState !== null,
       started: this.started,
     };
   }

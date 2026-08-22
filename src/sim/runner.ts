@@ -8,9 +8,10 @@
 // until a victory or the turn cap is reached.
 
 import type { GameState, Action } from '../engine/types';
-import { newGame, reduce } from '../engine/state';
+import { cloneState, newGame, reduce } from '../engine/state';
 import { startGame, checkVictory } from '../engine/loop';
 import { performSetup } from '../engine/setup';
+import { parseStateSnapshotText } from '../engine/stateSnapshot';
 
 export interface SimResult {
   seed: number;
@@ -25,6 +26,8 @@ export interface SimResult {
 
 export interface SimOptions {
   seed: number;
+  /** Optional exact game state to resume instead of creating a fresh setup. */
+  initialState?: GameState;
   /** Maximum global turns before declaring the game stuck. Default 200. */
   turnCap?: number;
   /** Maximum reducer calls before bailing out. Default 100,000. */
@@ -39,7 +42,7 @@ export function runOne(opts: SimOptions): SimResult {
   const policy = opts.policy ?? defaultPolicy;
   const turnCap = opts.turnCap ?? 200;
   const stepCap = opts.stepCap ?? 100_000;
-  let state = startGame(performSetup(newGame({ seed: opts.seed })));
+  let state = opts.initialState ? cloneState(opts.initialState) : startGame(performSetup(newGame({ seed: opts.seed })));
   let steps = 0;
   try {
     let stuckCounter = 0;
@@ -88,6 +91,18 @@ export function runOne(opts: SimOptions): SimResult {
       error: e instanceof Error ? e.message : String(e),
     };
   }
+}
+
+export function runOneFromSnapshotText(
+  snapshotText: string,
+  opts: Omit<SimOptions, 'seed' | 'initialState'> = {},
+): SimResult {
+  const snapshot = parseStateSnapshotText(snapshotText);
+  return runOne({
+    seed: snapshot.state.seed,
+    initialState: snapshot.state,
+    ...opts,
+  });
 }
 
 export interface AggregateReport {

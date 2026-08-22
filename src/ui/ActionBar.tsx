@@ -10,7 +10,7 @@ import type { DecreeSlot, EyrieLeader } from '../engine/factions/eyrie/state';
 import { getQuest } from '../engine/factions/vagabond/quests';
 
 const SUIT_COLOR: Record<CardSuit, string> = {
-  fox: '#c03428', mouse: '#e07858', rabbit: '#f0c030', bird: '#5aabaa',
+  fox: '#c03428', mouse: '#D68860', rabbit: '#f0c030', bird: '#5aabaa',
 };
 
 interface ActionBarProps {
@@ -119,6 +119,8 @@ const ACTION_META: Record<string, ActionMeta> = {
   'marquise.recruit':             { label: 'Recruit',             group: 'main' },
   'marquise.overwork':            { label: 'Overwork',            group: 'main' },
   'marquise.battle':              { label: 'Battle',              group: 'main' },
+  'marquise.craftDecision':       { label: 'Would you like to craft?', group: 'main', primary: true },
+  'marquise.finishCrafting':      { label: 'Done crafting',       group: 'main' },
   'marquise.craft':               { label: 'Craft',               group: 'main' },
   'marquise.spendBirdForExtra':   { label: 'Bird → extra action', group: 'bonus' },
   'marquise.beginMarch':          { label: 'March',               group: 'main' },
@@ -324,6 +326,10 @@ export function ActionBar({ state, playerFaction, activeTurnName, dispatch, onBe
   const marchMovesLeft = isHuman && active === 'marquise'
     ? (state.factions.marquise?.marchMovesLeft ?? 0)
     : 0;
+  const marquiseCraftPrompt = allLegals
+    .filter((a): a is Extract<Action, { kind: 'marquise.craftDecision' }> => a.kind === 'marquise.craftDecision');
+  const marquiseCraftPromptOpen = active === 'marquise' && marquiseCraftPrompt.length > 0;
+  const marquiseCraftingStep = active === 'marquise' && allLegals.some(a => a.kind === 'marquise.finishCrafting');
 
   // Group actions
   const groups: Record<string, Action[]> = { birdsong: [], main: [], bonus: [], end: [] };
@@ -650,6 +656,11 @@ export function ActionBar({ state, playerFaction, activeTurnName, dispatch, onBe
                 : <>resolve a Decree move</>}.
         </div>
       )}
+      {marquiseCraftPromptOpen && (
+        <div className="actionbar-hint map-hint" style={{ borderColor: '#d68860', color: '#f3d7c9' }}>
+          <strong>Would you like to craft?</strong> Choose Yes to craft now, or No to skip crafting this daylight.
+        </div>
+      )}
 
       {GROUP_ORDER.map(g => {
         const list = groups[g] ?? [];
@@ -841,14 +852,16 @@ export function ActionBar({ state, playerFaction, activeTurnName, dispatch, onBe
                 </button>
               )}
               {showCraft && (
-                <button
-                  className={`btn action-btn ${craftPicking ? 'armed' : ''} faction-${active}`}
-                  onClick={() => setCraftPicking(p => !p)}
-                  title="Craft an item card from your hand"
-                >
-                  <span className="action-label">Craft</span>
-                  {craftPicking && <span className="action-detail">pick a card below</span>}
-                </button>
+                active === 'marquise' && marquiseCraftingStep ? null : (
+                  <button
+                    className={`btn action-btn ${craftPicking ? 'armed' : ''} faction-${active}`}
+                    onClick={() => setCraftPicking(p => !p)}
+                    title="Craft an item card from your hand"
+                  >
+                    <span className="action-label">Craft</span>
+                    {craftPicking && <span className="action-detail">pick a card below</span>}
+                  </button>
+                )
               )}
               {showSpendBird && (
                 <button
@@ -1151,7 +1164,9 @@ export function ActionBar({ state, playerFaction, activeTurnName, dispatch, onBe
               ))}
               {list.filter(a => !a.kind.startsWith('card.')).slice(0, 20).map((a, i) => {
                 const meta = ACTION_META[a.kind];
-                const label = meta?.label ?? a.kind.split('.')[1];
+                const label = a.kind === 'marquise.craftDecision'
+                  ? ((a as Extract<Action, { kind: 'marquise.craftDecision' }>).decision === 'yes' ? 'Yes' : 'No')
+                  : (meta?.label ?? a.kind.split('.')[1]);
                 const detail = actionDetail(a);
                 return (
                   <button
@@ -1262,11 +1277,13 @@ export function ActionBar({ state, playerFaction, activeTurnName, dispatch, onBe
                 </div>
               </div>
             )}
-            {showCraft && craftPicking && (
+            {showCraft && (craftPicking || (active === 'marquise' && marquiseCraftingStep)) && (
               <div className="action-card-picker">
                 <div className="action-card-picker-title">
                   Craft — pick a card to craft
-                  <button className="btn ghost small" onClick={() => setCraftPicking(false)} aria-label="Cancel">×</button>
+                  {!(active === 'marquise' && marquiseCraftingStep) && (
+                    <button className="btn ghost small" onClick={() => setCraftPicking(false)} aria-label="Cancel">×</button>
+                  )}
                 </div>
                 <div className="action-card-picker-list">
                   {Array.from(craftCards).map(id => {

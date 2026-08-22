@@ -10,6 +10,8 @@ export type MarquiseAction =
   | { kind: 'marquise.march'; from: ClearingId; to: ClearingId; count: number }
   | { kind: 'marquise.endMarch' }
   | { kind: 'marquise.battle'; clearing: ClearingId; defender: Faction }
+  | { kind: 'marquise.craftDecision'; decision: 'yes' | 'no' }
+  | { kind: 'marquise.finishCrafting' }
   | { kind: 'marquise.craft'; cardId: CardId }
   | { kind: 'marquise.spendBirdForExtra'; cardId: CardId }
   | { kind: 'marquise.endDaylight' }

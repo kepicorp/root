@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { runOne, runMany } from '../runner';
+import { runOne, runMany, runOneFromSnapshotText } from '../runner';
+import { newGame } from '../../engine/state';
+import { performSetup } from '../../engine/setup';
+import { startGame } from '../../engine/loop';
+import { buildStateSnapshot, serializeStateSnapshot } from '../../engine/stateSnapshot';
 
 describe('sim runner (default policy)', () => {
   it('runs without crashing', () => {
@@ -18,5 +22,15 @@ describe('sim runner (default policy)', () => {
     const r = runMany({ count: 5, seedStart: 1, turnCap: 10 });
     expect(r.games).toBe(5);
     expect(r.crashes).toBe(0);
+  });
+
+  it('can resume from a saved snapshot text file', () => {
+    const started = startGame(performSetup(newGame({ seed: 77 })));
+    const text = serializeStateSnapshot(buildStateSnapshot(started, { source: 'offline', playerFaction: 'marquise' }));
+    const a = runOneFromSnapshotText(text, { turnCap: 10 });
+    const b = runOneFromSnapshotText(text, { turnCap: 10 });
+    expect(a.ended).not.toBe('crashed');
+    expect(a.finalScores).toEqual(b.finalScores);
+    expect(a.turns).toBe(b.turns);
   });
 });

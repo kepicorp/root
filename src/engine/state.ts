@@ -123,6 +123,10 @@ function migrateState(state: GameState): GameState {
     }
     if (newAl !== al) s = { ...s, factions: { ...s.factions, alliance: newAl } };
   }
+  const m = s.factions.marquise;
+  if (m && !(m as any).daylightCraftState) {
+    s = { ...s, factions: { ...s.factions, marquise: { ...m, daylightCraftState: 'prompt' } } };
+  }
   return s;
 }
 

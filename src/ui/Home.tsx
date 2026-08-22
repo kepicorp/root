@@ -10,9 +10,10 @@ import { useRef, useState } from 'react';
 import { createRoom, checkRoomExists, navigateToRoom } from './network';
 import { clearUserAssetPack, customAssetSummary, loadUserAssetZip, useUserAssetPackVersion } from '../assets/user-pack';
 import type { SiteAuthState } from './siteAuth';
+import { parseStateSnapshotText, type StateSnapshotFile } from '../engine/stateSnapshot';
 
 interface Props {
-  onStartOffline: () => void;
+  onStartOffline: (snapshot?: StateSnapshotFile) => void;
   site: SiteAuthState;
 }
 
@@ -34,9 +35,15 @@ export function Home({ onStartOffline, site }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [passwordValue, setPasswordValue] = useState('');
   const [autoFillBots, setAutoFillBots] = useState(true);
+  const [hostStateText, setHostStateText] = useState<string | null>(null);
+  const [hostStateLabel, setHostStateLabel] = useState<string | null>(null);
+  const [hostStateError, setHostStateError] = useState<string | null>(null);
+  const [soloStateError, setSoloStateError] = useState<string | null>(null);
   const [assetStatus, setAssetStatus] = useState<string | null>(null);
   const [assetError, setAssetError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const hostStateInputRef = useRef<HTMLInputElement | null>(null);
+  const soloStateInputRef = useRef<HTMLInputElement | null>(null);
   useUserAssetPackVersion();
   const assetSummary = customAssetSummary();
 
@@ -79,11 +86,46 @@ export function Home({ onStartOffline, site }: Props) {
     setBusy(true);
     setError(null);
     try {
-      const id = await createRoom(autoFillBots);
+      const id = await createRoom({ autoFillBots, ...(hostStateText ? { loadStateText: hostStateText } : {}) });
       navigateToRoom(id);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setBusy(false);
+    }
+  }
+
+  async function parseSnapshotFile(file: File): Promise<{ snapshot: StateSnapshotFile; text: string }> {
+    const text = await file.text();
+    const snapshot = parseStateSnapshotText(text);
+    return { snapshot, text };
+  }
+
+  async function onChooseHostState(file: File | null): Promise<void> {
+    if (!file) return;
+    setHostStateError(null);
+    try {
+      const { snapshot, text } = await parseSnapshotFile(file);
+      setHostStateText(text);
+      setHostStateLabel(`${file.name} · turn ${snapshot.state.turn} · ${snapshot.state.phase}`);
+    } catch (e) {
+      setHostStateText(null);
+      setHostStateLabel(null);
+      setHostStateError(e instanceof Error ? e.message : String(e));
+    } finally {
+      if (hostStateInputRef.current) hostStateInputRef.current.value = '';
+    }
+  }
+
+  async function onChooseSoloState(file: File | null): Promise<void> {
+    if (!file) return;
+    setSoloStateError(null);
+    try {
+      const { snapshot } = await parseSnapshotFile(file);
+      onStartOffline(snapshot);
+    } catch (e) {
+      setSoloStateError(e instanceof Error ? e.message : String(e));
+    } finally {
+      if (soloStateInputRef.current) soloStateInputRef.current.value = '';
     }
   }
 
@@ -148,6 +190,25 @@ export function Home({ onStartOffline, site }: Props) {
               <button className="btn primary" onClick={onCreate} disabled={busy}>
                 {busy ? '…' : 'Create game'}
               </button>
+              <input
+                ref={hostStateInputRef}
+                type="file"
+                accept=".txt,application/json,text/plain"
+                className="home-hidden-input"
+                onChange={(e) => void onChooseHostState(e.target.files?.[0] ?? null)}
+              />
+              <div className="home-actions-inline">
+                <button className="btn ghost" onClick={() => hostStateInputRef.current?.click()}>
+                  Load state for host game
+                </button>
+                {hostStateText && (
+                  <button className="btn ghost" onClick={() => { setHostStateText(null); setHostStateLabel(null); setHostStateError(null); }}>
+                    Clear loaded state
+                  </button>
+                )}
+              </div>
+              {hostStateLabel && <p className="home-note strong">Loaded state: {hostStateLabel}</p>}
+              {hostStateError && <div className="home-error">{hostStateError}</div>}
             </div>
 
             <div className="home-card">
@@ -169,7 +230,18 @@ export function Home({ onStartOffline, site }: Props) {
             <div className="home-card secondary">
               <h2>Play offline</h2>
               <p>Solo against three AI factions on this device. No connection needed.</p>
-              <button className="btn ghost" onClick={onStartOffline}>Play solo</button>
+              <button className="btn ghost" onClick={() => onStartOffline()}>Play solo</button>
+              <input
+                ref={soloStateInputRef}
+                type="file"
+                accept=".txt,application/json,text/plain"
+                className="home-hidden-input"
+                onChange={(e) => void onChooseSoloState(e.target.files?.[0] ?? null)}
+              />
+              <button className="btn ghost" onClick={() => soloStateInputRef.current?.click()}>
+                Load state and play
+              </button>
+              {soloStateError && <div className="home-error">{soloStateError}</div>}
             </div>
           </div>
 

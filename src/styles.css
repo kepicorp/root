@@ -24,14 +24,17 @@ body { background: var(--bg); color: var(--paper); }
    bottom strip is intentionally shallow so the board claims at least 2/3
    of the screen height. */
 .app-game {
+  --splitter-size: 8px;
+  --right-pane-w: 380px;
+  --hand-pane-w: 420px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 380px;
+  grid-template-columns: minmax(0, 1fr) var(--splitter-size) minmax(300px, var(--right-pane-w));
   grid-template-rows: auto auto minmax(0, 1fr) 220px;
   grid-template-areas:
-    "header header"
-    "phase  phase"
-    "board  right"
-    "bottom bottom";
+    "header header header"
+    "phase phase phase"
+    "board vres right"
+    "bottom bottom bottom";
   height: 100vh;
   gap: 0;
 }
@@ -53,6 +56,26 @@ body { background: var(--bg); color: var(--paper); }
   display: flex;
   align-items: stretch;
   justify-content: stretch;
+}
+.pane-resizer {
+  background: #2a1d10;
+  border: 1px solid #3a2b1b;
+  opacity: 0.65;
+}
+.pane-resizer:hover {
+  opacity: 1;
+  background: #3a2a18;
+}
+.pane-resizer-vertical {
+  grid-area: vres;
+  cursor: col-resize;
+}
+.pane-resizer-horizontal {
+  cursor: col-resize;
+  align-self: stretch;
+  width: var(--splitter-size);
+  border-top: none;
+  border-bottom: none;
 }
 .board-wrap {
   position: relative;
@@ -433,14 +456,13 @@ body { background: var(--bg); color: var(--paper); }
   min-width: 0;
   display: flex;
   min-height: 0;
-  border-right: 1px solid var(--rule);
 }
 .app-game .log-pane .log-container { width: 100%; }
 .app-game .hand-pane {
-  /* The hand grows with card count, capped at 50% of the bottom strip so
-     5 cards land at half-width as requested. */
-  flex: 0 0 auto;
-  max-width: 50%;
+  flex: 0 0 var(--hand-pane-w);
+  width: var(--hand-pane-w);
+  min-width: 260px;
+  max-width: 70%;
   display: flex;
   min-height: 0;
 }
@@ -1212,6 +1234,13 @@ body { background: var(--bg); color: var(--paper); }
 }
 .log-filter.on { opacity: 1; }
 .log-filter:hover { background: #2a1d10; }
+.log-save-btn { margin-left: auto; }
+.log-save-error {
+  padding: 6px 16px;
+  background: #5a1f1a;
+  border-bottom: 1px solid #7a2d24;
+  font-size: 12px;
+}
 .log {
   flex: 1;
   padding: 8px 16px;
@@ -1588,6 +1617,11 @@ circle.pulse {
   flex-wrap: wrap;
   gap: 8px;
 }
+.home-actions-inline {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 .home-hidden-input {
   position: absolute;
   width: 1px;
@@ -1658,6 +1692,32 @@ circle.pulse {
 }
 @media (max-width: 800px) {
   .home-cards { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 1100px) {
+  .app-game {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(300px, 1fr) auto 220px;
+    grid-template-areas:
+      "header"
+      "phase"
+      "board"
+      "right"
+      "bottom";
+  }
+  .pane-resizer-vertical,
+  .pane-resizer-horizontal {
+    display: none;
+  }
+  .app-game .right-pane {
+    border-left: none;
+    border-top: 1px solid var(--rule);
+  }
+  .app-game .hand-pane {
+    flex: 1 1 auto;
+    width: auto;
+    max-width: none;
+  }
 }
 
 /* Admin page */

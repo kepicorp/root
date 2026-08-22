@@ -13,15 +13,35 @@ const FACTION_COLOR: Record<string, string> = {
 const FILTERS = ['system', ...ALL_FACTIONS] as const;
 type Filter = typeof FILTERS[number];
 
-export function Log({ state }: { state: GameState }) {
+interface Props {
+  state: GameState;
+  onSaveState: () => Promise<void>;
+}
+
+export function Log({ state, onSaveState }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [hidden, setHidden] = useState<Set<Filter>>(new Set());
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     ref.current?.scrollTo({ top: ref.current.scrollHeight });
   }, [state.log.length]);
 
   const entries = state.log.slice(-200).filter(e => !hidden.has(e.faction as Filter));
+
+  async function saveState(): Promise<void> {
+    if (saving) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await onSaveState();
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <div className="log-container">
@@ -41,7 +61,11 @@ export function Log({ state }: { state: GameState }) {
             {f}
           </button>
         ))}
+        <button className="btn ghost small log-save-btn" onClick={() => void saveState()} disabled={saving}>
+          {saving ? 'Saving…' : 'Save State'}
+        </button>
       </div>
+      {saveError && <div className="log-save-error">{saveError}</div>}
       <div className="log" ref={ref} role="log" aria-live="polite">
         {entries.map((e, i) => (
           <div className="log-entry" key={state.log.length - entries.length + i}>

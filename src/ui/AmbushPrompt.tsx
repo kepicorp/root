@@ -8,7 +8,7 @@ import { getCard } from '../engine/cards';
 import { defenderAmbushOptions } from '../engine/combat';
 
 const SUIT_COLOR: Record<CardSuit, string> = {
-  fox: '#c03428', mouse: '#e07858', rabbit: '#f0c030', bird: '#5aabaa',
+  fox: '#c03428', mouse: '#D68860', rabbit: '#f0c030', bird: '#5aabaa',
 };
 
 interface Props {

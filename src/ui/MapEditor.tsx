@@ -10,7 +10,7 @@ const BOARD_H = 800;
 
 const SUIT_COLOR: Record<Suit, string> = {
   fox: '#c03428',
-  mouse: '#e07858',
+  mouse: '#D68860',
   rabbit: '#f0c030',
 };
 
