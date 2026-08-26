@@ -8,6 +8,7 @@ import { buildCost } from '../engine/factions/marquise/scoring';
 import { SYMPATHY_COST } from '../engine/factions/alliance/state';
 import type { DecreeSlot, EyrieLeader } from '../engine/factions/eyrie/state';
 import { getQuest } from '../engine/factions/vagabond/quests';
+import { AUTUMN_MAP } from '../engine/map';
 
 const SUIT_COLOR: Record<CardSuit, string> = {
   fox: '#c03428', mouse: '#D68860', rabbit: '#f0c030', bird: '#5aabaa',
@@ -18,14 +19,11 @@ interface ActionBarProps {
   playerFaction: Faction | null;
   activeTurnName?: string | null;
   dispatch: (action: Action) => void;
-  onBegin: (f: Faction) => void;
   mapIntent: MapIntent | null;
   setMapIntent: (intent: MapIntent | null) => void;
   onUndo?: () => void;
   canUndo?: boolean;
 }
-
-const FACTIONS: Faction[] = ['marquise', 'eyrie', 'alliance', 'vagabond'];
 
 /** These action kinds are surfaced outside the ActionBar — either as
  *  map-driven intents (build / battle / etc., applied by clicking the
@@ -71,6 +69,9 @@ const MAP_DRIVEN: ReadonlySet<string> = new Set([
   'vagabond.pickRefreshItem',
   'vagabond.skipRefreshItem',
   'system.resolveOutrage',
+  'combat.chooseOptional',
+  'combat.chooseRemovalPieces',
+  'combat.resolveFieldHospitals',
   'eyrie.addToDecree',
   'eyrie.chooseLeader',
   'eyrie.executeRecruit',
@@ -130,7 +131,9 @@ const ACTION_META: Record<string, ActionMeta> = {
   // Eyrie
   'eyrie.addToDecree':            { label: 'Add to decree',       group: 'birdsong',    primary: true },
   'eyrie.endBirdsong':            { label: 'Done with decree',    group: 'end' },
+  'eyrie.endCrafting':             { label: 'Done crafting',       group: 'end' },
   'eyrie.resolveDecree':          { label: 'Trigger Turmoil',     group: 'main',        primary: true },
+  'eyrie.resolveTurmoilStep':     { label: 'Continue turmoil',    group: 'main',        primary: true },
   'eyrie.evening':                { label: 'End evening',         group: 'end',         primary: true },
   // Alliance
   'alliance.spreadSympathy':      { label: 'Spread sympathy',     group: 'birdsong',    primary: true },
@@ -166,6 +169,28 @@ const GROUP_LABEL: Record<string, string> = {
   end: 'End phase',
 };
 
+function formatCraftCost(cost: Partial<Record<CardSuit, number>>): string {
+  const order: CardSuit[] = ['fox', 'mouse', 'rabbit', 'bird'];
+  const parts: string[] = [];
+  for (const suit of order) {
+    const n = cost[suit] ?? 0;
+    if (n > 0) parts.push(`${suit} x${n}`);
+  }
+  return parts.join(' + ');
+}
+
+function marquiseWorkshopPower(state: GameState): Record<CardSuit, number> {
+  const power: Record<CardSuit, number> = { fox: 0, mouse: 0, rabbit: 0, bird: 0 };
+  for (const c of AUTUMN_MAP.clearings) {
+    const cl = state.map.clearings[c.id]!;
+    const workshops = cl.buildings.filter((b) => b.faction === 'marquise' && b.kind === 'workshop').length;
+    if (workshops > 0) {
+      power[c.suit] += workshops;
+    }
+  }
+  return power;
+}
+
 function actionDetail(a: Action): string {
   const parts: string[] = [];
   for (const key of Object.keys(a)) {
@@ -177,7 +202,86 @@ function actionDetail(a: Action): string {
   return parts.join(' · ');
 }
 
-export function ActionBar({ state, playerFaction, activeTurnName, dispatch, onBegin, mapIntent, setMapIntent, onUndo, canUndo }: ActionBarProps) {
+function setupActionLabel(action: Action): string {
+  if (action.kind === 'marquise.setupChooseCorner') {
+    const suit = AUTUMN_MAP.clearings.find((c) => c.id === action.clearing)?.suit ?? 'unknown';
+    return `Keep in clearing ${action.clearing} (${suit})`;
+  }
+  if (action.kind === 'marquise.setupPlaceBuilding') {
+    const suit = AUTUMN_MAP.clearings.find((c) => c.id === action.clearing)?.suit ?? 'unknown';
+    return `Place ${action.building} in ${action.clearing} (${suit})`;
+  }
+  if (action.kind === 'eyrie.setupChooseLeader') {
+    return `Choose ${action.leader} leader (${EYRIE_LEADER_VIZIERS[action.leader]}) — ${EYRIE_LEADER_ABILITY[action.leader]}`;
+  }
+  if (action.kind === 'alliance.setupReady') {
+    return 'Draw 3 supporters';
+  }
+  if (action.kind === 'vagabond.setupChooseCharacter') {
+    return `Choose ${action.character}`;
+  }
+  if (action.kind === 'vagabond.setupChooseRuin') {
+    const suit = AUTUMN_MAP.clearings.find((c) => c.id === action.clearing)?.suit ?? 'unknown';
+    return `Start at ruin in ${action.clearing} (${suit})`;
+  }
+  return action.kind;
+}
+
+function setupActionGroup(action: Action): 'corner' | 'building' | 'leader' | 'support' | 'character' | 'ruin' | 'other' {
+  if (action.kind === 'marquise.setupChooseCorner') return 'corner';
+  if (action.kind === 'marquise.setupPlaceBuilding') return 'building';
+  if (action.kind === 'eyrie.setupChooseLeader') return 'leader';
+  if (action.kind === 'alliance.setupReady') return 'support';
+  if (action.kind === 'vagabond.setupChooseCharacter') return 'character';
+  if (action.kind === 'vagabond.setupChooseRuin') return 'ruin';
+  return 'other';
+}
+
+function setupGroupLabel(group: ReturnType<typeof setupActionGroup>): string {
+  if (group === 'corner') return 'Home Corner';
+  if (group === 'building') return 'Starting Buildings';
+  if (group === 'leader') return 'Leader';
+  if (group === 'support') return 'Supporters';
+  if (group === 'character') return 'Character';
+  if (group === 'ruin') return 'Starting Ruin';
+  return 'Options';
+}
+
+function setupStepTitle(faction: Faction, actions: Action[]): string {
+  const kinds = new Set(actions.map((a) => a.kind));
+  if (faction === 'marquise' && kinds.has('marquise.setupChooseCorner')) return 'Choose Your Home Corner';
+  if (faction === 'marquise' && kinds.has('marquise.setupPlaceBuilding')) return 'Place Initial Buildings';
+  if (faction === 'eyrie') return 'Choose Your Leader';
+  if (faction === 'alliance') return 'Prepare Supporter Stack';
+  if (faction === 'vagabond' && kinds.has('vagabond.setupChooseCharacter')) return 'Choose Your Character';
+  if (faction === 'vagabond' && kinds.has('vagabond.setupChooseRuin')) return 'Choose Starting Ruin';
+  return 'Setup Choice';
+}
+
+function setupStepDescription(faction: Faction, actions: Action[]): string {
+  const kinds = new Set(actions.map((a) => a.kind));
+  if (faction === 'marquise' && kinds.has('marquise.setupChooseCorner')) {
+    return 'Pick one corner for the Keep. The Eyrie will start in the opposite corner.';
+  }
+  if (faction === 'marquise' && kinds.has('marquise.setupPlaceBuilding')) {
+    return 'Place one sawmill, one workshop, and one recruiter in your corner or adjacent clearings.';
+  }
+  if (faction === 'eyrie') {
+    return 'Select the leader whose Loyal Vizier slots and ability best fit your opening plan.';
+  }
+  if (faction === 'alliance') {
+    return 'Confirm setup to draw starting supporters from the deck.';
+  }
+  if (faction === 'vagabond' && kinds.has('vagabond.setupChooseCharacter')) {
+    return 'Choose a character to define your starting item kit and early options.';
+  }
+  if (faction === 'vagabond' && kinds.has('vagabond.setupChooseRuin')) {
+    return 'Pick a ruin clearing as your starting location.';
+  }
+  return 'Complete this step to continue setup.';
+}
+
+export function ActionBar({ state, playerFaction, activeTurnName, dispatch, mapIntent, setMapIntent, onUndo, canUndo }: ActionBarProps) {
   // Two-step intents like Overwork / Mobilize / Craft ("pick a card, then
   // go") use tiny local picker states. Esc dismisses any open picker.
   const [overworkPicking, setOverworkPicking] = useState(false);
@@ -189,6 +293,7 @@ export function ActionBar({ state, playerFaction, activeTurnName, dispatch, onBe
   const [repairPicking, setRepairPicking] = useState(false);
   const [trainPicking, setTrainPicking] = useState(false);
   const [dominancePicking, setDominancePicking] = useState(false);
+  const [takeDominancePicking, setTakeDominancePicking] = useState(false);
   const [royalClaimPicking, setRoyalClaimPicking] = useState(false);
   const [standAndDeliverPicking, setStandAndDeliverPicking] = useState(false);
   const [betterBurrowBankPicking, setBetterBurrowBankPicking] = useState(false);
@@ -224,6 +329,7 @@ export function ActionBar({ state, playerFaction, activeTurnName, dispatch, onBe
     setRepairPicking(false);
     setTrainPicking(false);
     setDominancePicking(false);
+    setTakeDominancePicking(false);
     setRoyalClaimPicking(false);
     setStandAndDeliverPicking(false);
     setBetterBurrowBankPicking(false);
@@ -267,16 +373,69 @@ export function ActionBar({ state, playerFaction, activeTurnName, dispatch, onBe
     if (mapIntent?.kind !== 'marquise.overwork') setOverworkPicking(false);
   }, [mapIntent]);
   if (state.phase === 'setup') {
+    const setupActive = state.setup?.order[state.setup.activeIndex] ?? activeFaction(state);
+    const setupLegals = playerFaction === setupActive ? getLegalActions(state) : [];
+    const canAct = setupLegals.length > 0;
+    const hasBoardTargets = setupLegals.some((a) =>
+      a.kind === 'marquise.setupChooseCorner'
+      || a.kind === 'marquise.setupPlaceBuilding'
+      || a.kind === 'vagabond.setupChooseRuin',
+    );
+    const setupOrder = state.setup?.order ?? [setupActive];
+    const grouped: Record<string, Action[]> = {};
+    for (const a of setupLegals) {
+      const g = setupActionGroup(a);
+      if (!grouped[g]) grouped[g] = [];
+      grouped[g]!.push(a);
+    }
+    const groupOrder: Array<ReturnType<typeof setupActionGroup>> = ['corner', 'building', 'leader', 'support', 'character', 'ruin', 'other'];
     return (
-      <div className="actionbar setup">
-        <div className="actionbar-title">Choose your faction</div>
-        <div className="actions-grid">
-          {FACTIONS.map((f) => (
-            <button key={f} className={`btn faction-${f}`} onClick={() => onBegin(f)}>
-              {f}
-            </button>
-          ))}
+      <div className={`actionbar ${canAct ? 'your-turn' : 'ai-thinking'}`}>
+        <div className="actionbar-title">Setup · {FACTION_LABEL[setupActive]}</div>
+        <div className="setup-steps">
+          {setupOrder.map((f, i) => {
+            const status = i < (state.setup?.activeIndex ?? 0)
+              ? 'done'
+              : i === (state.setup?.activeIndex ?? 0)
+                ? 'active'
+                : 'pending';
+            return (
+              <span key={`${f}-${i}`} className={`setup-step-chip ${status}`}>
+                {FACTION_LABEL[f]}
+              </span>
+            );
+          })}
         </div>
+        {canAct ? (
+          <>
+            <div className="setup-subtitle">
+              <strong>{setupStepTitle(setupActive, setupLegals)}.</strong> {setupStepDescription(setupActive, setupLegals)}
+            </div>
+            {hasBoardTargets && (
+              <div className="actionbar-hint map-hint">Highlighted clearings on the board show valid setup targets.</div>
+            )}
+            {groupOrder.filter((g) => grouped[g]?.length).map((group) => (
+              <div className="action-group" key={`setup-${group}`}>
+                <div className="action-group-label">{setupGroupLabel(group)}</div>
+                <div className="actions-grid">
+                  {grouped[group]!.map((a, i) => (
+                    <button
+                      key={`${a.kind}-${i}-${setupActionLabel(a)}`}
+                      className="btn action-btn primary"
+                      onClick={() => dispatch(a)}
+                    >
+                      <span>{setupActionLabel(a)}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </>
+        ) : (
+          <div className="setup-subtitle">
+            Waiting for {activeTurnName ?? FACTION_LABEL[setupActive]} to finish setup.
+          </div>
+        )}
       </div>
     );
   }
@@ -301,13 +460,24 @@ export function ActionBar({ state, playerFaction, activeTurnName, dispatch, onBe
     && state.pendingPrompts[0]!.faction === playerFaction;
   const isHuman = active === playerFaction || pendingForHuman;
   const allLegals = isHuman ? getLegalActions(state) : [];
+  const promptResponseMode = state.pendingPrompts.length > 0;
+  // Combat response actions come directly from the pending prompt's legal
+  // actions. Keeping them in the Action Bar makes the defender's choice
+  // available even if a modal is suppressed by another UI layer.
+  const ambushResponses = allLegals.filter(
+    (a): a is Extract<Action, { kind: 'combat.playAmbush' }> => a.kind === 'combat.playAmbush',
+  );
+  const pendingCombatPrompt = state.pendingPrompts[0];
+  const isAmbushPrompt = pendingCombatPrompt?.kind === 'combat.defenderAmbush'
+    || pendingCombatPrompt?.kind === 'combat.attackerCounterAmbush';
+  const canSkipAmbush = isAmbushPrompt && allLegals.some(a => a.kind === 'combat.skipAmbush');
   // Hide eyrie.resolveDecree ("Trigger Turmoil") when execute actions are
   // available — it's only useful as a last resort when no execute step is possible.
   const hasEyrieExecuteActions = allLegals.some(a =>
     a.kind === 'eyrie.executeRecruit' || a.kind === 'eyrie.executeMove' ||
     a.kind === 'eyrie.executeBattle' || a.kind === 'eyrie.executeBuild',
   );
-  const filtered = allLegals.filter(a => {
+  const filtered = promptResponseMode ? [] : allLegals.filter(a => {
     if (!MAP_DRIVEN.has(a.kind) && a.kind !== 'system.advancePhase' && a.kind !== 'system.endTurn') {
       if (a.kind === 'eyrie.resolveDecree' && hasEyrieExecuteActions) return false;
       return true;
@@ -330,6 +500,7 @@ export function ActionBar({ state, playerFaction, activeTurnName, dispatch, onBe
     .filter((a): a is Extract<Action, { kind: 'marquise.craftDecision' }> => a.kind === 'marquise.craftDecision');
   const marquiseCraftPromptOpen = active === 'marquise' && marquiseCraftPrompt.length > 0;
   const marquiseCraftingStep = active === 'marquise' && allLegals.some(a => a.kind === 'marquise.finishCrafting');
+  const marquisePower = active === 'marquise' ? marquiseWorkshopPower(state) : null;
 
   // Group actions
   const groups: Record<string, Action[]> = { birdsong: [], main: [], bonus: [], end: [] };
@@ -400,9 +571,10 @@ export function ActionBar({ state, playerFaction, activeTurnName, dispatch, onBe
   let canSpreadSympathy = false;
   let canRevolt = false;
   let canOrganize = false;
-  let canEyrieRecruit = false;
-  const eyrieBattleDefenders = new Set<Faction>();
-  let canEyrieBuild = false;
+  const eyrieRecruitCards = new Set<string>();
+  const eyrieMoveCards = new Set<string>();
+  const eyrieBattleOptions: Array<{ defender: Faction; cardId: string }> = [];
+  const eyrieBuildCards = new Set<string>();
   let canEyrieMove = false;
   const eyrieDecreeLegals: Array<{ slot: DecreeSlot; cardId: string }> = [];
   const eyrieLeaderLegals: EyrieLeader[] = [];
@@ -423,10 +595,10 @@ export function ActionBar({ state, playerFaction, activeTurnName, dispatch, onBe
     else if (a.kind === 'alliance.spreadSympathy') canSpreadSympathy = true;
     else if (a.kind === 'alliance.revolt')         canRevolt = true;
     else if (a.kind === 'alliance.organize')       canOrganize = true;
-    else if (a.kind === 'eyrie.executeRecruit')    canEyrieRecruit = true;
-    else if (a.kind === 'eyrie.executeMove')       canEyrieMove = true;
-    else if (a.kind === 'eyrie.executeBattle')     eyrieBattleDefenders.add(a.defender);
-    else if (a.kind === 'eyrie.executeBuild')      canEyrieBuild = true;
+    else if (a.kind === 'eyrie.executeRecruit')    eyrieRecruitCards.add(a.cardId ?? '');
+    else if (a.kind === 'eyrie.executeMove')       eyrieMoveCards.add(a.cardId ?? '');
+    else if (a.kind === 'eyrie.executeBattle')     eyrieBattleOptions.push({ defender: a.defender, cardId: a.cardId ?? '' });
+    else if (a.kind === 'eyrie.executeBuild')      eyrieBuildCards.add(a.cardId ?? '');
     else if (a.kind === 'eyrie.addToDecree')       eyrieDecreeLegals.push({ slot: a.slot, cardId: a.cardId });
     else if (a.kind === 'eyrie.chooseLeader')      eyrieLeaderLegals.push(a.leader);
     else if (a.kind === 'marquise.craft')             craftCards.add(a.cardId);
@@ -508,14 +680,17 @@ export function ActionBar({ state, playerFaction, activeTurnName, dispatch, onBe
   for (const d of vagabondStrikeDefenders) {
     intentButtons.push({ label: `Strike ${FACTION_LABEL[d]}`, intent: { kind: 'vagabond.strike', defender: d }, group: 'main' });
   }
-  if (canEyrieRecruit) {
-    intentButtons.push({ label: 'Recruit (Decree)', intent: { kind: 'eyrie.executeRecruit' }, group: 'main' });
+  for (const cardId of eyrieRecruitCards) {
+    if (cardId) intentButtons.push({ label: `Recruit (${getCard(cardId).name})`, intent: { kind: 'eyrie.executeRecruit', cardId }, group: 'main' });
   }
-  for (const d of eyrieBattleDefenders) {
-    intentButtons.push({ label: `Battle ${FACTION_LABEL[d]} (Decree)`, intent: { kind: 'eyrie.executeBattle', defender: d }, group: 'main' });
+  for (const cardId of eyrieMoveCards) {
+    if (cardId) intentButtons.push({ label: `Move (${getCard(cardId).name})`, intent: { kind: 'eyrie.executeMove', cardId }, group: 'main' });
   }
-  if (canEyrieBuild) {
-    intentButtons.push({ label: 'Build Roost (Decree)', intent: { kind: 'eyrie.executeBuild' }, group: 'main' });
+  for (const { defender, cardId } of eyrieBattleOptions) {
+    if (cardId) intentButtons.push({ label: `Battle ${FACTION_LABEL[defender]} (${getCard(cardId).name})`, intent: { kind: 'eyrie.executeBattle', defender, cardId }, group: 'main' });
+  }
+  for (const cardId of eyrieBuildCards) {
+    if (cardId) intentButtons.push({ label: `Build Roost (${getCard(cardId).name})`, intent: { kind: 'eyrie.executeBuild', cardId }, group: 'main' });
   }
   const intentButtonsByGroup: Record<'birdsong' | 'main', IntentButton[]> = { birdsong: [], main: [] };
   for (const b of intentButtons) intentButtonsByGroup[b.group].push(b);
@@ -544,7 +719,10 @@ export function ActionBar({ state, playerFaction, activeTurnName, dispatch, onBe
     if (a.kind === 'alliance.battle' && b.kind === 'alliance.battle')   return a.defender === b.defender;
     if (a.kind === 'vagabond.battle' && b.kind === 'vagabond.battle')   return a.defender === b.defender;
     if (a.kind === 'vagabond.strike' && b.kind === 'vagabond.strike')   return a.defender === b.defender;
-    if (a.kind === 'eyrie.executeBattle' && b.kind === 'eyrie.executeBattle') return a.defender === b.defender;
+    if (a.kind === 'eyrie.executeRecruit' && b.kind === 'eyrie.executeRecruit') return a.cardId === b.cardId;
+    if (a.kind === 'eyrie.executeMove' && b.kind === 'eyrie.executeMove') return a.cardId === b.cardId;
+    if (a.kind === 'eyrie.executeBattle' && b.kind === 'eyrie.executeBattle') return a.defender === b.defender && a.cardId === b.cardId;
+    if (a.kind === 'eyrie.executeBuild' && b.kind === 'eyrie.executeBuild') return a.cardId === b.cardId;
     return true;
   }
   function renderIntentButton(b: IntentButton) {
@@ -581,6 +759,43 @@ export function ActionBar({ state, playerFaction, activeTurnName, dispatch, onBe
         }
       </div>
 
+      {pendingForHuman && canSkipAmbush && (
+        <div className="actionbar-hint map-hint" style={{ borderColor: '#d9b166', color: '#f3e4c8' }}>
+          <strong>Ambush response:</strong> play a matching Ambush card (or bird), or skip.
+          <div className="actions-grid" style={{ marginTop: 8 }}>
+            {ambushResponses.map(action => {
+              const card = getCard(action.cardId);
+              return (
+                <button
+                  key={action.cardId}
+                  className="btn action-btn primary"
+                  onClick={() => dispatch(action)}
+                  title="Deal 2 hits before dice are rolled"
+                >
+                  <span className="action-label">Play {card.name}</span>
+                </button>
+              );
+            })}
+            <button
+              className="btn action-btn ghost"
+              onClick={() => dispatch({ kind: 'combat.skipAmbush', faction: playerFaction! })}
+            >
+              <span className="action-label">Skip Ambush</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {state.pendingPrompts.length > 0 && (
+        <div className="actionbar-hint map-hint" style={{ borderColor: '#d9b166', color: '#f3e4c8' }}>
+          <strong>Waiting on the active prompt.</strong>
+        </div>
+      )}
+
+      {state.pendingPrompts.length > 0 && (
+        <div style={{ display: 'none' }} aria-hidden="true">generic actions hidden</div>
+      )}
+
       {canUndo && onUndo && (
         <button className="btn ghost small undo-btn" onClick={onUndo}>↩ Undo</button>
       )}
@@ -607,6 +822,11 @@ export function ActionBar({ state, playerFaction, activeTurnName, dispatch, onBe
       {state.phase === 'daylight' && active === 'alliance' && state.factions.alliance && (
         <div className="actionbar-counter">
           Actions left: <strong>{state.factions.alliance.daylightActionsLeft}</strong>
+        </div>
+      )}
+      {state.phase === 'daylight' && active === 'vagabond' && state.factions.vagabond && (
+        <div className="actionbar-counter">
+          Actions left: <strong>{state.factions.vagabond.daylightActionsLeft}</strong>
         </div>
       )}
 
@@ -642,7 +862,7 @@ export function ActionBar({ state, playerFaction, activeTurnName, dispatch, onBe
       {marchMovesLeft > 0 && (
         <div className="actionbar-hint map-hint" style={{ borderColor: '#f0c060', color: '#f0e2c2' }}>
           ⚔ <strong>March in progress</strong> — {marchMovesLeft} move{marchMovesLeft === 1 ? '' : 's'} remaining.
-          Click the map to pick a source and destination.
+          Click the map to pick a source and destination. You must rule the clearing you leave or the clearing you enter.
         </div>
       )}
       {hasMapMoves && marchMovesLeft === 0 && (
@@ -653,12 +873,34 @@ export function ActionBar({ state, playerFaction, activeTurnName, dispatch, onBe
               ? <>move the Vagabond</>
               : active === 'alliance'
                 ? <>move warriors</>
-                : <>resolve a Decree move</>}.
+                : <>resolve a Decree move</>}. Rule reminder: you must rule the source or destination clearing.
         </div>
       )}
       {marquiseCraftPromptOpen && (
         <div className="actionbar-hint map-hint" style={{ borderColor: '#d68860', color: '#f3d7c9' }}>
           <strong>Would you like to craft?</strong> Choose Yes to craft now, or No to skip crafting this daylight.
+        </div>
+      )}
+      {active === 'marquise' && marquiseCraftingStep && craftCards.size === 0 && marquisePower && (
+        <div className="actionbar-hint map-hint" style={{ borderColor: '#d68860', color: '#f3d7c9' }}>
+          <strong>No craftable cards right now.</strong> Workshop power: fox {marquisePower.fox}, mouse {marquisePower.mouse}, rabbit {marquisePower.rabbit}.
+        </div>
+      )}
+      {active === 'alliance' && state.phase === 'evening' && (state.factions.alliance?.daylightActionsLeft ?? 0) > 0 && (
+        <div className="action-group alliance-military-options">
+          <div className="action-group-label">Military operations</div>
+          <div className="actions-grid">
+            {([
+              ['Move', allLegals.some(a => a.kind === 'alliance.move')],
+              ['Battle', allLegals.some(a => a.kind === 'alliance.battle')],
+              ['Recruit', allLegals.some(a => a.kind === 'alliance.recruit')],
+              ['Organize', allLegals.some(a => a.kind === 'alliance.organize')],
+            ] as const).map(([label, available]) => (
+              <button key={label} className="btn action-btn ghost" disabled={!available} title={available ? `${label} is available` : `${label} is unavailable in the current clearings`}>
+                <span className="action-label">{label}</span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -675,14 +917,30 @@ export function ActionBar({ state, playerFaction, activeTurnName, dispatch, onBe
         const showSteal = g === 'main' && stealLegals.length > 0;
         const showRepair = g === 'main' && repairItems.size > 0;
         const showTrain = g === 'main' && trainOfficerCards.size > 0;
-        // Dominance card may be played during the player's birdsong once
+        // Dominance card may be played during the player's daylight once
         // they're at 10+ VP and a card is still in the supply.
-        const dominanceHandCards = active != null
+        // During a response prompt (such as defender Ambush), `isHuman` is
+        // true even though the active faction is another player. That hand is
+        // intentionally redacted online, so never inspect it client-side.
+        const canReadActiveHand = active === playerFaction;
+        const dominanceHandCards = canReadActiveHand && active != null
           ? (state.hands[active] ?? []).filter(id => getCard(id).category === 'dominance')
           : [];
+        const takeDominanceOptions = canReadActiveHand && active != null
+          ? state.dominanceAvailable.flatMap(cardId => {
+              const dominance = getCard(cardId);
+              return (state.hands[active] ?? [])
+                .filter(spendCard => {
+                  const payment = getCard(spendCard);
+                  return payment.suit === dominance.suit || payment.suit === 'bird';
+                })
+                .map(spendCard => ({ cardId, spendCard }));
+            })
+          : [];
+        const showTakeDominance = g === 'birdsong' && canReadActiveHand && takeDominanceOptions.length > 0;
         const dominanceEligible = isHuman
-          && state.phase === 'birdsong'
-          && active != null && active !== 'vagabond'
+          && state.phase === 'daylight'
+          && canReadActiveHand && active !== 'vagabond'
           && (state.scores[active] ?? 0) >= 10
           && state.dominance == null
           && dominanceHandCards.length > 0;
@@ -933,6 +1191,16 @@ export function ActionBar({ state, playerFaction, activeTurnName, dispatch, onBe
                   {dominancePicking && <span className="action-detail">pick a card below</span>}
                 </button>
               )}
+              {showTakeDominance && (
+                <button
+                  className={`btn action-btn ${takeDominancePicking ? 'armed' : ''} faction-${active}`}
+                  onClick={() => setTakeDominancePicking(p => !p)}
+                  title="Discard a matching-suit card to take an available dominance card"
+                >
+                  <span className="action-label">Take Dominance</span>
+                  {takeDominancePicking && <span className="action-detail">choose a card and payment below</span>}
+                </button>
+              )}
               {showRoyalClaim && (
                 royalClaimActions.length === 1
                   ? <button
@@ -1134,7 +1402,7 @@ export function ActionBar({ state, playerFaction, activeTurnName, dispatch, onBe
                 <button
                   className={`btn action-btn ${brazenDemagogPicking ? 'armed' : ''} faction-${active}`}
                   onClick={() => setBrazenDemagogPicking(p => !p)}
-                  title="Discard a fox card, take a dominance card"
+                  title="Discard a matching-suit card to take an available dominance card"
                 >
                   <span className="action-label">Brazen Demagogue</span>
                   {brazenDemagogPicking && <span className="action-detail">pick a faction below</span>}
@@ -1304,6 +1572,7 @@ export function ActionBar({ state, playerFaction, activeTurnName, dispatch, onBe
                         <span className="action-card-pick-suit" style={{ background: SUIT_COLOR[c.suit] }} />
                         <span className="action-card-pick-suit-label" style={{ color: SUIT_COLOR[c.suit] }}>{c.suit}</span>
                         <span className="action-card-pick-name">{c.name}</span>
+                        <span className="action-card-pick-meta">{formatCraftCost(c.craftCost)}</span>
                       </button>
                     );
                   })}
@@ -1494,6 +1763,29 @@ export function ActionBar({ state, playerFaction, activeTurnName, dispatch, onBe
                         <span className="action-card-pick-suit" style={{ background: SUIT_COLOR[c.suit] }} />
                         <span className="action-card-pick-suit-label" style={{ color: SUIT_COLOR[c.suit] }}>{c.suit}</span>
                         <span className="action-card-pick-name">{c.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {showTakeDominance && takeDominancePicking && (
+              <div className="action-card-picker">
+                <div className="action-card-picker-title">
+                  Take Dominance — choose a card and payment
+                  <button className="btn ghost small" onClick={() => setTakeDominancePicking(false)} aria-label="Cancel">×</button>
+                </div>
+                <div className="action-card-picker-list">
+                  {takeDominanceOptions.map(({ cardId, spendCard }) => {
+                    const dominance = getCard(cardId);
+                    const payment = getCard(spendCard);
+                    return (
+                      <button key={`${cardId}-${spendCard}`} className="action-card-pick" style={{ borderColor: SUIT_COLOR[dominance.suit] }} onClick={() => {
+                        dispatch({ kind: 'system.takeDominance', faction: active!, cardId, spendCard });
+                        setTakeDominancePicking(false);
+                      }}>
+                        <span className="action-card-pick-suit" style={{ background: SUIT_COLOR[dominance.suit] }} />
+                        <span className="action-card-pick-name">{dominance.name} — discard {payment.name}</span>
                       </button>
                     );
                   })}
@@ -1792,7 +2084,7 @@ export function ActionBar({ state, playerFaction, activeTurnName, dispatch, onBe
             )}
             {showBrazenDemagog && brazenDemagogPicking && (
               <div className="action-card-picker">
-                <div className="action-card-picker-title">Brazen Demagogue — discard fox card, take dominance <button className="btn ghost small" onClick={() => setBrazenDemagogPicking(false)} aria-label="Cancel">×</button></div>
+                <div className="action-card-picker-title">Brazen Demagogue — discard matching card, take dominance <button className="btn ghost small" onClick={() => setBrazenDemagogPicking(false)} aria-label="Cancel">×</button></div>
                 <div className="action-card-picker-list">
                   {[...new Map(brazenDemagogActions.map(a => [`${a.spendCard}`, a])).entries()].map(([key, a]) => {
                     const sc = getCard(a.spendCard);
@@ -1862,9 +2154,16 @@ export function ActionBar({ state, playerFaction, activeTurnName, dispatch, onBe
             {showOutrage && (
               <div className="action-card-picker">
                 <div className="action-card-picker-title">
-                  <strong>Outrage!</strong> You moved into a clearing with Alliance sympathy.
+                  <strong>Outrage!</strong> {
+                    state.pendingOutrage?.trigger === 'sympathyRemoved'
+                      ? 'You removed Alliance sympathy and must pay supporters.'
+                      : 'You moved warriors into a clearing with Alliance sympathy.'
+                  }
                   {state.pendingOutrage && (
                     <span className="dim"> Clearing {state.pendingOutrage.clearing} ({state.pendingOutrage.suit})</span>
+                  )}
+                  {!!state.pendingOutrageQueue?.length && (
+                    <span className="dim"> · {state.pendingOutrageQueue.length} more outrage payment(s) queued</span>
                   )}
                 </div>
                 <div className="action-card-picker-list">
@@ -1889,7 +2188,7 @@ export function ActionBar({ state, playerFaction, activeTurnName, dispatch, onBe
                       style={{ borderColor: '#5aabaa' }}
                       onClick={() => dispatch({ kind: 'system.resolveOutrage' })}
                     >
-                      <span className="action-card-pick-name" style={{ color: '#5aabaa' }}>No matching card — Alliance draws from deck</span>
+                      <span className="action-card-pick-name" style={{ color: '#5aabaa' }}>No matching card — reveal hand, then Alliance draws from deck</span>
                     </button>
                   )}
                 </div>
@@ -2004,14 +2303,8 @@ export function ActionBar({ state, playerFaction, activeTurnName, dispatch, onBe
       })}
 
       {filtered.length === 0 && (
-        <div className="dim">No actions available. Advance the phase.</div>
+        <div className="dim">No actions available right now.</div>
       )}
-
-      <div className="action-system-row">
-        <button className="btn ghost" onClick={() => dispatch({ kind: 'system.advancePhase' })}>
-          Advance phase →
-        </button>
-      </div>
 
       <DebugPanel state={state} allLegals={allLegals} />
     </div>

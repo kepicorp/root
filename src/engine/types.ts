@@ -114,11 +114,66 @@ export interface LogEntry {
   message: string;
 }
 
+export interface CombatOverlayParty {
+  faction: Faction;
+  warriors: number;
+  buildings: number;
+  tokens: number;
+  buildingKinds: string[];
+  tokenKinds: string[];
+}
+
+export type CombatOverlayStatus =
+  | 'mice-cancel-prompt'
+  | 'defender-ambush-prompt'
+  | 'attacker-counter-ambush-prompt'
+  | 'optional-effect-prompt'
+  | 'resolved'
+  | 'cancelled';
+
+export interface CombatOverlayState {
+  id: string;
+  turn: number;
+  clearing: ClearingId;
+  suit: Suit;
+  attacker: CombatOverlayParty;
+  defender: CombatOverlayParty;
+  status: CombatOverlayStatus;
+  defenderAmbushCardId?: CardId;
+  attackerAmbushCardId?: CardId;
+  dice?: [number, number];
+  attackerHits?: number;
+  defenderHits?: number;
+  defenderDefenseless?: boolean;
+  endedByAmbush?: boolean;
+  modifiers: string[];
+}
+
 export interface FactionsState {
   marquise?: MarquiseState;
   eyrie?: EyrieState;
   alliance?: AllianceState;
   vagabond?: VagabondState;
+}
+
+export interface SetupState {
+  order: Faction[];
+  activeIndex: number;
+  marquiseCorner?: ClearingId;
+  marquisePlacedBuildings: Array<'sawmill' | 'workshop' | 'recruiter'>;
+  eyrieLeaderChosen?: boolean;
+  allianceReady?: boolean;
+  vagabondCharacterChosen?: boolean;
+  vagabondRuinChosen?: boolean;
+}
+
+export type OutrageTrigger = 'moveIntoSympathy' | 'sympathyRemoved';
+
+export interface PendingOutrage {
+  clearing: ClearingId;
+  faction: Faction;
+  suit: 'fox' | 'mouse' | 'rabbit';
+  trigger: OutrageTrigger;
 }
 
 export interface GameState {
@@ -130,6 +185,7 @@ export interface GameState {
   factionOrder: Faction[];   // birdsong → daylight → evening rotates per faction
   activeIndex: number;       // index into factionOrder
   factions: FactionsState;
+  setup?: SetupState;
   map: MapState;
   deck: CardId[];
   discard: CardId[];
@@ -138,7 +194,7 @@ export interface GameState {
   itemSupply: ItemKind[];
   scores: Record<Faction, number>;
   pendingPrompts: PendingPrompt[];
-  /** Dominance cards still in the supply (any player ≥ 10 VP may play one). */
+  /** Dominance cards set aside after discard; any faction may take one in birdsong. */
   dominanceAvailable: CardId[];
   /** Set when a faction has played a Dominance card and is chasing the
    *  non-VP win condition. Their VP track is abandoned. */
@@ -151,11 +207,14 @@ export interface GameState {
   lastBattleClearing?: ClearingId;
   /** Friend of X: this hand card counts as any suit for one action this turn. */
   wildCard?: CardId;
-  /** Set when a faction moves into a clearing with Alliance sympathy.
-   *  The moving faction must resolve this before taking further actions. */
-  pendingOutrage?: { clearing: ClearingId; faction: Faction; suit: 'fox' | 'mouse' | 'rabbit' };
+  /** Current outrage payment that must be resolved before other actions. */
+  pendingOutrage?: PendingOutrage;
+  /** Additional outrage payments queued behind the current outrage. */
+  pendingOutrageQueue?: PendingOutrage[];
   /** Items crafted by each faction (item tokens they contributed to the supply). */
   craftedItemLog: { faction: Faction; item: ItemKind }[];
+  /** Client-facing battle animation context for the latest combat sequence. */
+  battleOverlay?: CombatOverlayState;
 }
 
 export type ItemKind = 'sword' | 'hammer' | 'crossbow' | 'boots' | 'bag' | 'tea' | 'coin' | 'torch';
@@ -166,12 +225,16 @@ export type SystemAction =
   | { kind: 'system.advancePhase' }
   | { kind: 'system.endTurn' }
   | { kind: 'system.playDominance'; faction: Faction; cardId: CardId }
+  | { kind: 'system.takeDominance'; faction: Faction; cardId: CardId; spendCard: CardId }
   | { kind: 'system.resolveOutrage'; cardId?: CardId };
 
 export type CombatAction =
   | { kind: 'combat.declare'; clearing: ClearingId; attacker: Faction; defender: Faction }
   | { kind: 'combat.playAmbush'; faction: Faction; cardId: CardId }
-  | { kind: 'combat.skipAmbush'; faction: Faction };
+  | { kind: 'combat.skipAmbush'; faction: Faction }
+  | { kind: 'combat.chooseOptional'; faction: Faction; effect: string; use: boolean }
+  | { kind: 'combat.chooseRemovalPieces'; faction: Faction; side: 'attacker' | 'defender'; pieceIds: string[] }
+  | { kind: 'combat.resolveFieldHospitals'; faction: Faction; cardId?: CardId };
 
 export type PromptAction =
   | { kind: 'prompt.respond'; promptId: string; response: unknown };

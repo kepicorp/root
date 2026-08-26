@@ -88,6 +88,32 @@ describe('Marquise actions', () => {
     }
   });
 
+  it('cannot build using wood that is not connected through ruled clearings', () => {
+    let s = enterMarquiseDaylightActions(makeGame());
+    s = produce(s, draft => {
+      // Put exactly one wood token in an unruled/disconnected clearing.
+      draft.map.clearings[12]!.tokens.push({ faction: 'marquise', kind: 'wood' });
+      draft.factions.marquise!.wood = 0;
+    });
+
+    const before = s;
+    const after = reduce(s, { kind: 'marquise.build', clearing: 2, building: 'sawmill' });
+    expect(after).toBe(before);
+  });
+
+  it('can build using wood connected through any number of ruled clearings', () => {
+    let s = enterMarquiseDaylightActions(makeGame());
+    s = produce(s, draft => {
+      // Build at clearing 2 using wood in clearing 5 through 5 -> 1 -> 2.
+      draft.map.clearings[5]!.tokens.push({ faction: 'marquise', kind: 'wood' });
+      draft.factions.marquise!.wood = 0;
+    });
+
+    const beforeBuildings = s.factions.marquise!.buildings.sawmill;
+    const after = reduce(s, { kind: 'marquise.build', clearing: 2, building: 'sawmill' });
+    expect(after.factions.marquise!.buildings.sawmill).toBe(beforeBuildings + 1);
+  });
+
   it('cannot build past 6 buildings of one kind', () => {
     let s = makeGame();
     s = produce(s, draft => {

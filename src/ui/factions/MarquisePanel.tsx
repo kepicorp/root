@@ -1,6 +1,7 @@
 import type { GameState, Action } from '../../engine/types';
 import { CraftedCards } from './CraftedCards';
 import { DominanceBadge } from './DominanceBadge';
+import { buildCost } from '../../engine/factions/marquise/scoring';
 
 interface Props {
   state: GameState;
@@ -25,6 +26,11 @@ export function MarquisePanel({ state }: Props) {
         <span>Sawmills: <strong>{m.buildings.sawmill}/6</strong></span>
         <span>Workshops: <strong>{m.buildings.workshop}/6</strong></span>
         <span>Recruiters: <strong>{m.buildings.recruiter}/6</strong></span>
+      </div>
+      <div className="faction-projection">
+        <strong>Building cost in wood</strong>
+        <span>Next: {buildCost(Math.max(m.buildings.sawmill, m.buildings.workshop, m.buildings.recruiter))}</span>
+        <span>At 1 / 2 / 3 buildings: {buildCost(1)} / {buildCost(2)} / {buildCost(3)}</span>
       </div>
       <DominanceBadge state={state} faction="marquise" />
       <CraftedCards state={state} faction="marquise" />

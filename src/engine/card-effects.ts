@@ -6,11 +6,13 @@
 import { produce } from 'immer';
 import type { GameState, Faction, Action } from './types';
 import type { CardId } from './cards';
-import { getCard } from './cards';
+import { discardCard, getCard } from './cards';
 import { activeFaction } from './loop';
 import { AUTUMN_MAP } from './map';
 import { declareBattle, hasCraftedPersistent, returnCraftedToHand, resolveMiceCancelPrompt } from './combat';
 import { mulberry32 } from './rng';
+import { enqueueOutrage, hasAllianceSympathy } from './outrage';
+import { awardVictoryPoints } from './victory';
 
 // ─── Action types ────────────────────────────────────────────────────────────
 
@@ -66,7 +68,7 @@ function hasCard(state: GameState, faction: Faction, cardId: CardId): boolean {
 function discard(draft: GameState, faction: Faction, cardId: CardId): void {
   const hand = draft.hands[faction];
   const idx = hand.indexOf(cardId);
-  if (idx >= 0) { hand.splice(idx, 1); draft.discard.push(cardId); }
+  if (idx >= 0) { hand.splice(idx, 1); discardCard(draft, cardId); }
 }
 
 /** True if `faction` rules clearing `id` (more warriors+buildings than every other faction).
@@ -94,7 +96,7 @@ function discardCrafted(draft: GameState, faction: Faction, cardId: CardId): voi
   const idx = draft.craftedPersistents.findIndex(e => e.cardId === cardId && e.faction === faction);
   if (idx >= 0) {
     draft.craftedPersistents.splice(idx, 1);
-    draft.discard.push(cardId);
+    discardCard(draft, cardId);
   }
 }
 
@@ -126,7 +128,7 @@ export function cardEffectsReducer(state: GameState, action: CardAction): GameSt
       const ruled = Object.keys(state.map.clearings)
         .filter(id => factionRules(state, faction, Number(id))).length;
       return produce(state, draft => {
-        draft.scores[faction] = (draft.scores[faction] ?? 0) + ruled;
+        awardVictoryPoints(draft, faction, ruled, `Royal Claim rules ${ruled} clearing${ruled !== 1 ? 's' : ''}`);
         discardCrafted(draft, faction, action.cardId);
         draft.log.push({
           turn: draft.turn, faction,
@@ -152,7 +154,7 @@ export function cardEffectsReducer(state: GameState, action: CardAction): GameSt
         const idx = tHand.indexOf(pickedCard);
         if (idx >= 0) tHand.splice(idx, 1);
         draft.hands[faction].push(pickedCard);
-        draft.scores[target] = (draft.scores[target] ?? 0) + 1;
+        awardVictoryPoints(draft, target, 1, 'Stand and Deliver!');
         draft.log.push({
           turn: draft.turn, faction,
           message: `Stand and Deliver!: took a card from ${target} (they score 1 VP).`,
@@ -247,6 +249,9 @@ export function cardEffectsReducer(state: GameState, action: CardAction): GameSt
           delete draft.map.clearings[from]!.warriors[faction];
         const dest = draft.map.clearings[to]!;
         dest.warriors[faction] = (dest.warriors[faction] ?? 0) + count;
+        if (hasAllianceSympathy(draft, to)) {
+          enqueueOutrage(draft, faction, to, 'moveIntoSympathy');
+        }
         discardCrafted(draft, faction, action.cardId);
         draft.log.push({
           turn: draft.turn, faction,
@@ -274,6 +279,9 @@ export function cardEffectsReducer(state: GameState, action: CardAction): GameSt
           delete draft.map.clearings[from]!.warriors[faction];
         const dest = draft.map.clearings[to]!;
         dest.warriors[faction] = (dest.warriors[faction] ?? 0) + count;
+        if (hasAllianceSympathy(draft, to)) {
+          enqueueOutrage(draft, faction, to, 'moveIntoSympathy');
+        }
         returnCraftedToHand(draft, faction, action.cardId);
         draft.log.push({
           turn: draft.turn, faction,
@@ -344,6 +352,9 @@ export function cardEffectsReducer(state: GameState, action: CardAction): GameSt
         if (draft.map.clearings[from]!.warriors[faction] === 0)
           delete draft.map.clearings[from]!.warriors[faction];
         draft.map.clearings[to]!.warriors[faction] = (draft.map.clearings[to]!.warriors[faction] ?? 0) + count;
+        if (hasAllianceSympathy(draft, to)) {
+          enqueueOutrage(draft, faction, to, 'moveIntoSympathy');
+        }
         draft.lastMoveClearing = to;
         returnCraftedToHand(draft, faction, action.cardId);
         draft.log.push({ turn: draft.turn, faction, message: `Supply Train: moved ${count} from clearing ${from} to ${to}.` });
@@ -401,6 +412,9 @@ export function cardEffectsReducer(state: GameState, action: CardAction): GameSt
         if (draft.map.clearings[from]!.warriors[faction] === 0)
           delete draft.map.clearings[from]!.warriors[faction];
         draft.map.clearings[to]!.warriors[faction] = (draft.map.clearings[to]!.warriors[faction] ?? 0) + count;
+        if (hasAllianceSympathy(draft, to)) {
+          enqueueOutrage(draft, faction, to, 'moveIntoSympathy');
+        }
         returnCraftedToHand(draft, faction, action.cardId);
         draft.log.push({ turn: draft.turn, faction, message: `Tactician: moved ${count} to clearing ${to} before battle.` });
       });
@@ -540,10 +554,10 @@ export function cardEffectsReducer(state: GameState, action: CardAction): GameSt
         const hi = draft.hands[faction].indexOf(action.craftCardId);
         if (hi >= 0) draft.hands[faction].splice(hi, 1);
         // Apply crafting effect (same as each faction's craft handler).
-        if (craftCard.craftVp) draft.scores[faction] = (draft.scores[faction] ?? 0) + craftCard.craftVp;
+        if (craftCard.craftVp) awardVictoryPoints(draft, faction, craftCard.craftVp, `crafting ${craftCard.name}`);
         if (craftCard.item) draft.itemSupply.push(craftCard.item);
         if (craftCard.category === 'persistent') draft.craftedPersistents.push({ faction, cardId: action.craftCardId });
-        else draft.discard.push(action.craftCardId);
+        else discardCard(draft, action.craftCardId);
         // Draw a card for successful craft.
         drawCard(draft, faction);
         draft.log.push({ turn: draft.turn, faction, message: `Apprentice: crafted ${craftCard.name} for free and drew a card.` });
@@ -567,13 +581,16 @@ export function cardEffectsReducer(state: GameState, action: CardAction): GameSt
         if (draft.map.clearings[from]!.warriors[faction] === 0)
           delete draft.map.clearings[from]!.warriors[faction];
         draft.map.clearings[to]!.warriors[faction] = (draft.map.clearings[to]!.warriors[faction] ?? 0) + count;
+        if (hasAllianceSympathy(draft, to)) {
+          enqueueOutrage(draft, faction, to, 'moveIntoSympathy');
+        }
         returnCraftedToHand(draft, faction, action.cardId);
         draft.log.push({ turn: draft.turn, faction, message: `Silver-Tongue: moved ${count} from clearing ${from} to ${to}.` });
       });
     }
 
     // ── Brazen Demagogue (evening, crafted persistent) ────────────────────────
-    // Discard a matching-suit card and take a dominance card from the deck or discard pile.
+    // Discard a matching-suit card and take an available dominance card.
     case 'card.brazenDemagogue': {
       if (state.phase !== 'evening') return state;
       const entry = state.craftedPersistents.find(
@@ -581,22 +598,13 @@ export function cardEffectsReducer(state: GameState, action: CardAction): GameSt
       );
       if (!entry) return state;
       if (!hasCard(state, faction, action.spendCard)) return state;
-      // takeDominance must be a dominance card found in the deck or discard.
-      const inDeck = state.deck.includes(action.takeDominance);
-      const inDiscard = state.discard.includes(action.takeDominance);
-      if (!inDeck && !inDiscard) return state;
+      if (!state.dominanceAvailable.includes(action.takeDominance)) return state;
       const spendCardData = getCard(action.spendCard);
-      if (spendCardData.suit !== 'fox' && spendCardData.suit !== 'bird') return state;
+      const dominanceCard = getCard(action.takeDominance);
+      if (spendCardData.suit !== dominanceCard.suit && spendCardData.suit !== 'bird') return state;
       return produce(state, draft => {
         discard(draft, faction, action.spendCard);
-        // Remove the dominance card from deck or discard and give it to the player.
-        const deckIdx = draft.deck.indexOf(action.takeDominance);
-        if (deckIdx >= 0) {
-          draft.deck.splice(deckIdx, 1);
-        } else {
-          const discardIdx = draft.discard.indexOf(action.takeDominance);
-          if (discardIdx >= 0) draft.discard.splice(discardIdx, 1);
-        }
+        draft.dominanceAvailable.splice(draft.dominanceAvailable.indexOf(action.takeDominance), 1);
         draft.hands[faction].push(action.takeDominance);
         draft.log.push({ turn: draft.turn, faction, message: `Brazen Demagogue: discarded ${spendCardData.name} to take a dominance card.` });
       });
@@ -903,16 +911,18 @@ export function cardEffectLegalActions(state: GameState): Action[] {
     }
   }
 
-  // Brazen Demagogue: evening — discard a fox card, take a dominance card from deck/discard.
+  // Brazen Demagogue: evening — take an available dominance card and discard
+  // a matching-suit card (birds are wild).
   if (state.phase === 'evening') {
     const bdId = hasCraftedPersistent(state, faction, 'Brazen Demagogue');
     if (bdId) {
-      const availDominance = [...state.deck, ...state.discard].filter(id => getCard(id).category === 'dominance');
+      const availDominance = state.dominanceAvailable;
       if (availDominance.length > 0) {
-        for (const hid of (state.hands[faction] ?? [])) {
-          const hc = getCard(hid);
-          if (hc.suit === 'fox' || hc.suit === 'bird') {
-            for (const domId of availDominance)
+        for (const domId of availDominance) {
+          const dominance = getCard(domId);
+          for (const hid of (state.hands[faction] ?? [])) {
+            const hc = getCard(hid);
+            if (hc.suit === dominance.suit || hc.suit === 'bird')
               out.push({ kind: 'card.brazenDemagogue', faction, cardId: bdId as CardId, spendCard: hid, takeDominance: domId });
           }
         }

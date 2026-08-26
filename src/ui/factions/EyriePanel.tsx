@@ -5,7 +5,7 @@
 import type { GameState, Action, CardSuit } from '../../engine/types';
 import { getCard } from '../../engine/cards';
 import { activeFaction } from '../../engine/loop';
-import type { DecreeSlot, EyrieLeader } from '../../engine/factions/eyrie/state';
+import { ROOST_VP_TRACK, type DecreeSlot, type EyrieLeader } from '../../engine/factions/eyrie/state';
 import { CraftedCards } from './CraftedCards';
 import { DominanceBadge } from './DominanceBadge';
 
@@ -75,6 +75,11 @@ export function EyriePanel({ state, isHuman, dispatch: _dispatch }: Props) {
       {e.leader && (
         <div className="eyrie-leader-ability">{LEADER_ABILITY[e.leader]}</div>
       )}
+      <div className="faction-projection">
+        <strong>Evening VP by roost count</strong>
+        <span>Now: {ROOST_VP_TRACK[Math.min(e.roosts.length, ROOST_VP_TRACK.length - 1)] ?? 0} VP</span>
+        <span>At 1 / 2 / 3 / 4 roosts: {ROOST_VP_TRACK.slice(1, 5).join(' / ')} VP</span>
+      </div>
 
       {isEyrieBirdsong && e.needsLeaderChoice && (
         <div className="eyrie-choose-leader-hint">Choose your leader in the action panel →</div>

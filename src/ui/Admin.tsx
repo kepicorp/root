@@ -13,8 +13,19 @@ interface RoomInfo {
   createdAt: number;
   lastActivityAt: number;
   started: boolean;
+  paused: boolean;
+  historyCount: number;
   hasActiveSubscribers: boolean;
   claimedFactions: Faction[];
+}
+
+interface RoomHistoryInfo {
+  id: number;
+  createdAt: number;
+  logIndex: number;
+  turn: number;
+  faction: Faction | 'system';
+  message: string;
 }
 
 function formatDuration(ms: number): string {
@@ -58,6 +69,10 @@ export function Admin() {
   const [pruneDays, setPruneDays] = useState(90);
   const [pruneDry, setPruneDry] = useState(true);
   const [pruneResult, setPruneResult] = useState<string | null>(null);
+  const [roomActionResult, setRoomActionResult] = useState<string | null>(null);
+  const [historyRoomId, setHistoryRoomId] = useState<string | null>(null);
+  const [historyEntries, setHistoryEntries] = useState<RoomHistoryInfo[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   // Validate the stored token on mount.
   useEffect(() => {
@@ -116,6 +131,10 @@ export function Admin() {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const body = await r.json() as { rooms: RoomInfo[] };
       setRooms(body.rooms);
+      if (historyRoomId && !body.rooms.some((room) => room.id === historyRoomId)) {
+        setHistoryRoomId(null);
+        setHistoryEntries([]);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -123,10 +142,88 @@ export function Admin() {
     }
   }
 
+  async function inspectHistory(id: string): Promise<void> {
+    if (historyRoomId === id) {
+      setHistoryRoomId(null);
+      setHistoryEntries([]);
+      return;
+    }
+    setHistoryLoading(true);
+    setError(null);
+    try {
+      const r = await api(`/api/admin/rooms/${id}/history`, token);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const body = await r.json() as { history: RoomHistoryInfo[] };
+      setHistoryRoomId(id);
+      setHistoryEntries(body.history.slice().sort((a, b) => b.id - a.id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  async function restoreToHistoryEvent(roomId: string, entry: RoomHistoryInfo): Promise<void> {
+    const ok = confirm(
+      `Restore room ${roomId} to log #${entry.logIndex + 1} (turn ${entry.turn}, ${entry.faction}: ${entry.message})?`,
+    );
+    if (!ok) return;
+    setRoomActionResult(null);
+    const r = await api(`/api/admin/rooms/${roomId}/restore-history`, token, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entryId: entry.id }),
+    });
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({ error: `HTTP ${r.status}` })) as { error?: string };
+      setError(body.error ?? `Failed to restore room ${roomId}`);
+      return;
+    }
+    setRoomActionResult(`Restored room ${roomId} to turn ${entry.turn} log event.`);
+    await inspectHistory(roomId);
+    refresh();
+  }
+
   async function deleteRoom(id: string): Promise<void> {
     if (!confirm(`Delete room ${id}? This cannot be undone.`)) return;
     const r = await api(`/api/admin/rooms/${id}`, token, { method: 'DELETE' });
     if (!r.ok && r.status !== 404) { setError(`Failed to delete ${id}`); return; }
+    refresh();
+  }
+
+  async function pauseRoom(id: string): Promise<void> {
+    setRoomActionResult(null);
+    const r = await api(`/api/admin/rooms/${id}/pause`, token, { method: 'POST' });
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({ error: `HTTP ${r.status}` })) as { error?: string };
+      setError(body.error ?? `Failed to pause room ${id}`);
+      return;
+    }
+    setRoomActionResult(`Paused room ${id}.`);
+    refresh();
+  }
+
+  async function refreshPausedRoom(id: string): Promise<void> {
+    setRoomActionResult(null);
+    const r = await api(`/api/admin/rooms/${id}/refresh`, token, { method: 'POST' });
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({ error: `HTTP ${r.status}` })) as { error?: string };
+      setError(body.error ?? `Failed to refresh room ${id}`);
+      return;
+    }
+    setRoomActionResult(`Refreshed room ${id} from paused snapshot.`);
+    refresh();
+  }
+
+  async function resumeRoom(id: string): Promise<void> {
+    setRoomActionResult(null);
+    const r = await api(`/api/admin/rooms/${id}/resume`, token, { method: 'POST' });
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({ error: `HTTP ${r.status}` })) as { error?: string };
+      setError(body.error ?? `Failed to resume room ${id}`);
+      return;
+    }
+    setRoomActionResult(`Resumed room ${id}.`);
     refresh();
   }
 
@@ -228,7 +325,11 @@ export function Admin() {
 
       <section className="admin-section">
         <h2>Rooms ({rooms.length})</h2>
+        <p className="dim">
+          For server code patches: Pause a room, restart the server process, then use Refresh room and Resume.
+        </p>
         {error && <div className="admin-error">{error}</div>}
+        {roomActionResult && <div className="admin-result">{roomActionResult}</div>}
         {rooms.length === 0 && !loading ? (
           <p className="dim">No rooms.</p>
         ) : (
@@ -241,6 +342,8 @@ export function Admin() {
                 <th>Last activity</th>
                 <th>Live</th>
                 <th>Seats</th>
+                <th>History</th>
+                <th>Controls</th>
                 <th></th>
               </tr>
             </thead>
@@ -248,7 +351,12 @@ export function Admin() {
               {rooms.map((r) => (
                 <tr key={r.id}>
                   <td><code>{r.id}</code></td>
-                  <td>{r.started ? <span className="pill pill-active">in-game</span> : <span className="pill pill-idle">lobby</span>}</td>
+                  <td>
+                    {r.started
+                      ? <span className="pill pill-active">in-game</span>
+                      : <span className="pill pill-idle">lobby</span>}
+                    {r.paused ? <span className="pill pill-idle" style={{ marginLeft: 8 }}>paused</span> : null}
+                  </td>
                   <td title={fmtAbs(r.createdAt)}>{fmtRel(r.createdAt)}</td>
                   <td title={fmtAbs(r.lastActivityAt)}>{fmtRel(r.lastActivityAt)}</td>
                   <td>{r.hasActiveSubscribers ? <span className="dot dot-live" /> : <span className="dot dot-cold" />}</td>
@@ -261,6 +369,32 @@ export function Admin() {
                       ))}
                   </td>
                   <td>
+                    <button
+                      className="btn ghost"
+                      disabled={historyLoading}
+                      onClick={() => inspectHistory(r.id)}
+                    >
+                      {historyRoomId === r.id ? 'Hide' : `Inspect (${r.historyCount})`}
+                    </button>
+                  </td>
+                  <td>
+                    {r.started && !r.paused && (
+                      <button className="btn ghost" onClick={() => pauseRoom(r.id)}>
+                        Pause
+                      </button>
+                    )}
+                    {r.started && r.paused && (
+                      <>
+                        <button className="btn ghost" onClick={() => refreshPausedRoom(r.id)}>
+                          Refresh room
+                        </button>
+                        <button className="btn primary" onClick={() => resumeRoom(r.id)} style={{ marginLeft: 8 }}>
+                          Resume
+                        </button>
+                      </>
+                    )}
+                  </td>
+                  <td>
                     <button className="btn danger" onClick={() => deleteRoom(r.id)}>
                       Delete
                     </button>
@@ -269,6 +403,31 @@ export function Admin() {
               ))}
             </tbody>
           </table>
+        )}
+        {historyRoomId && (
+          <div className="admin-history-panel">
+            <div className="admin-history-head">
+              <h3>Room history: <code>{historyRoomId}</code></h3>
+              {historyLoading && <span className="dim">Loading…</span>}
+            </div>
+            {historyEntries.length === 0 ? (
+              <p className="dim">No recorded events yet.</p>
+            ) : (
+              <div className="admin-history-list">
+                {historyEntries.map((entry) => (
+                  <button
+                    key={entry.id}
+                    className="admin-history-item"
+                    onClick={() => restoreToHistoryEvent(historyRoomId, entry)}
+                    title={`Restore to event ${entry.id}`}
+                  >
+                    <span className="admin-history-meta">#{entry.logIndex + 1} · turn {entry.turn} · {entry.faction} · {fmtAbs(entry.createdAt)}</span>
+                    <span className="admin-history-message">{entry.message}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </section>
     </div>

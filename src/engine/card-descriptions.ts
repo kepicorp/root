@@ -26,8 +26,8 @@ const BY_NAME: Record<string, string> = {
   'Gently Used Knapsack': 'Craft → Bag (1 VP). Bags raise the Vagabond\'s hand-size cap.',
   'Mouse-in-a-Sack':      'Craft → Bag (1 VP).',
   'Root Tea':             'Craft → Tea (2 VP). Tea refreshes one extra exhausted item each birdsong.',
-  'Anvil':                'Craft → Coin (2 VP). Coins let the Vagabond draw extra cards on evening.',
-  'Investments':          'Craft → Torch (1 VP). Torches let the Vagabond explore ruins.',
+  'Anvil':                'Craft → Hammer (2 VP). Hammers repair damaged Vagabond items.',
+  'Investments':          'Craft → Coin (2 VP). Coins let the Vagabond draw extra cards on evening.',
 
   // ── Persistent: combat modifiers ──────────────────────────────────────────
   'Armorers':       'Battle (defender): discard to ignore ALL rolled hits taken this battle.',

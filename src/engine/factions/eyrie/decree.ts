@@ -21,11 +21,22 @@ export function eyrieRules(state: GameState, clearing: ClearingId): boolean {
   for (const [f, w] of Object.entries(cl.warriors)) counts[f] = (counts[f] ?? 0) + (w ?? 0);
   for (const b of cl.buildings) counts[b.faction] = (counts[b.faction] ?? 0) + 1;
   const mine = counts.eyrie ?? 0;
+  const eyrieWarriors = cl.warriors.eyrie ?? 0;
   let topOther = 0;
   for (const [f, n] of Object.entries(counts)) {
     if (f !== 'eyrie' && n > topOther) topOther = n;
   }
-  return mine > 0 && mine >= topOther;
+  if (mine <= 0) return false;
+  if (mine > topOther) return true;
+  if (eyrieWarriors <= 0) return false;
+  // In ties for total presence, require Eyrie to match the tied factions'
+  // warrior count to claim rule.
+  for (const [f, n] of Object.entries(counts)) {
+    if (f === 'eyrie' || n !== mine) continue;
+    const otherWarriors = cl.warriors[f as keyof typeof cl.warriors] ?? 0;
+    if (eyrieWarriors < otherWarriors) return false;
+  }
+  return true;
 }
 
 export function suitMatches(cardSuit: string, clearingSuit: string): boolean {

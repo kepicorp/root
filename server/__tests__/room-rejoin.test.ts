@@ -20,25 +20,55 @@ describe('Room — rejoin tokens', () => {
     const room = new Room('test');
     room.connect('c1', 'Alice', sub());
     room.connect('c2', 'Bob', sub());
-    room.setAutoFillBots('c1', false);
     room.claimSeat('c1', 'marquise');
     room.claimSeat('c2', 'eyrie');
     expect(room.startGame()).toBeNull();
     const snap = room.snapshotFor('c1');
     expect(snap.state.factionOrder).toEqual(['marquise', 'eyrie']);
-    expect(snap.lobby.autoFillBots).toBe(false);
+    expect(snap.lobby.seatPlans.marquise).toBe('human');
+    expect(snap.lobby.seatPlans.eyrie).toBe('human');
   });
 
   it('can start a bot-filled game with fewer than four claimed seats', () => {
     const room = new Room('test');
     room.connect('c1', 'Alice', sub());
     room.connect('c2', 'Bob', sub());
-    room.setAutoFillBots('c1', true);
     room.claimSeat('c1', 'marquise');
     room.claimSeat('c2', 'eyrie');
+    room.setSeatPlan('c1', 'alliance', 'bot');
+    room.setSeatPlan('c1', 'vagabond', 'bot');
     expect(room.startGame()).toBeNull();
     const snap = room.snapshotFor('c1');
     expect(snap.state.factionOrder).toEqual(['marquise', 'eyrie', 'alliance', 'vagabond']);
+  });
+
+  it('only host can change seat plans and assign seats before start', () => {
+    const room = new Room('test');
+    room.connect('c1', 'Host', sub());
+    room.connect('c2', 'Guest', sub());
+    expect(room.setSeatPlan('c2', 'alliance', 'bot')).toBe('only host can configure seats');
+    expect(room.assignSeat('c2', 'marquise', 'c2')).toBe('only host can assign seats');
+
+    expect(room.setSeatPlan('c1', 'marquise', 'human')).toBeNull();
+    expect(room.assignSeat('c1', 'marquise', 'c2')).toBeNull();
+    expect(room.snapshotFor('c2').yourFaction).toBe('marquise');
+  });
+
+  it('host can convert a bot seat to a human seat and reassign it when another user joins', () => {
+    const room = new Room('test');
+    room.connect('c1', 'Host', sub());
+    room.claimSeat('c1', 'marquise');
+    room.setSeatPlan('c1', 'eyrie', 'bot');
+    room.setSeatPlan('c1', 'alliance', 'bot');
+
+    room.connect('c2', 'Guest', sub());
+    expect(room.setSeatPlan('c1', 'eyrie', 'human')).toBeNull();
+    expect(room.assignSeat('c1', 'eyrie', 'c2')).toBeNull();
+    expect(room.startGame()).toBeNull();
+
+    const snap = room.snapshotFor('c1');
+    expect(snap.state.factionOrder).toEqual(['marquise', 'eyrie', 'alliance']);
+    expect(room.snapshotFor('c2').yourFaction).toBe('eyrie');
   });
 
   it('lobby disconnect frees the seat (no stickiness before startGame)', () => {
@@ -124,7 +154,7 @@ describe('Room — rejoin tokens', () => {
 
     const persisted = room.toSnapshot();
     expect(persisted.seats.marquise).toEqual({ token, displayName: 'Alice' });
-    expect(persisted.autoFillBots).toBe(true);
+    expect(persisted.autoFillBots).toBe(false);
 
     const revived = Room.fromSnapshot(persisted);
     revived.connect('cFresh', 'Outsider', sub());

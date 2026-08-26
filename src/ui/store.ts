@@ -2,8 +2,8 @@ import { create } from 'zustand';
 import { produce } from 'immer';
 import type { GameState, Action, Faction, DeckVariant } from '../engine/types';
 import { newGame, reduce } from '../engine/state';
-import { startGame, checkVictory } from '../engine/loop';
-import { performSetup } from '../engine/setup';
+import { checkVictory } from '../engine/loop';
+import { getLegalActions } from '../engine/legal';
 import { checkCoalitionVictory } from '../engine/factions/vagabond/reducer';
 import type { VagabondCharacter } from '../engine/factions/vagabond/state';
 import { pickAction } from '../bots/bot';
@@ -48,6 +48,34 @@ function postAction(prev: GameState, next: GameState, scoreTick: Record<Faction,
   return { state: s, scoreTick: tick };
 }
 
+function autoAdvanceSystemSteps(
+  state: GameState,
+  scoreTick: Record<Faction, number>,
+): { state: GameState; scoreTick: Record<Faction, number> } {
+  let cur = state;
+  let tick = { ...scoreTick };
+  for (let i = 0; i < 48; i++) {
+    if (cur.phase === 'setup' || cur.phase === 'gameOver' || cur.winner) return { state: cur, scoreTick: tick };
+    if (cur.pendingPrompts.length > 0) return { state: cur, scoreTick: tick };
+    const legal = getLegalActions(cur);
+    if (legal.length === 0) return { state: cur, scoreTick: tick };
+    const hasNonSystem = legal.some((a) => !a.kind.startsWith('system.'));
+    if (hasNonSystem) return { state: cur, scoreTick: tick };
+
+    let next = cur;
+    if (legal.some((a) => a.kind === 'system.advancePhase')) {
+      next = reduce(cur, { kind: 'system.advancePhase' });
+    } else if (legal.some((a) => a.kind === 'system.endTurn')) {
+      next = reduce(cur, { kind: 'system.endTurn' });
+    }
+    if (next === cur) return { state: cur, scoreTick: tick };
+    const post = postAction(cur, next, tick);
+    cur = post.state;
+    tick = post.scoreTick;
+  }
+  return { state: cur, scoreTick: tick };
+}
+
 function saveToStorage(state: GameState, playerFaction: Faction | null): void {
   try {
     const payload: SavedGame = { state, playerFaction, version: 1 };
@@ -83,10 +111,11 @@ export const useGame = create<Store>((set, get) => ({
     const before = get().state;
     const after = reduce(before, action);
     const post = postAction(before, after, get().scoreTick);
+    const advanced = autoAdvanceSystemSteps(post.state, post.scoreTick);
     const prevHistory = get().history;
     const newHistory = [...prevHistory, before].slice(-20);
-    set({ state: post.state, scoreTick: post.scoreTick, history: newHistory });
-    saveToStorage(post.state, get().playerFaction);
+    set({ state: advanced.state, scoreTick: advanced.scoreTick, history: newHistory });
+    saveToStorage(advanced.state, get().playerFaction);
     scheduleAITurn();
   },
 
@@ -117,9 +146,13 @@ export const useGame = create<Store>((set, get) => ({
         }
       });
     }
-    const started = startGame(performSetup(base));
-    set({ state: started, playerFaction: faction, scoreTick: ZERO_TICK, history: [] });
-    saveToStorage(started, faction);
+    const withPreference = produce(base, draft => {
+      if (faction === 'vagabond' && opts?.vagabondCharacter && draft.setup) {
+        draft.setup.vagabondCharacterChosen = true;
+      }
+    });
+    set({ state: withPreference, playerFaction: faction, scoreTick: ZERO_TICK, history: [] });
+    saveToStorage(withPreference, faction);
     scheduleAITurn();
   },
 
@@ -153,30 +186,40 @@ function runOneAIAction(): void {
   aiTimer = null;
   const seq = ++aiSequence;
   const { state, playerFaction, scoreTick } = useGame.getState();
+  const startAdvanced = autoAdvanceSystemSteps(state, scoreTick);
+  if (startAdvanced.state !== state) {
+    useGame.setState({ state: startAdvanced.state, scoreTick: startAdvanced.scoreTick });
+    saveToStorage(startAdvanced.state, playerFaction);
+  }
+  const current = useGame.getState();
+  const activeState = current.state;
+  const activeScoreTick = current.scoreTick;
   if (state.winner) return;
-  if (state.phase === 'setup' || state.phase === 'gameOver') return;
+  if (activeState.winner) return;
+  if (activeState.phase === 'gameOver') return;
   // Pending prompts (e.g. defender ambush) freeze the active-faction
   // check — the respondent answers instead. Wait if it's the human.
-  if (state.pendingPrompts.length > 0) {
-    const respondent = state.pendingPrompts[0]!.faction;
+  if (activeState.pendingPrompts.length > 0) {
+    const respondent = activeState.pendingPrompts[0]!.faction;
     if (respondent === playerFaction) return;
   } else {
-    const active = state.factionOrder[state.activeIndex];
+    const active = activeState.factionOrder[activeState.activeIndex];
     if (active === playerFaction) return;
   }
-  const action = pickAction(state);
+  const action = pickAction(activeState);
   if (!action) return;
   // Safety: never dispatch a faction-prefixed action for the human player's faction.
   if (playerFaction && action.kind.startsWith(`${playerFaction}.`)) return;
-  let next = reduce(state, action);
-  if (next === state) {
+  let next = reduce(activeState, action);
+  if (next === activeState) {
     // Reducer rejected — force phase advance.
-    next = reduce(state, { kind: 'system.advancePhase' });
-    if (next === state) return;
+    next = reduce(activeState, { kind: 'system.advancePhase' });
+    if (next === activeState) return;
   }
-  const post = postAction(state, next, scoreTick);
+  const post = postAction(activeState, next, activeScoreTick);
+  const advanced = autoAdvanceSystemSteps(post.state, post.scoreTick);
   if (seq !== aiSequence) return; // superseded by a reset
-  useGame.setState({ state: post.state, scoreTick: post.scoreTick });
-  saveToStorage(post.state, playerFaction);
+  useGame.setState({ state: advanced.state, scoreTick: advanced.scoreTick });
+  saveToStorage(advanced.state, playerFaction);
   scheduleAITurn();
 }

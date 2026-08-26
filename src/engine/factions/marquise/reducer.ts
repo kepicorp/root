@@ -1,15 +1,17 @@
 import { produce } from 'immer';
 import type { GameState, Action, ClearingId, Faction } from '../../types';
 import type { CardId } from '../../cards';
-import { getCard } from '../../cards';
+import { discardCard, getCard } from '../../cards';
 import type { CardSuit } from '../../types';
 import { AUTUMN_MAP, getAdjacent } from '../../map';
 import { declareBattle } from '../../combat';
 import { applyFavor } from '../../effects';
 import { onEnterBirdsong } from '../../loop';
 import { vpForBuilding, buildCost } from './scoring';
-import { canMeetCraftCost } from '../../craft-utils';
+import { canMeetCraftCost, spendCraftCost } from '../../craft-utils';
+import { enqueueOutrage, hasAllianceSympathy } from '../../outrage';
 import type { MarquiseAction } from './actions';
+import { awardVictoryPoints } from '../../victory';
 
 const ACTIVE: Faction = 'marquise';
 
@@ -35,7 +37,8 @@ function rules(state: GameState, clearing: ClearingId): boolean {
   return mine > 0 && mine > topOther;
 }
 
-/** Wood reachable from `clearing` via Marquise-ruled clearings, returns clearing ids holding wood. */
+/** Wood reachable from `clearing` through a connected network of Marquise-ruled clearings.
+ *  Returns one entry per reachable wood token (clearing IDs may repeat). */
 function reachableSawmillWood(state: GameState, clearing: ClearingId): ClearingId[] {
   const visited = new Set<ClearingId>([clearing]);
   const queue: ClearingId[] = [clearing];
@@ -48,7 +51,7 @@ function reachableSawmillWood(state: GameState, clearing: ClearingId): ClearingI
     }
     for (const nb of getAdjacent(AUTUMN_MAP, id)) {
       if (visited.has(nb)) continue;
-      if (!rules(state, nb) && nb !== clearing) continue;
+      if (!rules(state, nb)) continue;
       visited.add(nb);
       queue.push(nb);
     }
@@ -78,7 +81,7 @@ function consumeCardFromHand(draft: GameState, cardId: CardId): boolean {
   const idx = draft.hands.marquise.indexOf(cardId);
   if (idx < 0) return false;
   draft.hands.marquise.splice(idx, 1);
-  draft.discard.push(cardId);
+  discardCard(draft, cardId);
   return true;
 }
 
@@ -93,9 +96,7 @@ function marquiseCraftableCards(state: GameState): CardId[] {
   }
   // Subtract power already consumed this turn.
   for (const craftedId of m.craftedThisTurn) {
-    for (const [s, n] of Object.entries(getCard(craftedId).craftCost)) {
-      power[s as CardSuit] = Math.max(0, (power[s as CardSuit] ?? 0) - (n ?? 0));
-    }
+    if (!spendCraftCost(power, getCard(craftedId).craftCost)) return [];
   }
   const out: CardId[] = [];
   for (const cardId of state.hands.marquise) {
@@ -155,7 +156,7 @@ export function marquiseReducer(state: GameState, action: Action): GameState {
         cl.buildings.push({ faction: 'marquise', kind: a.building });
         m.buildings[a.building] += 1;
         const vp = vpForBuilding(a.building, m.buildings[a.building]);
-        draft.scores.marquise += vp;
+        awardVictoryPoints(draft, 'marquise', vp, 'removing enemy pieces with Field Hospitals');
         m.daylightActionsLeft -= 1;
         draft.log.push({
           turn: draft.turn,
@@ -232,13 +233,8 @@ export function marquiseReducer(state: GameState, action: Action): GameState {
         m.marchMovesLeft -= 1;
         draft.lastMoveClearing = a.to;
         draft.log.push({ turn: draft.turn, faction: 'marquise', message: `Marched ${n} from ${a.from} to ${a.to}.` });
-        // Outrage: if destination has Alliance sympathy, moving faction must pay
-        if (!draft.pendingOutrage) {
-          const destCl = draft.map.clearings[a.to]!;
-          if (destCl.tokens.some(t => t.faction === 'alliance' && t.kind === 'sympathy')) {
-            const destMeta = AUTUMN_MAP.clearings.find(c => c.id === a.to)!;
-            draft.pendingOutrage = { clearing: a.to, faction: 'marquise', suit: destMeta.suit as 'fox' | 'mouse' | 'rabbit' };
-          }
+        if (hasAllianceSympathy(draft, a.to)) {
+          enqueueOutrage(draft, 'marquise', a.to, 'moveIntoSympathy');
         }
       });
     }
@@ -300,14 +296,12 @@ export function marquiseReducer(state: GameState, action: Action): GameState {
           if (ws > 0) power[c.suit] = (power[c.suit] ?? 0) + ws;
         }
         for (const craftedId of m.craftedThisTurn) {
-          for (const [s, n] of Object.entries(getCard(craftedId).craftCost)) {
-            power[s as CardSuit] = Math.max(0, (power[s as CardSuit] ?? 0) - (n ?? 0));
-          }
+          if (!spendCraftCost(power, getCard(craftedId).craftCost)) return;
         }
         if (!canMeetCraftCost(power, card.craftCost)) return;
         if (!consumeCardFromHand(draft, a.cardId)) return;
         m.craftedThisTurn.push(a.cardId);
-        if (card.craftVp) draft.scores.marquise += card.craftVp;
+        if (card.craftVp) awardVictoryPoints(draft, 'marquise', card.craftVp, `crafting ${card.name}`);
         if (card.item) { draft.itemSupply.push(card.item); draft.craftedItemLog.push({ faction: 'marquise', item: card.item }); }
         if (card.category === 'persistent') draft.craftedPersistents.push({ faction: 'marquise', cardId: a.cardId });
         if (card.category === 'favor') applyFavor(draft, card.suit, 'marquise');
@@ -362,7 +356,7 @@ export function marquiseReducer(state: GameState, action: Action): GameState {
         const idx = draft.hands.marquise.indexOf(a.cardId);
         if (idx < 0) return;
         draft.hands.marquise.splice(idx, 1);
-        draft.discard.push(a.cardId);
+        discardCard(draft, a.cardId);
         m.pendingDiscard -= 1;
         if (m.pendingDiscard === 0) finishMarquiseTurn(draft, 0);
       });

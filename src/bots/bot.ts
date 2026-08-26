@@ -5,6 +5,7 @@
 import type { GameState, Action, Faction } from '../engine/types';
 import { getLegalActions } from '../engine/legal';
 import { pickEyrieAction } from './eyrie';
+import { AUTUMN_MAP, getAdjacent } from '../engine/map';
 
 /** Heuristic priorities — higher first. */
 const PRIORITY: Record<string, number> = {
@@ -18,6 +19,7 @@ const PRIORITY: Record<string, number> = {
   'marquise.finishCrafting':         20,
   'eyrie.chooseLeader':              95,   // must happen before decree adds
   'eyrie.resolveDecree':            100,   // only offered when turmoil is forced
+  'eyrie.resolveTurmoilStep':       110,
   'eyrie.executeRecruit':           100,
   'eyrie.executeMove':               90,
   'eyrie.executeBattle':             85,
@@ -47,6 +49,9 @@ const PRIORITY: Record<string, number> = {
   'alliance.recruit':                70,
   // Combat prompts — bot ambushes when it can, otherwise skips.
   'combat.playAmbush':               50,
+  'combat.chooseOptional':           40,
+  'combat.chooseRemovalPieces':      35,
+  'combat.resolveFieldHospitals':    30,
   'combat.skipAmbush':                5,
   // Discard resolution — high priority so a stuck bot clears it immediately
   'marquise.discardCard':            35,
@@ -56,6 +61,7 @@ const PRIORITY: Record<string, number> = {
   'vagabond.removeItem':             35,
   // Phase-ending fallbacks
   'eyrie.endBirdsong':               65,  // higher than addToDecree so bot adds 1 card then stops
+  'eyrie.endCrafting':                65,
   'marquise.endDaylight':             1,
   'alliance.endDaylight':             1,
   'vagabond.payRelationshipCost':     30, // prefer paying to preserve relationships
@@ -70,9 +76,108 @@ const PRIORITY: Record<string, number> = {
   'system.endTurn':                   2,
 };
 
+function seededJitter(state: GameState, salt: number): number {
+  const x = (Math.imul(state.seed >>> 0, 1664525) + Math.imul((state.rngStep + 1 + salt) >>> 0, 1013904223)) >>> 0;
+  return (x % 1000) / 1000;
+}
+
+function pickSetupAction(state: GameState, legals: Action[]): Action | null {
+  if (legals.length === 0) return null;
+
+  const cornerChoices = legals.filter((a): a is Extract<Action, { kind: 'marquise.setupChooseCorner' }> => a.kind === 'marquise.setupChooseCorner');
+  if (cornerChoices.length > 0) {
+    let best = cornerChoices[0]!;
+    let bestScore = -Infinity;
+    for (const choice of cornerChoices) {
+      const targets = [choice.clearing, ...getAdjacent(AUTUMN_MAP, choice.clearing)];
+      const slotScore = targets.reduce((sum, id) => {
+        const meta = AUTUMN_MAP.clearings.find((c) => c.id === id);
+        return sum + (meta?.buildingSlots ?? 0);
+      }, 0);
+      const score = slotScore + seededJitter(state, choice.clearing);
+      if (score > bestScore) {
+        bestScore = score;
+        best = choice;
+      }
+    }
+    return best;
+  }
+
+  const setupBuildings = legals.filter((a): a is Extract<Action, { kind: 'marquise.setupPlaceBuilding' }> => a.kind === 'marquise.setupPlaceBuilding');
+  if (setupBuildings.length > 0) {
+    const buildingBase: Record<'sawmill' | 'workshop' | 'recruiter', number> = {
+      sawmill: 6,
+      recruiter: 5,
+      workshop: 4,
+    };
+    let best = setupBuildings[0]!;
+    let bestScore = -Infinity;
+    for (const choice of setupBuildings) {
+      const degree = getAdjacent(AUTUMN_MAP, choice.clearing).length;
+      const suit = AUTUMN_MAP.clearings.find((c) => c.id === choice.clearing)?.suit;
+      const suitBonus = suit === 'rabbit' ? 0.3 : 0;
+      const score = buildingBase[choice.building] + degree * 0.25 + suitBonus + seededJitter(state, choice.clearing * 11);
+      if (score > bestScore) {
+        bestScore = score;
+        best = choice;
+      }
+    }
+    return best;
+  }
+
+  const leaders = legals.filter((a): a is Extract<Action, { kind: 'eyrie.setupChooseLeader' }> => a.kind === 'eyrie.setupChooseLeader');
+  if (leaders.length > 0) {
+    const weights: Record<string, number> = { charismatic: 4, commander: 3, despot: 2, builder: 2 };
+    let best = leaders[0]!;
+    let bestScore = -Infinity;
+    for (const choice of leaders) {
+      const score = (weights[choice.leader] ?? 1) + seededJitter(state, choice.leader.length * 13);
+      if (score > bestScore) {
+        bestScore = score;
+        best = choice;
+      }
+    }
+    return best;
+  }
+
+  const vagabondChars = legals.filter((a): a is Extract<Action, { kind: 'vagabond.setupChooseCharacter' }> => a.kind === 'vagabond.setupChooseCharacter');
+  if (vagabondChars.length > 0) {
+    let best = vagabondChars[0]!;
+    let bestScore = -Infinity;
+    for (const choice of vagabondChars) {
+      const score = (choice.character === 'thief' ? 0.25 : 0) + seededJitter(state, choice.character.length * 17);
+      if (score > bestScore) {
+        bestScore = score;
+        best = choice;
+      }
+    }
+    return best;
+  }
+
+  const vagabondRuins = legals.filter((a): a is Extract<Action, { kind: 'vagabond.setupChooseRuin' }> => a.kind === 'vagabond.setupChooseRuin');
+  if (vagabondRuins.length > 0) {
+    let best = vagabondRuins[0]!;
+    let bestScore = -Infinity;
+    for (const choice of vagabondRuins) {
+      const degree = getAdjacent(AUTUMN_MAP, choice.clearing).length;
+      const score = degree * 0.35 + seededJitter(state, choice.clearing * 19);
+      if (score > bestScore) {
+        bestScore = score;
+        best = choice;
+      }
+    }
+    return best;
+  }
+
+  return legals[0] ?? null;
+}
+
 export function pickAction(state: GameState): Action | null {
   const legals = getLegalActions(state);
   if (legals.length === 0) return null;
+  if (state.phase === 'setup') {
+    return pickSetupAction(state, legals);
+  }
   // Faction-specific picker overrides the priority table where the priority
   // table is too coarse — Eyrie Decree composition is the obvious one.
   const active = state.factionOrder[state.activeIndex];
@@ -95,7 +200,7 @@ export function playUntilHuman(
   let s = state;
   for (let i = 0; i < maxSteps; i++) {
     if (s.winner) return s;
-    if (s.phase === 'setup' || s.phase === 'gameOver') return s;
+    if (s.phase === 'gameOver') return s;
     const active = s.factionOrder[s.activeIndex];
     if (active === humanFaction) return s;
     // Also stop when the human must respond to a pending prompt (e.g. defender ambush).

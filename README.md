@@ -58,8 +58,6 @@ npm run dev
 
 Open <http://localhost:5173>, pick a faction, and play.
 
-Note: If you previously ran the build command, this may also start the server side. Delete the `/dist` folder to stop this.
-
 ### Hosted (both development and server, no Docker)
 
 ```bash

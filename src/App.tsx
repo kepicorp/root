@@ -3,6 +3,9 @@ import { Board, type MapIntent } from './ui/Board';
 import { Hand } from './ui/Hand';
 import { DiscardPicker } from './ui/DiscardPicker';
 import { AmbushPrompt } from './ui/AmbushPrompt';
+import { BattleOverlay } from './ui/BattleOverlay';
+import { CombatOptionalPrompt } from './ui/CombatOptionalPrompt';
+import { CombatFieldHospitalsPrompt, CombatRemovalOrderPrompt } from './ui/CombatBattlePrompts';
 import { ActionBar } from './ui/ActionBar';
 import { Log } from './ui/Log';
 import { Scoreboard } from './ui/Scoreboard';
@@ -31,6 +34,7 @@ export function App() {
   const site = useSiteAuth();
   useUserAssetPackVersion();
   const [offlineRequested, setOfflineRequested] = useState(false);
+  const [completedBattleOverlayId, setCompletedBattleOverlayId] = useState<string | null>(null);
   const [mapIntent, setMapIntent] = useState<MapIntent | null>(null);
   const [rightPaneWidth, setRightPaneWidth] = useState(380);
   const [handPaneWidth, setHandPaneWidth] = useState(420);
@@ -41,7 +45,6 @@ export function App() {
   const localDispatch = useGame((s) => s.dispatch);
   const undo = useGame((s) => s.undo);
   const canUndo = useGame((s) => s.history.length > 0);
-  const begin = useGame((s) => s.begin);
   const reset = useGame((s) => s.reset);
   const loadSnapshot = useGame((s) => s.loadSnapshot);
 
@@ -165,8 +168,9 @@ export function App() {
     if (!seatClientId) return 'AI';
     return net.lobby.players.find(p => p.clientId === seatClientId)?.displayName ?? 'AI';
   })();
+  const isPaused = online && net.lobby?.paused === true;
 
-  if (!state || state.phase === 'setup') {
+  if (!state || (!online && localPlayerFaction == null && state.phase === 'setup')) {
     return (
       <div className="app setup-only">
         <header className="app-header">
@@ -242,7 +246,6 @@ export function App() {
           playerFaction={playerFaction}
           activeTurnName={activeTurnName}
           dispatch={dispatch}
-          onBegin={begin}
           mapIntent={mapIntent}
           setMapIntent={setMapIntent}
           onUndo={online ? undefined : undo}
@@ -281,6 +284,17 @@ export function App() {
 
       <DiscardPicker state={state} playerFaction={playerFaction} dispatch={dispatch} />
       <AmbushPrompt state={state} playerFaction={playerFaction} dispatch={dispatch} />
+      <BattleOverlay state={state} onComplete={setCompletedBattleOverlayId} />
+      <CombatOptionalPrompt state={state} playerFaction={playerFaction} dispatch={dispatch} />
+      <CombatRemovalOrderPrompt state={state} playerFaction={playerFaction} dispatch={dispatch} />
+      {state.battleOverlay?.id === completedBattleOverlayId && (
+        <CombatFieldHospitalsPrompt state={state} playerFaction={playerFaction} dispatch={dispatch} />
+      )}
+      {isPaused && (
+        <div className="paused-overlay" role="alert" aria-live="assertive">
+          <div className="paused-overlay-card">Paused</div>
+        </div>
+      )}
     </div>
   );
 }

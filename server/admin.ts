@@ -18,8 +18,19 @@ export interface RoomInfo {
   createdAt: number;
   lastActivityAt: number;
   started: boolean;
+  paused: boolean;
+  historyCount: number;
   hasActiveSubscribers: boolean;
   claimedFactions: Faction[];
+}
+
+export interface RoomHistoryInfo {
+  id: number;
+  createdAt: number;
+  logIndex: number;
+  turn: number;
+  faction: Faction | 'system';
+  message: string;
 }
 
 function send(res: ServerResponse, status: number, body: unknown): void {
@@ -49,6 +60,8 @@ function roomInfo(manager: RoomManager): RoomInfo[] {
       createdAt: snap.createdAt,
       lastActivityAt: snap.lastActivityAt,
       started: snap.started,
+      paused: snap.paused,
+      historyCount: r.getHistorySummary().length,
       hasActiveSubscribers: r.hasActiveSubscribers(),
       claimedFactions: claimed,
     };
@@ -107,6 +120,105 @@ export async function handleAdmin(
     const id = path.slice('/api/admin/rooms/'.length);
     const removed = manager.delete(id);
     send(res, removed ? 200 : 404, { id, removed });
+    return true;
+  }
+
+  // POST /api/admin/rooms/:id/pause
+  if (req.method === 'POST' && path.startsWith('/api/admin/rooms/') && path.endsWith('/pause')) {
+    const id = path.slice('/api/admin/rooms/'.length, -'/pause'.length);
+    const room = manager.get(id);
+    if (!room) {
+      send(res, 404, { error: 'room not found', id });
+      return true;
+    }
+    const error = room.pauseByAdmin();
+    if (error) {
+      send(res, 400, { ok: false, id, error });
+      return true;
+    }
+    // Persist immediately so a server restart can recover this exact pause point.
+    manager.flush();
+    send(res, 200, { ok: true, id, paused: room.isPaused(), checkpointSaved: true });
+    return true;
+  }
+
+  // POST /api/admin/rooms/:id/resume
+  if (req.method === 'POST' && path.startsWith('/api/admin/rooms/') && path.endsWith('/resume')) {
+    const id = path.slice('/api/admin/rooms/'.length, -'/resume'.length);
+    const room = manager.get(id);
+    if (!room) {
+      send(res, 404, { error: 'room not found', id });
+      return true;
+    }
+    const error = room.resumeByAdmin();
+    if (error) {
+      send(res, 400, { ok: false, id, error });
+      return true;
+    }
+    send(res, 200, { ok: true, id, paused: room.isPaused() });
+    return true;
+  }
+
+  // POST /api/admin/rooms/:id/refresh
+  if (req.method === 'POST' && path.startsWith('/api/admin/rooms/') && path.endsWith('/refresh')) {
+    const id = path.slice('/api/admin/rooms/'.length, -'/refresh'.length);
+    const room = manager.get(id);
+    if (!room) {
+      send(res, 404, { error: 'room not found', id });
+      return true;
+    }
+    const error = room.refreshFromPauseSnapshotByAdmin();
+    if (error) {
+      send(res, 400, { ok: false, id, error });
+      return true;
+    }
+    send(res, 200, { ok: true, id, paused: room.isPaused() });
+    return true;
+  }
+
+  // GET /api/admin/rooms/:id/history
+  if (req.method === 'GET' && path.startsWith('/api/admin/rooms/') && path.endsWith('/history')) {
+    const id = path.slice('/api/admin/rooms/'.length, -'/history'.length);
+    const room = manager.get(id);
+    if (!room) {
+      send(res, 404, { error: 'room not found', id });
+      return true;
+    }
+    const history: RoomHistoryInfo[] = room.getHistorySummary().map((h) => ({
+      id: h.id,
+      createdAt: h.createdAt,
+      logIndex: h.logIndex,
+      turn: h.turn,
+      faction: h.faction,
+      message: h.message,
+    }));
+    send(res, 200, { id, history });
+    return true;
+  }
+
+  // POST /api/admin/rooms/:id/restore-history  body { entryId: number }
+  if (req.method === 'POST' && path.startsWith('/api/admin/rooms/') && path.endsWith('/restore-history')) {
+    const id = path.slice('/api/admin/rooms/'.length, -'/restore-history'.length);
+    const room = manager.get(id);
+    if (!room) {
+      send(res, 404, { error: 'room not found', id });
+      return true;
+    }
+    let body: { entryId?: number } = {};
+    try { body = (await readJsonBody(req)) as typeof body; }
+    catch (e) { send(res, 400, { error: String(e) }); return true; }
+    const entryId = Number(body.entryId);
+    if (!Number.isFinite(entryId) || entryId <= 0) {
+      send(res, 400, { error: 'entryId must be a positive number' });
+      return true;
+    }
+    const error = room.restoreHistoryEntryById(entryId);
+    if (error) {
+      send(res, 400, { ok: false, id, error });
+      return true;
+    }
+    manager.flush();
+    send(res, 200, { ok: true, id, restoredEntryId: entryId, paused: room.isPaused() });
     return true;
   }
 

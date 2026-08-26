@@ -6,7 +6,8 @@ import { join, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { Room, type RoomSnapshot } from './room';
 import { metrics } from './telemetry';
-import type { GameState } from '../src/engine/types';
+import type { Faction, GameState } from '../src/engine/types';
+import type { SeatAssignment } from './protocol';
 
 const ROOM_ID_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789'; // no l, i, o, 0, 1 to avoid confusion
 const ROOM_ID_LEN = 6;
@@ -17,7 +18,7 @@ export interface RoomManagerOptions {
 }
 
 export interface CreateRoomOptions {
-  autoFillBots?: boolean;
+  seatPlans?: Record<Faction, SeatAssignment>;
   pendingLoadedState?: GameState | null;
 }
 
@@ -49,7 +50,7 @@ export class RoomManager {
     let id = this.generateId();
     while (this.rooms.has(id)) id = this.generateId();
     const room = new Room(id, {
-      autoFillBots: opts.autoFillBots ?? true,
+      seatPlans: opts.seatPlans,
       pendingLoadedState: opts.pendingLoadedState ?? null,
     });
     room.onPersist((r) => this.schedulePersist(r));

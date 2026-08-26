@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { computeCombatOutcome, resolveCombat } from "../combat";
-import { newGame } from "../state";
+import { computeCombatOutcome, defenderAmbushOptions, resolveCombat } from "../combat";
+import { BASE_SHARED_DECK } from "../cards";
+import { newGame, reduce } from "../state";
 import type { ClearingState } from "../types";
 
 const emptyClearing = (
@@ -13,7 +14,26 @@ const emptyClearing = (
   ...overrides,
 });
 
+function cardIdByName(name: string): string {
+  const c = BASE_SHARED_DECK.find((x) => x.name === name);
+  if (!c) throw new Error(`Missing card in base deck: ${name}`);
+  return c.id;
+}
+
 describe("combat outcome (pure)", () => {
+  it("ignores redacted hand placeholders when finding ambush options", () => {
+    const base = newGame({ seed: 3 });
+    const state = {
+      ...base,
+      hands: {
+        ...base.hands,
+        eyrie: ['hidden'],
+      },
+    };
+
+    expect(defenderAmbushOptions(state, 1, "eyrie")).toEqual([]);
+  });
+
   it("attacker takes higher die, defender takes lower", () => {
     const c = emptyClearing({ warriors: { marquise: 5, eyrie: 5 } });
     const out = computeCombatOutcome(
@@ -259,6 +279,49 @@ describe("resolveCombat (state reducer)", () => {
       .flatMap((cl) => cl.tokens)
       .filter((t) => t.faction === "alliance" && t.kind === "sympathy").length;
     expect(after.factions.alliance!.sympathy.length).toBe(sympathyOnBoard);
+    expect(after.pendingOutrage).toMatchObject({
+      faction: 'marquise',
+      clearing: 1,
+      suit: 'fox',
+      trigger: 'sympathyRemoved',
+    });
+  });
+
+  it('resolves queued outrage with reveal+draw fallback before next payment', () => {
+    const mouseCard = BASE_SHARED_DECK.find((c) => c.suit === 'mouse')!.id;
+    const drawCard = BASE_SHARED_DECK.find((c) => c.suit === 'fox')!.id;
+    let s = newGame({ seed: 5 });
+    s = {
+      ...s,
+      hands: {
+        ...s.hands,
+        marquise: [mouseCard],
+      },
+      deck: [drawCard],
+      pendingOutrage: {
+        faction: 'marquise',
+        clearing: 3,
+        suit: 'rabbit',
+        trigger: 'moveIntoSympathy',
+      },
+      pendingOutrageQueue: [{
+        faction: 'marquise',
+        clearing: 4,
+        suit: 'mouse',
+        trigger: 'sympathyRemoved',
+      }],
+    };
+
+    let next = reduce(s, { kind: 'system.resolveOutrage' });
+    expect(next.factions.alliance!.supporters).toContain(drawCard);
+    expect(next.pendingOutrage).toMatchObject({ clearing: 4, suit: 'mouse', trigger: 'sympathyRemoved' });
+    expect(next.pendingOutrageQueue).toBeUndefined();
+    expect(next.log.some((e) => e.message.includes('revealed hand to Alliance'))).toBe(true);
+
+    next = reduce(next, { kind: 'system.resolveOutrage', cardId: mouseCard });
+    expect(next.pendingOutrage).toBeUndefined();
+    expect(next.factions.alliance!.supporters).toContain(mouseCard);
+    expect(next.hands.marquise).not.toContain(mouseCard);
   });
 
   it("clears alliance.bases entry when base is destroyed", () => {
@@ -296,14 +359,21 @@ describe("resolveCombat (state reducer)", () => {
 
   it("is deterministic for a given seed", () => {
     const make = () => {
-      let s = newGame({ seed: 42 });
-      s.map.clearings[1] = {
-        warriors: { marquise: 4, eyrie: 4 },
-        buildings: [],
-        tokens: [],
-        vagabondHere: false,
+      const s = newGame({ seed: 42 });
+      return {
+        ...s,
+        map: {
+          clearings: {
+            ...s.map.clearings,
+            1: {
+              warriors: { marquise: 4, eyrie: 4 },
+              buildings: [],
+              tokens: [],
+              vagabondHere: false,
+            },
+          },
+        },
       };
-      return s;
     };
     const a = resolveCombat(make(), {
       clearing: 1,
@@ -317,5 +387,501 @@ describe("resolveCombat (state reducer)", () => {
     });
     expect(a.scores).toEqual(b.scores);
     expect(a.map.clearings[1]!.warriors).toEqual(b.map.clearings[1]!.warriors);
+  });
+
+  it("rejects battle declarations when the attacker has no warriors in the clearing", () => {
+    let s = newGame({ seed: 19 });
+    s = {
+      ...s,
+      activeIndex: s.factionOrder.indexOf("marquise"),
+      phase: "daylight",
+      map: {
+        clearings: {
+          ...s.map.clearings,
+          1: {
+            warriors: { marquise: 0, eyrie: 3 },
+            buildings: [],
+            tokens: [],
+            vagabondHere: false,
+          },
+        },
+      },
+    };
+
+    const next = reduce(s, {
+      kind: "combat.declare",
+      clearing: 1,
+      attacker: "marquise",
+      defender: "eyrie",
+    });
+
+    expect(next).toBe(s);
+    expect(next.pendingPrompts).toHaveLength(0);
+    expect(next.map.clearings[1]!.warriors).toEqual({ marquise: 0, eyrie: 3 });
+  });
+
+  it("sequences optional combat prompts in deterministic order", () => {
+    const brutalId = cardIdByName("Brutal Tactics");
+    const sappersId = cardIdByName("Sappers");
+    const attackerArmorersId = cardIdByName("Armorers");
+
+    let s = newGame({ seed: 13 });
+    s = {
+      ...s,
+      activeIndex: s.factionOrder.indexOf("marquise"),
+      phase: "daylight",
+      hands: {
+        marquise: [],
+        eyrie: [],
+        alliance: [],
+        vagabond: [],
+      },
+      craftedPersistents: [
+        { faction: "marquise", cardId: brutalId },
+        { faction: "marquise", cardId: attackerArmorersId },
+        { faction: "eyrie", cardId: sappersId },
+      ],
+      map: {
+        clearings: {
+          ...s.map.clearings,
+          1: {
+            warriors: { marquise: 5, eyrie: 5 },
+            buildings: [],
+            tokens: [],
+            vagabondHere: false,
+          },
+        },
+      },
+    };
+
+    let next = reduce(s, {
+      kind: "combat.declare",
+      clearing: 1,
+      attacker: "marquise",
+      defender: "eyrie",
+    });
+
+    let prompt = next.pendingPrompts[0];
+    expect(prompt?.kind).toBe("combat.optionalEffect");
+    expect(prompt?.faction).toBe("marquise");
+    expect((prompt?.payload as { effect: string }).effect).toBe("useBrutalTactics");
+
+    next = reduce(next, {
+      kind: "combat.chooseOptional",
+      faction: "marquise",
+      effect: "useBrutalTactics",
+      use: false,
+    });
+
+    prompt = next.pendingPrompts[0];
+    expect(prompt?.kind).toBe("combat.optionalEffect");
+    expect(prompt?.faction).toBe("eyrie");
+    expect((prompt?.payload as { effect: string }).effect).toBe("useSappers");
+
+    next = reduce(next, {
+      kind: "combat.chooseOptional",
+      faction: "eyrie",
+      effect: "useSappers",
+      use: false,
+    });
+
+    prompt = next.pendingPrompts[0];
+    expect(prompt?.kind).toBe("combat.optionalEffect");
+    expect(prompt?.faction).toBe("marquise");
+    expect((prompt?.payload as { effect: string }).effect).toBe("useAttackerArmorers");
+  });
+
+  it("applies chosen optional effects and skips declined ones", () => {
+    const brutalId = cardIdByName("Brutal Tactics");
+
+    const makeBase = () => {
+      let s = newGame({ seed: 21 });
+      s = {
+        ...s,
+        activeIndex: s.factionOrder.indexOf("marquise"),
+        phase: "daylight",
+        hands: {
+          marquise: [],
+          eyrie: [],
+          alliance: [],
+          vagabond: [],
+        },
+        craftedPersistents: [{ faction: "marquise", cardId: brutalId }],
+        map: {
+          clearings: {
+            ...s.map.clearings,
+            1: {
+              warriors: { marquise: 5, eyrie: 5 },
+              buildings: [],
+              tokens: [],
+              vagabondHere: false,
+            },
+          },
+        },
+      };
+      return s;
+    };
+
+    const runWithChoice = (useBrutal: boolean) => {
+      let s = reduce(makeBase(), {
+        kind: "combat.declare",
+        clearing: 1,
+        attacker: "marquise",
+        defender: "eyrie",
+      });
+      const p = s.pendingPrompts[0];
+      expect(p?.kind).toBe("combat.optionalEffect");
+      expect((p?.payload as { effect: string }).effect).toBe("useBrutalTactics");
+      s = reduce(s, {
+        kind: "combat.chooseOptional",
+        faction: "marquise",
+        effect: "useBrutalTactics",
+        use: useBrutal,
+      });
+      expect(s.pendingPrompts.length).toBe(0);
+      return s;
+    };
+
+    const used = runWithChoice(true);
+    const skipped = runWithChoice(false);
+
+    expect(used.scores.eyrie).toBe(skipped.scores.eyrie + 1);
+    const usedLog = used.log[used.log.length - 1]?.message ?? "";
+    const skippedLog = skipped.log[skipped.log.length - 1]?.message ?? "";
+    expect(usedLog.includes("Brutal Tactics")).toBe(true);
+    expect(skippedLog.includes("Brutal Tactics")).toBe(false);
+  });
+
+  it("ends battle immediately when defender ambush wipes attacker warriors", () => {
+    const foxAmbush = cardIdByName("Ambush! (fox)");
+    let s = newGame({ seed: 33 });
+    s = {
+      ...s,
+      activeIndex: s.factionOrder.indexOf("marquise"),
+      phase: "daylight",
+      hands: {
+        ...s.hands,
+        eyrie: [foxAmbush],
+      },
+      map: {
+        clearings: {
+          ...s.map.clearings,
+          1: {
+            warriors: { marquise: 2, eyrie: 3 },
+            buildings: [],
+            tokens: [],
+            vagabondHere: false,
+          },
+        },
+      },
+    };
+
+    let next = reduce(s, {
+      kind: "combat.declare",
+      clearing: 1,
+      attacker: "marquise",
+      defender: "eyrie",
+    });
+    expect(next.pendingPrompts[0]?.kind).toBe("combat.defenderAmbush");
+
+    next = reduce(next, {
+      kind: "combat.playAmbush",
+      faction: "eyrie",
+      cardId: foxAmbush,
+    });
+
+    expect(next.pendingPrompts.length).toBe(0);
+    expect(next.battleOverlay?.endedByAmbush).toBe(true);
+    expect(next.battleOverlay?.dice).toEqual([0, 0]);
+    expect(next.rngStep).toBe(s.rngStep);
+    expect(next.factions.marquise?.warriorSupply).toBe((s.factions.marquise?.warriorSupply ?? 0) + 2);
+    expect(next.log.some((e) => e.message.includes("(no dice rolled)"))).toBe(true);
+    expect(next.log.some((e) => e.message.includes("wins the battle immediately"))).toBe(true);
+  });
+
+  it("offers attacker a counter-ambush before a wiping defender ambush resolves", () => {
+    const foxAmbush = cardIdByName("Ambush! (fox)");
+    let s = newGame({ seed: 34 });
+    s = {
+      ...s,
+      activeIndex: s.factionOrder.indexOf("marquise"),
+      phase: "daylight",
+      hands: {
+        ...s.hands,
+        marquise: [foxAmbush],
+        eyrie: [foxAmbush],
+      },
+      map: {
+        clearings: {
+          ...s.map.clearings,
+          1: {
+            warriors: { marquise: 2, eyrie: 3 },
+            buildings: [],
+            tokens: [],
+            vagabondHere: false,
+          },
+        },
+      },
+    };
+
+    let next = reduce(s, {
+      kind: "combat.declare",
+      clearing: 1,
+      attacker: "marquise",
+      defender: "eyrie",
+    });
+    expect(next.pendingPrompts[0]?.kind).toBe("combat.defenderAmbush");
+
+    next = reduce(next, {
+      kind: "combat.playAmbush",
+      faction: "eyrie",
+      cardId: foxAmbush,
+    });
+    expect(next.pendingPrompts[0]?.kind).toBe("combat.attackerCounterAmbush");
+
+    next = reduce(next, {
+      kind: "combat.playAmbush",
+      faction: "marquise",
+      cardId: foxAmbush,
+    });
+
+    expect(next.pendingPrompts.length).toBe(0);
+    expect(next.battleOverlay?.attackerAmbushCardId).toBe(foxAmbush);
+    expect(next.battleOverlay?.endedByAmbush).not.toBe(true);
+    expect(next.factions.marquise?.warriorSupply).toBe(s.factions.marquise?.warriorSupply ?? 0);
+  });
+
+  it("offers and accepts a bird ambush for a non-bird clearing", () => {
+    const birdAmbush = cardIdByName("Ambush! (bird)");
+    let s = newGame({ seed: 41 });
+    s = {
+      ...s,
+      activeIndex: s.factionOrder.indexOf("marquise"),
+      phase: "daylight",
+      hands: { ...s.hands, marquise: [], eyrie: [birdAmbush] },
+      map: {
+        clearings: {
+          ...s.map.clearings,
+          1: emptyClearing({ warriors: { marquise: 3, eyrie: 2 } }),
+        },
+      },
+    };
+
+    const prompted = reduce(s, {
+      kind: "combat.declare", clearing: 1, attacker: "marquise", defender: "eyrie",
+    });
+    expect(prompted.pendingPrompts[0]?.kind).toBe("combat.defenderAmbush");
+
+    const resolved = reduce(prompted, {
+      kind: "combat.playAmbush", faction: "eyrie", cardId: birdAmbush,
+    });
+    expect(resolved.hands.eyrie).not.toContain(birdAmbush);
+    expect(resolved.battleOverlay?.defenderAmbushCardId).toBe(birdAmbush);
+  });
+
+  it("holds battle on defender ambush prompt until the defender responds", () => {
+    const foxAmbush = cardIdByName("Ambush! (fox)");
+    let s = newGame({ seed: 77 });
+    s = {
+      ...s,
+      activeIndex: s.factionOrder.indexOf("marquise"),
+      phase: "daylight",
+      hands: { ...s.hands, eyrie: [foxAmbush] },
+      map: {
+        clearings: {
+          ...s.map.clearings,
+          1: emptyClearing({ warriors: { marquise: 3, eyrie: 2 } }),
+        },
+      },
+    };
+
+    const prompted = reduce(s, {
+      kind: "combat.declare",
+      clearing: 1,
+      attacker: "marquise",
+      defender: "eyrie",
+    });
+
+    expect(prompted.pendingPrompts[0]?.kind).toBe("combat.defenderAmbush");
+    expect(prompted.battleOverlay?.status).toBe("defender-ambush-prompt");
+  });
+
+  it("only offers a counter-ambush when the attacker has a matching-suit or bird ambush", () => {
+    const foxAmbush = cardIdByName("Ambush! (fox)");
+    const mouseAmbush = cardIdByName("Ambush! (mouse)");
+    let s = newGame({ seed: 78 });
+    s = {
+      ...s,
+      activeIndex: s.factionOrder.indexOf("marquise"),
+      phase: "daylight",
+      hands: { ...s.hands, marquise: [mouseAmbush], eyrie: [foxAmbush] },
+      map: {
+        clearings: {
+          ...s.map.clearings,
+          1: emptyClearing({ warriors: { marquise: 3, eyrie: 2 } }),
+        },
+      },
+    };
+
+    const prompted = reduce(s, {
+      kind: "combat.declare",
+      clearing: 1,
+      attacker: "marquise",
+      defender: "eyrie",
+    });
+    const defenderPlayed = reduce(prompted, {
+      kind: "combat.playAmbush",
+      faction: "eyrie",
+      cardId: foxAmbush,
+    });
+    expect(defenderPlayed.pendingPrompts[0]?.kind).not.toBe("combat.attackerCounterAmbush");
+    expect(defenderPlayed.battleOverlay?.defenderAmbushCardId).toBe(foxAmbush);
+  });
+
+  it("creates a fresh battle overlay id for each battle", () => {
+    let s = newGame({ seed: 49 });
+    s = {
+      ...s,
+      map: {
+        clearings: {
+          ...s.map.clearings,
+          1: {
+            warriors: { marquise: 4, eyrie: 4 },
+            buildings: [],
+            tokens: [],
+            vagabondHere: false,
+          },
+        },
+      },
+    };
+
+    const one = resolveCombat(s, {
+      clearing: 1,
+      attacker: "marquise",
+      defender: "eyrie",
+    });
+    const firstId = one.battleOverlay?.id;
+    expect(firstId).toBeTruthy();
+
+    const two = resolveCombat(one, {
+      clearing: 1,
+      attacker: "marquise",
+      defender: "eyrie",
+    });
+    const secondId = two.battleOverlay?.id;
+    expect(secondId).toBeTruthy();
+    expect(secondId).not.toBe(firstId);
+  });
+
+  it("prompts defender to choose cardboard removal order when no warriors remain", () => {
+    let s = newGame({ seed: 57 });
+    s = {
+      ...s,
+      factions: {
+        ...s.factions,
+        marquise: {
+          ...s.factions.marquise!,
+          keep: { clearing: 1 },
+          buildings: { sawmill: 1, workshop: 0, recruiter: 0 },
+        },
+      },
+      map: {
+        clearings: {
+          ...s.map.clearings,
+          1: {
+            warriors: { eyrie: 1, marquise: 0 },
+            buildings: [{ faction: "marquise", kind: "sawmill" }],
+            tokens: [{ faction: "marquise", kind: "keep" }],
+            vagabondHere: false,
+          },
+        },
+      },
+    };
+
+    let next = reduce(s, {
+      kind: "combat.declare",
+      clearing: 1,
+      attacker: "eyrie",
+      defender: "marquise",
+    });
+    expect(next.pendingPrompts[0]?.kind).toBe("combat.removalPieces");
+    const removalPayload = next.pendingPrompts[0]!.payload as {
+      available: Array<{ id: string; kind: string; category: 'building' | 'token' }>;
+      side: 'attacker' | 'defender';
+    };
+    const keepId = removalPayload.available.find((p) => p.category === 'token' && p.kind === 'keep')?.id;
+    expect(keepId).toBeTruthy();
+
+    next = reduce(next, {
+      kind: "combat.chooseRemovalPieces",
+      faction: "marquise",
+      side: removalPayload.side,
+      pieceIds: [keepId!],
+    });
+
+    expect(next.factions.marquise?.keep).toBeUndefined();
+    expect(next.map.clearings[1]!.tokens.some((t) => t.kind === "keep")).toBe(false);
+  });
+
+  it("prompts and resolves Marquise Field Hospitals after Marquise warrior losses", () => {
+    const foxAmbush = cardIdByName("Ambush! (fox)");
+    const rabbitAmbush = cardIdByName("Ambush! (rabbit)");
+    let s = newGame({ seed: 61 });
+    s = {
+      ...s,
+      factions: {
+        ...s.factions,
+        marquise: {
+          ...s.factions.marquise!,
+          keep: { clearing: 5 },
+        },
+      },
+      hands: {
+        ...s.hands,
+        marquise: [foxAmbush, rabbitAmbush],
+      },
+      map: {
+        clearings: {
+          ...s.map.clearings,
+          1: {
+            warriors: { eyrie: 3, marquise: 2 },
+            buildings: [],
+            tokens: [],
+            vagabondHere: false,
+          },
+          5: {
+            ...s.map.clearings[5]!,
+            warriors: { ...(s.map.clearings[5]!.warriors ?? {}), marquise: 0 },
+            tokens: [{ faction: "marquise", kind: "keep" }],
+          },
+        },
+      },
+    };
+
+    let next = resolveCombat(s, {
+      clearing: 1,
+      attacker: "eyrie",
+      defender: "marquise",
+      attackerAmbush: "__test_attacker_ambush__",
+    });
+    expect(next.pendingPrompts[0]?.kind).toBe("combat.fieldHospitals");
+
+    const rejected = reduce(next, {
+      kind: "combat.resolveFieldHospitals",
+      faction: "marquise",
+      cardId: rabbitAmbush,
+    });
+    expect(rejected.pendingPrompts[0]?.kind).toBe("combat.fieldHospitals");
+    expect(rejected.hands.marquise).toContain(rabbitAmbush);
+
+    const keepBefore = next.map.clearings[5]!.warriors.marquise ?? 0;
+    next = reduce(next, {
+      kind: "combat.resolveFieldHospitals",
+      faction: "marquise",
+      cardId: foxAmbush,
+    });
+    const keepAfter = next.map.clearings[5]!.warriors.marquise ?? 0;
+    expect(keepAfter).toBeGreaterThan(keepBefore);
+    expect(next.hands.marquise.includes(foxAmbush)).toBe(false);
   });
 });

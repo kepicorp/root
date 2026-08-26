@@ -2,6 +2,8 @@ import type { ClearingId, Faction } from '../../types';
 import type { CardId } from '../../cards';
 
 export type MarquiseAction =
+  | { kind: 'marquise.setupChooseCorner'; clearing: ClearingId }
+  | { kind: 'marquise.setupPlaceBuilding'; clearing: ClearingId; building: 'sawmill' | 'workshop' | 'recruiter' }
   | { kind: 'marquise.placeWood' }
   | { kind: 'marquise.build'; clearing: ClearingId; building: 'sawmill' | 'workshop' | 'recruiter' }
   | { kind: 'marquise.recruit' }

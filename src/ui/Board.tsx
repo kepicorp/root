@@ -40,9 +40,10 @@ export type MapIntent =
   | { kind: 'alliance.battle'; defender: Faction }
   | { kind: 'vagabond.battle'; defender: Faction }
   | { kind: 'vagabond.strike'; defender: Faction }
-  | { kind: 'eyrie.executeRecruit' }
-  | { kind: 'eyrie.executeBattle'; defender: Faction }
-  | { kind: 'eyrie.executeBuild' };
+  | { kind: 'eyrie.executeRecruit'; cardId: string }
+  | { kind: 'eyrie.executeMove'; cardId: string }
+  | { kind: 'eyrie.executeBattle'; defender: Faction; cardId: string }
+  | { kind: 'eyrie.executeBuild'; cardId: string };
 
 interface BoardProps {
   state: GameState;
@@ -249,7 +250,28 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
   const isHuman = state.phase !== 'setup' && state.phase !== 'gameOver'
     && activeFaction(state) === playerFaction;
   const legals = isHuman ? getLegalActions(state) : [];
-  const moveActions = getMovementActions(legals);
+  const setupActive = state.phase === 'setup'
+    ? (state.setup?.order[state.setup.activeIndex] ?? activeFaction(state))
+    : null;
+  const isSetupHuman = state.phase === 'setup' && setupActive === playerFaction;
+  const setupLegals = isSetupHuman ? getLegalActions(state) : [];
+  const setupTargets = new Set<ClearingId>();
+  const setupDispatch: Map<ClearingId, Action> = new Map();
+  for (const a of setupLegals) {
+    if (a.kind === 'marquise.setupChooseCorner' || a.kind === 'vagabond.setupChooseRuin') {
+      setupTargets.add(a.clearing);
+      setupDispatch.set(a.clearing, a);
+      continue;
+    }
+    if (a.kind === 'marquise.setupPlaceBuilding') {
+      setupTargets.add(a.clearing);
+    }
+  }
+  const moveActions = getMovementActions(legals).filter(a =>
+    mapIntent?.kind === 'eyrie.executeMove'
+      ? a.kind === 'eyrie.executeMove' && a.cardId === mapIntent.cardId
+      : true,
+  );
 
   // When the player has armed a map-targeted action, figure out which
   // clearings would satisfy it. We match against legals so the engine
@@ -318,6 +340,16 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
     // Always show / toggle the info popup for the clicked clearing.
     setInfoClearing(prev => (prev === id ? null : id));
 
+    if (state.phase === 'setup') {
+      if (!isSetupHuman) return;
+      const setupAction = setupDispatch.get(id);
+      if (setupAction) {
+        dispatch(setupAction);
+        setInfoClearing(null);
+      }
+      return;
+    }
+
     if (!isHuman) return;
 
     // Vagabond exiting a forest: click a bordering clearing to exit or slip out.
@@ -331,7 +363,7 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
     }
 
     // Map-targeted intent (e.g. Build): consume the click here.
-    if (mapIntent) {
+    if (mapIntent && mapIntent.kind !== 'eyrie.executeMove') {
       const a = intentDispatch.get(id);
       if (a) {
         dispatch(a);
@@ -485,6 +517,8 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
           const isSelected = c.id === selected;
           const isValidTarget = validTargets.has(c.id);
           const isValidSource = isHuman && selected == null && validSources.has(c.id);
+          const isSetupTarget = state.phase === 'setup' && isSetupHuman && setupTargets.has(c.id);
+          const isSetupClickable = state.phase === 'setup' && setupDispatch.has(c.id);
           const isIntentTarget = mapIntent != null && intentTargets.has(c.id);
           const isForestExit = vagabondInForest != null && (forestExit.has(c.id) || forestSlipExit.has(c.id));
           // When an intent is armed, clearings that wouldn't satisfy it
@@ -493,11 +527,13 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
           // only the forest's bordering clearings can be clicked to exit.
           const isIntentDimmed = (mapIntent != null && !isIntentTarget)
             || (vagabondInForest != null && !isForestExit);
+          const isSetupDimmed = state.phase === 'setup' && isSetupHuman && setupTargets.size > 0 && !isSetupTarget;
           const cl = state.map.clearings[c.id]!;
 
           let strokeColor = '#3b2a18';
           let strokeWidth = 3;
           if (isSelected)          { strokeColor = '#fff';    strokeWidth = 7; }
+          else if (isSetupTarget)  { strokeColor = '#f0c060'; strokeWidth = 6; }
           else if (isIntentTarget) { strokeColor = '#f0c060'; strokeWidth = 6; }
           else if (isForestExit)   { strokeColor = '#88e08a'; strokeWidth = 6; }
           else if (isValidTarget)  { strokeColor = '#88e08a'; strokeWidth = 6; }
@@ -512,7 +548,12 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
               onMouseEnter={() => setHovered(c.id)}
               onMouseLeave={() => setHovered(h => (h === c.id ? null : h))}
               onClick={() => handleClearingClick(c.id)}
-              style={{ cursor: isHuman ? 'pointer' : 'default', opacity: isIntentDimmed ? 0.3 : 1 }}
+              style={{
+                cursor: state.phase === 'setup'
+                  ? (isSetupClickable ? 'pointer' : 'default')
+                  : (isHuman ? 'pointer' : 'default'),
+                opacity: (isIntentDimmed || isSetupDimmed) ? 0.3 : 1,
+              }}
               role="button"
               aria-label={`Clearing ${c.id}, ${c.suit}${c.hasRuin ? ', has ruin' : ''}`}
             >
@@ -530,7 +571,7 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
                 fill={SUIT_COLOR[c.suit]}
                 stroke={strokeColor}
                 strokeWidth={strokeWidth}
-                className={isValidTarget || isIntentTarget ? 'pulse' : ''}
+                className={isValidTarget || isIntentTarget || isSetupTarget ? 'pulse' : ''}
               />
               {/* Ruin marker — hidden once the Vagabond has explored it */}
               {c.hasRuin && !state.map.clearings[c.id]?.ruinExplored && (
@@ -735,11 +776,17 @@ export function Board({ state, playerFaction, dispatch, mapIntent, setMapIntent,
           </button>
         </div>
       )}
+      {!mapIntent && state.phase === 'setup' && isSetupHuman && setupTargets.size > 0 && (
+        <div className="map-intent-banner board-setup-banner" role="status">
+          <span>Setup targets are highlighted on the board.</span>
+        </div>
+      )}
       {pendingMove && (
         <div className="count-picker" role="dialog" aria-label="Choose how many warriors to move">
           <div className="count-picker-title">
             {pendingMove.action.kind === 'marquise.march' ? 'March' : 'Move'} from <strong>{pendingMove.from}</strong> → <strong>{pendingMove.to}</strong>
           </div>
+          <div className="dim">You must rule the source or destination clearing to make this move.</div>
           <div className="count-picker-row">
             <button
               className="btn ghost small"
@@ -855,11 +902,13 @@ function matchIntent(intent: MapIntent, action: Action): ClearingId | null {
     case 'vagabond.strike':
       return action.kind === 'vagabond.strike' && action.faction === intent.defender ? action.clearing : null;
     case 'eyrie.executeRecruit':
-      return action.kind === 'eyrie.executeRecruit' ? action.clearing : null;
+      return action.kind === 'eyrie.executeRecruit' && action.cardId === intent.cardId ? action.clearing : null;
     case 'eyrie.executeBattle':
-      return action.kind === 'eyrie.executeBattle' && action.defender === intent.defender ? action.clearing : null;
+      return action.kind === 'eyrie.executeBattle' && action.defender === intent.defender && action.cardId === intent.cardId ? action.clearing : null;
     case 'eyrie.executeBuild':
-      return action.kind === 'eyrie.executeBuild' ? action.clearing : null;
+      return action.kind === 'eyrie.executeBuild' && action.cardId === intent.cardId ? action.clearing : null;
+    case 'eyrie.executeMove':
+      return null;
   }
 }
 

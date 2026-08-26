@@ -1,13 +1,15 @@
 import { produce } from 'immer';
 import type { GameState, Action, CardSuit, ClearingId, Faction, ItemKind } from '../../types';
-import { getCard } from '../../cards';
+import { discardCard, getCard } from '../../cards';
 import { AUTUMN_MAP, getAdjacent, getForest, forestsAtClearing, adjacentForests } from '../../map';
 import { applyFavor } from '../../effects';
 import { onEnterBirdsong } from '../../loop';
 import { mulberry32, mixSeed, rollDie } from '../../rng';
+import { enqueueOutrage, hasAllianceSympathy } from '../../outrage';
 import type { VagabondAction } from './actions';
 import type { Relationship } from './state';
 import { getQuest } from './quests';
+import { awardVictoryPoints } from '../../victory';
 
 function isVagabondTurn(state: GameState): boolean {
   return state.factionOrder[state.activeIndex] === 'vagabond';
@@ -220,6 +222,9 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
         if (count <= 0) { v.pendingAllyMove = undefined; return; }
         draft.map.clearings[from]!.warriors[faction] = available - count;
         draft.map.clearings[to]!.warriors[faction] = (draft.map.clearings[to]!.warriors[faction] ?? 0) + count;
+        if (hasAllianceSympathy(draft, to)) {
+          enqueueOutrage(draft, 'vagabond', to, 'moveIntoSympathy');
+        }
         v.pendingAllyMove = undefined;
         draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Moved ${count} ${faction} warriors (ally) from ${from} to ${to}.` });
       });
@@ -246,7 +251,7 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
         // Track items (T/X/B) go face-up on their track if room; otherwise satchel.
         const itemState = canGainItem(v.items, itemKind) ? 'face-up' : 'face-down';
         v.items.push({ kind: itemKind, state: itemState, exhausted: false });
-        draft.scores.vagabond += 1;
+        awardVictoryPoints(draft, 'vagabond', 1, `exploring the ruin in clearing ${v.clearing}`);
         draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Explored ruin in clearing ${v.clearing} — found ${itemKind}! (+1 VP)` });
       });
 
@@ -283,15 +288,25 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
           returnWarriors(draft, v.clearing, a.defender, warriorsToRemove);
           hitsLeft -= warriorsToRemove;
           piecesRemoved += warriorsToRemove;
-          if (v.relationships[a.defender] === 'hostile') draft.scores.vagabond += warriorsToRemove;
+          if (v.relationships[a.defender] === 'hostile') awardVictoryPoints(draft, 'vagabond', warriorsToRemove, `removing hostile ${a.defender} warriors`);
         }
         if (hitsLeft > 0) {
           const bIdx = cl.buildings.findIndex(b => b.faction === a.defender);
-          if (bIdx >= 0) { cl.buildings.splice(bIdx, 1); draft.scores.vagabond += 1; hitsLeft -= 1; piecesRemoved += 1; }
+          if (bIdx >= 0) { cl.buildings.splice(bIdx, 1); awardVictoryPoints(draft, 'vagabond', 1, `removing a ${a.defender} building`); hitsLeft -= 1; piecesRemoved += 1; }
         }
         if (hitsLeft > 0) {
           const tIdx = cl.tokens.findIndex(t => t.faction === a.defender);
-          if (tIdx >= 0) { cl.tokens.splice(tIdx, 1); draft.scores.vagabond += 1; piecesRemoved += 1; }
+          if (tIdx >= 0) {
+            const removed = cl.tokens[tIdx];
+            cl.tokens.splice(tIdx, 1);
+            awardVictoryPoints(draft, 'vagabond', 1, `removing a ${a.defender} token`);
+            piecesRemoved += 1;
+            if (removed?.faction === 'alliance' && removed.kind === 'sympathy') {
+              const idx = draft.factions.alliance?.sympathy.indexOf(v.clearing) ?? -1;
+              if (idx >= 0) draft.factions.alliance!.sympathy.splice(idx, 1);
+              enqueueOutrage(draft, 'vagabond', v.clearing, 'sympathyRemoved');
+            }
+          }
         }
         if (piecesRemoved > 0 && v.relationships[a.defender] !== 'hostile') {
           const meta = AUTUMN_MAP.clearings.find(c => c.id === v.clearing)!;
@@ -339,7 +354,7 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
         // §9.7.a: when aiding an already-allied faction, score 2 VP each time.
         // Otherwise score VP equal to the numeric relationship level reached.
         const aidVp = wasAllied ? 2 : aidVpForRelationship(v.relationships[a.faction]);
-        if (aidVp > 0) draft.scores.vagabond += aidVp;
+        if (aidVp > 0) awardVictoryPoints(draft, 'vagabond', aidVp, `aiding ${a.faction}`);
         draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Aided ${a.faction} (exhausted ${a.itemKind}); relationship → ${v.relationships[a.faction]}${aidVp > 0 ? ` (+${aidVp} VP)` : ''}.` });
         // If the faction has crafted items the Vagabond may take one.
         const hasCraftedItems = draft.craftedItemLog.some(e => e.faction === a.faction);
@@ -371,7 +386,7 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
         draft.hands.vagabond.push(stolen);
         v.relationships[a.faction] = bumpRelationship(v.relationships[a.faction]);
         const stealVp = aidVpForRelationship(v.relationships[a.faction]);
-        if (stealVp > 0) draft.scores.vagabond += stealVp;
+        if (stealVp > 0) awardVictoryPoints(draft, 'vagabond', stealVp, `stealing a card from ${a.faction}`);
         draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Thief stole a card from ${a.faction} (exhausted ${a.itemKind}); relationship → ${v.relationships[a.faction]}${stealVp > 0 ? ` (+${stealVp} VP)` : ''}.` });
       });
 
@@ -398,14 +413,34 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
         let pieceRemovedS = false;
         if (defWarriorsS > 0) {
           returnWarriors(draft, v.clearing, a.faction, 1);
-          if (v.relationships[a.faction] === 'hostile') draft.scores.vagabond += 1;
+          if (v.relationships[a.faction] === 'hostile') awardVictoryPoints(draft, 'vagabond', 1, `striking hostile ${a.faction} warriors`);
           pieceRemovedS = true;
         } else {
           const bIdx = clS.buildings.findIndex(b => b.faction === a.faction);
-          if (bIdx >= 0) { clS.buildings.splice(bIdx, 1); draft.scores.vagabond += 1; pieceRemovedS = true; }
+          if (bIdx >= 0) {
+            clS.buildings.splice(bIdx, 1);
+            awardVictoryPoints(draft, 'vagabond', 1, `striking a ${a.faction} building`);
+            pieceRemovedS = true;
+            if (a.faction === 'alliance') {
+              const meta = AUTUMN_MAP.clearings.find(c => c.id === v.clearing);
+              if (meta?.suit === 'fox' || meta?.suit === 'mouse' || meta?.suit === 'rabbit') {
+                if (draft.factions.alliance) delete draft.factions.alliance.bases[meta.suit];
+              }
+            }
+          }
           else {
             const tIdx = clS.tokens.findIndex(t => t.faction === a.faction);
-            if (tIdx >= 0) { clS.tokens.splice(tIdx, 1); draft.scores.vagabond += 1; pieceRemovedS = true; }
+            if (tIdx >= 0) {
+              const removed = clS.tokens[tIdx];
+              clS.tokens.splice(tIdx, 1);
+              awardVictoryPoints(draft, 'vagabond', 1, `striking a ${a.faction} token`);
+              pieceRemovedS = true;
+              if (removed?.faction === 'alliance' && removed.kind === 'sympathy') {
+                const idx = draft.factions.alliance?.sympathy.indexOf(v.clearing) ?? -1;
+                if (idx >= 0) draft.factions.alliance!.sympathy.splice(idx, 1);
+                enqueueOutrage(draft, 'vagabond', v.clearing, 'sympathyRemoved');
+              }
+            }
           }
         }
         // Removing pieces from a non-hostile faction requires the player to either
@@ -449,7 +484,7 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
         const idx = draft.hands.vagabond.indexOf(a.cardId);
         if (idx < 0) return;
         draft.hands.vagabond.splice(idx, 1);
-        if (card.craftVp) draft.scores.vagabond += card.craftVp;
+        if (card.craftVp) awardVictoryPoints(draft, 'vagabond', card.craftVp, `crafting ${card.name}`);
         if (card.item) {
           // Crafted item goes to the Vagabond (track items go face-up if room, else satchel).
           const itemState = canGainItem(v.items, card.item) ? 'face-up' : 'face-down';
@@ -457,7 +492,7 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
         }
         if (card.category === 'persistent') draft.craftedPersistents.push({ faction: 'vagabond', cardId: a.cardId });
         if (card.category === 'favor') applyFavor(draft, card.suit, 'vagabond');
-        draft.discard.push(a.cardId);
+        discardCard(draft, a.cardId);
         draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Crafted ${card.name} (+${card.craftVp ?? 0} VP).` });
       });
 
@@ -498,7 +533,7 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
         } else {
           // Score VP equal to number of completed quests (including this one).
           const vp = v.completedQuests.length;
-          draft.scores.vagabond += vp;
+          awardVictoryPoints(draft, 'vagabond', vp, 'quest reward');
           draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Quest reward: scored ${vp} VP.` });
         }
         v.pendingQuestReward = undefined;
@@ -522,7 +557,7 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
         const domIdx = draft.hands.vagabond.findIndex(id => getCard(id).category === 'dominance');
         if (domIdx < 0) return;
         const domCard = draft.hands.vagabond.splice(domIdx, 1)[0]!;
-        draft.discard.push(domCard);
+        discardCard(draft, domCard);
         v.coalitionPartner = a.faction;
         // Vagabond becomes 'allied' with the partner (no longer attacks them).
         v.relationships[a.faction] = 'allied';
@@ -590,7 +625,7 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
         const idx = draft.hands.vagabond.indexOf(a.cardId);
         if (idx < 0) return;
         draft.hands.vagabond.splice(idx, 1);
-        draft.discard.push(a.cardId);
+        discardCard(draft, a.cardId);
         v.pendingDiscard -= 1;
         if (v.pendingDiscard === 0) finishVagabondTurn(draft, 0);
       });
@@ -604,7 +639,7 @@ export function vagabondReducer(state: GameState, action: Action): GameState {
         const idx = draft.hands.vagabond.indexOf(a.cardId);
         if (idx < 0) return;
         draft.hands.vagabond.splice(idx, 1);
-        draft.discard.push(a.cardId);
+        discardCard(draft, a.cardId);
         const faction = v.pendingRelationshipCost.faction;
         v.pendingRelationshipCost = undefined;
         draft.log.push({ turn: draft.turn, faction: 'vagabond', message: `Discarded ${card.name} to preserve relationship with ${faction}.` });
@@ -754,6 +789,22 @@ export function vagabondLegalActions(state: GameState): Action[] {
   if (v.pendingDiscard > 0) {
     for (const cardId of state.hands.vagabond) {
       out.push({ kind: 'vagabond.discardCard', cardId });
+    }
+    return out;
+  }
+
+  if (state.pendingOutrage?.faction === 'vagabond') {
+    const o = state.pendingOutrage;
+    const matchingCards = state.hands.vagabond.filter(id => {
+      const c = getCard(id);
+      return c.suit === o.suit || c.suit === 'bird';
+    });
+    if (matchingCards.length > 0) {
+      for (const cardId of matchingCards) {
+        out.push({ kind: 'system.resolveOutrage', cardId });
+      }
+    } else {
+      out.push({ kind: 'system.resolveOutrage' });
     }
     return out;
   }

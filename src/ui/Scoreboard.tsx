@@ -43,6 +43,7 @@ export function Scoreboard({ state }: { state: GameState }) {
               {f}
             </div>
             <div className="score-value" key={scoreTick[f]}>{score}</div>
+            {present && <div className="score-hand-count">Cards: {state.hands[f].length}</div>}
           </div>
         );
       })}

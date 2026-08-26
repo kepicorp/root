@@ -34,7 +34,8 @@ export function Home({ onStartOffline, site }: Props) {
   const [joinValue, setJoinValue] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [passwordValue, setPasswordValue] = useState('');
-  const [autoFillBots, setAutoFillBots] = useState(true);
+  const [humanPlayers, setHumanPlayers] = useState(1);
+  const [aiPlayers, setAiPlayers] = useState(3);
   const [hostStateText, setHostStateText] = useState<string | null>(null);
   const [hostStateLabel, setHostStateLabel] = useState<string | null>(null);
   const [hostStateError, setHostStateError] = useState<string | null>(null);
@@ -86,7 +87,7 @@ export function Home({ onStartOffline, site }: Props) {
     setBusy(true);
     setError(null);
     try {
-      const id = await createRoom({ autoFillBots, ...(hostStateText ? { loadStateText: hostStateText } : {}) });
+      const id = await createRoom({ humanPlayers, aiPlayers, ...(hostStateText ? { loadStateText: hostStateText } : {}) });
       navigateToRoom(id);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -178,15 +179,37 @@ export function Home({ onStartOffline, site }: Props) {
           <div className="home-cards">
             <div className="home-card primary">
               <h2>Host a new game</h2>
-              <p>Create a room, then share the link. You can decide whether empty seats should fill with bots.</p>
-              <label className="home-toggle">
-                <input
-                  type="checkbox"
-                  checked={autoFillBots}
-                  onChange={(e) => setAutoFillBots(e.target.checked)}
-                />
-                Auto-fill unclaimed seats with bots
-              </label>
+              <p>Create a room, then share the link. Choose how many humans and AI seats to pre-configure (max 4 total).</p>
+              <div className="home-setup-grid">
+                <label>
+                  Human players
+                  <select
+                    className="home-input"
+                    value={humanPlayers}
+                    onChange={(e) => {
+                      const nextHuman = Number(e.target.value);
+                      const maxAi = Math.max(0, 4 - nextHuman);
+                      setHumanPlayers(nextHuman);
+                      if (aiPlayers > maxAi) setAiPlayers(maxAi);
+                    }}
+                  >
+                    {[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </label>
+                <label>
+                  AI players
+                  <select
+                    className="home-input"
+                    value={aiPlayers}
+                    onChange={(e) => setAiPlayers(Number(e.target.value))}
+                  >
+                    {Array.from({ length: 5 - humanPlayers }, (_, i) => i).map((n) => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <p className="home-note">Total seats: {humanPlayers + aiPlayers} / 4</p>
               <button className="btn primary" onClick={onCreate} disabled={busy}>
                 {busy ? '…' : 'Create game'}
               </button>

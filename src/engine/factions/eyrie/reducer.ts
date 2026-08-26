@@ -1,23 +1,21 @@
 import { produce } from 'immer';
 import type { GameState, Action, ClearingId, CardSuit } from '../../types';
 import type { CardId } from '../../cards';
-import { getCard } from '../../cards';
+import { discardCard, getCard } from '../../cards';
 import { AUTUMN_MAP, getAdjacent } from '../../map';
-import { resolveCombat } from '../../combat';
+import { declareBattle } from '../../combat';
 import { applyFavor } from '../../effects';
 import { onEnterBirdsong } from '../../loop';
-import { ROOST_VP_TRACK, LEADER_VIZIER_SLOTS, type EyrieLeader, type DecreeSlot, type EyrieState } from './state';
+import { ROOST_VP_TRACK, LEADER_VIZIER_SLOTS, type DecreeSlot, type EyrieState } from './state';
 import { findSlotTarget, eyrieRules, suitMatches } from './decree';
-import { canMeetCraftCost } from '../../craft-utils';
+import { canMeetCraftCost, spendCraftCost } from '../../craft-utils';
+import { enqueueOutrage, hasAllianceSympathy } from '../../outrage';
 import type { EyrieAction } from './actions';
+import { awardVictoryPoints } from '../../victory';
 
 function isEyrieTurn(state: GameState): boolean {
   return state.factionOrder[state.activeIndex] === 'eyrie';
 }
-
-const NEXT_LEADER: Record<EyrieLeader, EyrieLeader> = {
-  despot: 'commander', commander: 'charismatic', charismatic: 'builder', builder: 'despot',
-};
 
 const RESOLUTION_ORDER: DecreeSlot[] = ['recruit', 'move', 'battle', 'build'];
 
@@ -26,13 +24,17 @@ function eyrieRecruitCount(e: EyrieState): number {
 }
 
 function ensureResolution(e: EyrieState): void {
-  if (e.resolutionLeft) return;
+  if (e.resolutionLeft) {
+    e.resolutionDone ??= { recruit: [], move: [], battle: [], build: [] };
+    return;
+  }
   e.resolutionLeft = {
     recruit: e.decree.recruit.length,
     move:    e.decree.move.length,
     battle:  e.decree.battle.length,
     build:   e.decree.build.length,
   };
+  e.resolutionDone = { recruit: [], move: [], battle: [], build: [] };
 }
 
 /** Returns the next slot in resolution order that still has cards to
@@ -55,6 +57,16 @@ function nextCardForSlot(e: EyrieState, slot: DecreeSlot): CardId | null {
   return all[idx] ?? null;
 }
 
+function unresolvedCardsForSlot(e: EyrieState, slot: DecreeSlot): CardId[] {
+  const done = e.resolutionDone?.[slot] ?? [];
+  return e.decree[slot].filter(id => !done.includes(id));
+}
+
+function consumeDecreeCard(e: EyrieState, slot: DecreeSlot, cardId: CardId): void {
+  e.resolutionDone![slot].push(cardId);
+  e.resolutionLeft![slot] -= 1;
+}
+
 /** All slots empty → advance to evening + log + reset counters. */
 function maybeFinishResolution(draft: GameState): void {
   const e = draft.factions.eyrie!;
@@ -67,34 +79,20 @@ function maybeFinishResolution(draft: GameState): void {
 
 function triggerTurmoil(draft: GameState): void {
   const e = draft.factions.eyrie!;
-  // Lose 1 VP for EVERY bird card in the Decree, including Loyal Viziers.
-  // Then remove all non-Loyal cards; viziers stay.
+  // Humiliate is the first explicit step; Purge, Depose, and Rest are
+  // advanced by legal actions so the UI can show each stage.
   let vpLost = 0;
   for (const slot of RESOLUTION_ORDER) {
-    const keep: CardId[] = [];
     for (const id of e.decree[slot]) {
-      if (getCard(id).suit === 'bird') vpLost += 1;  // count ALL bird cards
-      if (e.viziers.includes(id)) keep.push(id);     // keep viziers
-      else draft.discard.push(id);                    // discard the rest
+      if (getCard(id).suit === 'bird') vpLost += 1;
     }
-    e.decree[slot] = keep;
   }
   draft.scores.eyrie = Math.max(0, draft.scores.eyrie - vpLost);
-  if (e.usedLeaders.length >= 3) e.usedLeaders = [];
-  e.usedLeaders.push(e.leader);
-  e.leader = NEXT_LEADER[e.leader];
-  // Wipe decree completely (viziers are still in e.viziers; they'll be
-  // re-seated in the chosen leader's slots when chooseLeader is called).
-  e.decree = { recruit: [], move: [], battle: [], build: [] };
+  draft.log.push({ turn: draft.turn, faction: 'eyrie', message: `Turmoil Humiliate: lost ${vpLost} VP for bird cards in the Decree.` });
   e.resolutionLeft = undefined;
+  e.resolutionDone = undefined;
   e.decreeResolved = true;
-  e.needsLeaderChoice = true;
-  draft.phase = 'evening';
-  draft.log.push({
-    turn: draft.turn,
-    faction: 'eyrie',
-    message: `Turmoil! lost ${vpLost} VP. New leader: ${e.leader}.`,
-  });
+  e.turmoilStep = 'purge';
 }
 
 export function eyrieReducer(state: GameState, action: Action): GameState {
@@ -103,25 +101,55 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
   const a = action as EyrieAction;
 
   switch (a.kind) {
+    case 'eyrie.resolveTurmoilStep':
+      return produce(state, draft => {
+        const e = draft.factions.eyrie!;
+        if (draft.phase !== 'daylight' || !e.turmoilStep) return;
+        if (e.turmoilStep === 'purge') {
+          for (const slot of RESOLUTION_ORDER) {
+            const keep = e.decree[slot].filter(id => e.viziers.includes(id));
+            for (const id of e.decree[slot]) if (!e.viziers.includes(id)) discardCard(draft, id);
+            e.decree[slot] = keep;
+          }
+          e.turmoilStep = 'depose';
+          draft.log.push({ turn: draft.turn, faction: 'eyrie', message: 'Turmoil Purge: discarded all Decree cards except Loyal Viziers.' });
+          return;
+        }
+        if (e.turmoilStep === 'depose') {
+          if (!e.needsLeaderChoice) {
+            if (!e.usedLeaders.includes(e.leader)) e.usedLeaders.push(e.leader);
+            e.needsLeaderChoice = true;
+            draft.log.push({ turn: draft.turn, faction: 'eyrie', message: 'Turmoil Depose: choose a leader that has not been used this cycle.' });
+          }
+          return;
+        }
+        if (e.turmoilStep === 'rest') {
+          e.turmoilStep = undefined;
+          draft.phase = 'evening';
+          draft.log.push({ turn: draft.turn, faction: 'eyrie', message: 'Turmoil Rest: daylight ended; begin Evening.' });
+        }
+      });
+
     case 'eyrie.chooseLeader':
       return produce(state, draft => {
         const e = draft.factions.eyrie!;
+        if (!e.needsLeaderChoice) return;
+        const choosingAfterTurmoil = draft.phase === 'daylight' && e.turmoilStep === 'depose';
+        if (draft.phase !== 'birdsong' && draft.phase !== 'evening' && !choosingAfterTurmoil) return;
+        const used = new Set(e.usedLeaders);
+        const eligible = (['despot', 'commander', 'charismatic', 'builder'] as const)
+          .filter(leader => !used.has(leader) || (used.size >= 4 && leader !== e.leader));
+        if (!eligible.includes(a.leader)) return;
         const changing = e.leader !== a.leader;
         e.leader = a.leader;
         e.needsLeaderChoice = false;
-        // After Turmoil the decree was cleared; re-seat the viziers in the
-        // slots specified by the newly chosen leader.  On the very first turn
-        // the viziers were placed by setupEyrie so only re-place after Turmoil
-        // (signalled by the decree being otherwise empty).
+        if (choosingAfterTurmoil) e.turmoilStep = 'rest';
         const totalDecreeCards = Object.values(e.decree).flat().length;
         if (totalDecreeCards === 0) {
-          // Decree just reset — re-place viziers for this leader.
           const slots = LEADER_VIZIER_SLOTS[a.leader];
           if (e.viziers[0]) e.decree[slots[0]].push(e.viziers[0]);
           if (e.viziers[1]) e.decree[slots[1]].push(e.viziers[1]);
         } else if (changing) {
-          // Mid-game leader swap (shouldn't happen per rules, but keep it safe).
-          // Remove viziers from wherever they currently sit and re-place them.
           for (const slot of ['recruit', 'move', 'battle', 'build'] as const) {
             e.decree[slot] = e.decree[slot].filter(id => !e.viziers.includes(id));
           }
@@ -138,11 +166,20 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
         if (draft.phase !== 'birdsong') return;
         if (e.needsLeaderChoice) return; // must pick leader first
         if (e.cardsAddedThisBirdsong >= 2) return; // max 2 adds per birdsong
+        const card = getCard(a.cardId);
+        const birdAdds = e.birdCardsAddedThisBirdsong ?? 0;
+        if (card.suit === 'bird' && birdAdds >= 1) return; // at most one bird-suit add per birdsong
         const idx = draft.hands.eyrie.indexOf(a.cardId);
         if (idx < 0) return;
         draft.hands.eyrie.splice(idx, 1);
         e.decree[a.slot].push(a.cardId);
         e.cardsAddedThisBirdsong += 1;
+        if (card.suit === 'bird') e.birdCardsAddedThisBirdsong = birdAdds + 1;
+        draft.log.push({
+          turn: draft.turn,
+          faction: 'eyrie',
+          message: `Added ${card.suit} card ${card.name} to ${a.slot} decree.`,
+        });
       });
 
     case 'eyrie.endBirdsong':
@@ -155,11 +192,13 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
       return produce(state, draft => {
         if (draft.phase !== 'daylight') return;
         const e = draft.factions.eyrie!;
+        if (e.craftingDone === false && e.birdsongDone) return;
         if (e.decreeResolved) return;
         ensureResolution(e);
         if (currentSlot(e) !== 'recruit') return;
-        const cardId = nextCardForSlot(e, 'recruit');
+        const cardId = a.cardId ?? nextCardForSlot(e, 'recruit');
         if (!cardId) return;
+        if (!unresolvedCardsForSlot(e, 'recruit').includes(cardId)) return;
         const meta = AUTUMN_MAP.clearings.find(c => c.id === a.clearing);
         if (!meta) return;
         if (!suitMatches(getCard(cardId).suit, meta.suit)) return;
@@ -170,7 +209,7 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
         const toPlace = Math.min(eyrieRecruitCount(e), e.warriorSupply);
         cl.warriors.eyrie = (cl.warriors.eyrie ?? 0) + toPlace;
         e.warriorSupply -= toPlace;
-        e.resolutionLeft!.recruit -= 1;
+        consumeDecreeCard(e, 'recruit', cardId);
         draft.log.push({
           turn: draft.turn,
           faction: 'eyrie',
@@ -183,15 +222,16 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
       return produce(state, draft => {
         if (draft.phase !== 'daylight') return;
         const e = draft.factions.eyrie!;
+        if (e.craftingDone === false && e.birdsongDone) return;
         if (e.decreeResolved) return;
         ensureResolution(e);
         if (currentSlot(e) !== 'move') return;
-        const cardId = nextCardForSlot(e, 'move');
+        const cardId = a.cardId ?? nextCardForSlot(e, 'move');
         if (!cardId) return;
+        if (!unresolvedCardsForSlot(e, 'move').includes(cardId)) return;
         const fromMeta = AUTUMN_MAP.clearings.find(c => c.id === a.from);
         if (!fromMeta) return;
         if (!suitMatches(getCard(cardId).suit, fromMeta.suit)) return;
-        if (!getAdjacent(AUTUMN_MAP, a.from).includes(a.to)) return;
         if (!(eyrieRules(draft, a.from) || eyrieRules(draft, a.to))) return;
         const fromCl = draft.map.clearings[a.from]!;
         const toCl = draft.map.clearings[a.to]!;
@@ -200,16 +240,11 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
         const moving = Math.max(1, Math.min(a.count, available));
         fromCl.warriors.eyrie = available - moving;
         toCl.warriors.eyrie = (toCl.warriors.eyrie ?? 0) + moving;
-        e.resolutionLeft!.move -= 1;
+        consumeDecreeCard(e, 'move', cardId);
         draft.lastMoveClearing = a.to;
         draft.log.push({ turn: draft.turn, faction: 'eyrie', message: `Moved 1 from ${a.from} → ${a.to}.` });
-        // Outrage: if destination has Alliance sympathy, moving faction must pay
-        if (!draft.pendingOutrage) {
-          const destCl = draft.map.clearings[a.to]!;
-          if (destCl.tokens.some(t => t.faction === 'alliance' && t.kind === 'sympathy')) {
-            const destMeta = AUTUMN_MAP.clearings.find(c => c.id === a.to)!;
-            draft.pendingOutrage = { clearing: a.to, faction: 'eyrie', suit: destMeta.suit as 'fox' | 'mouse' | 'rabbit' };
-          }
+        if (hasAllianceSympathy(draft, a.to)) {
+          enqueueOutrage(draft, 'eyrie', a.to, 'moveIntoSympathy');
         }
         maybeFinishResolution(draft);
       });
@@ -220,12 +255,14 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
       // it explicitly here.
       if (state.phase !== 'daylight') return state;
       const e0 = state.factions.eyrie!;
+      if (e0.craftingDone === false && e0.birdsongDone) return state;
       if (e0.decreeResolved) return state;
       const pre = produce(state, draft => { ensureResolution(draft.factions.eyrie!); });
       const e = pre.factions.eyrie!;
       if (currentSlot(e) !== 'battle') return state;
-      const cardId = nextCardForSlot(e, 'battle');
+      const cardId = a.cardId ?? nextCardForSlot(e, 'battle');
       if (!cardId) return state;
+      if (!unresolvedCardsForSlot(e, 'battle').includes(cardId)) return state;
       const meta = AUTUMN_MAP.clearings.find(c => c.id === a.clearing);
       if (!meta || !suitMatches(getCard(cardId).suit, meta.suit)) return state;
       const cl = pre.map.clearings[a.clearing]!;
@@ -234,9 +271,9 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
         || cl.buildings.some(b => b.faction === a.defender)
         || cl.tokens.some(t => t.faction === a.defender);
       if (!hasEnemy) return state;
-      let s = resolveCombat(pre, { clearing: a.clearing, attacker: 'eyrie', defender: a.defender });
+      let s = declareBattle(pre, { clearing: a.clearing, attacker: 'eyrie', defender: a.defender });
       s = produce(s, draft => {
-        draft.factions.eyrie!.resolutionLeft!.battle -= 1;
+        consumeDecreeCard(draft.factions.eyrie!, 'battle', cardId);
         draft.lastBattleClearing = a.clearing;
         maybeFinishResolution(draft);
       });
@@ -247,11 +284,13 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
       return produce(state, draft => {
         if (draft.phase !== 'daylight') return;
         const e = draft.factions.eyrie!;
+        if (e.craftingDone === false && e.birdsongDone) return;
         if (e.decreeResolved) return;
         ensureResolution(e);
         if (currentSlot(e) !== 'build') return;
-        const cardId = nextCardForSlot(e, 'build');
+        const cardId = a.cardId ?? nextCardForSlot(e, 'build');
         if (!cardId) return;
+        if (!unresolvedCardsForSlot(e, 'build').includes(cardId)) return;
         const meta = AUTUMN_MAP.clearings.find(c => c.id === a.clearing);
         if (!meta || !suitMatches(getCard(cardId).suit, meta.suit)) return;
         if (!eyrieRules(draft, a.clearing)) return;
@@ -273,6 +312,7 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
       let s = state;
       if (s.phase !== 'daylight') return s;
       let e = s.factions.eyrie!;
+      if (e.craftingDone === false && e.birdsongDone) return s;
       if (e.decreeResolved) return s;
       s = produce(s, draft => { ensureResolution(draft.factions.eyrie!); });
       e = s.factions.eyrie!;
@@ -280,7 +320,7 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
       for (const slot of RESOLUTION_ORDER) {
         if (failed) break;
         while (e.resolutionLeft![slot] > 0) {
-          const cardId = nextCardForSlot(e, slot);
+          const cardId = unresolvedCardsForSlot(e, slot)[0];
           if (!cardId) break;
           const target = findSlotTarget(s, slot, cardId);
           if (target == null) { failed = true; break; }
@@ -292,8 +332,8 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
               || cl.tokens.some(t => t.faction === f),
             );
             if (!enemy) { failed = true; break; }
-            s = resolveCombat(s, { clearing: target, attacker: 'eyrie', defender: enemy });
-            s = produce(s, draft => { draft.factions.eyrie!.resolutionLeft!.battle -= 1; });
+            s = declareBattle(s, { clearing: target, attacker: 'eyrie', defender: enemy });
+            s = produce(s, draft => consumeDecreeCard(draft.factions.eyrie!, 'battle', cardId));
           } else if (slot === 'move') {
             s = produce(s, draft => {
               const adj = getAdjacent(AUTUMN_MAP, target);
@@ -312,7 +352,7 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
               const moving = Math.min(fromCl.warriors.eyrie ?? 0, 1);
               fromCl.warriors.eyrie = (fromCl.warriors.eyrie ?? 0) - moving;
               toCl.warriors.eyrie = (toCl.warriors.eyrie ?? 0) + moving;
-              draft.factions.eyrie!.resolutionLeft!.move -= 1;
+              consumeDecreeCard(draft.factions.eyrie!, 'move', cardId);
             });
           } else if (slot === 'recruit') {
             s = produce(s, draft => {
@@ -321,7 +361,7 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
               const toPlace = Math.min(eyrieRecruitCount(ee), ee.warriorSupply);
               cl.warriors.eyrie = (cl.warriors.eyrie ?? 0) + toPlace;
               ee.warriorSupply -= toPlace;
-              ee.resolutionLeft!.recruit -= 1;
+              consumeDecreeCard(ee, 'recruit', cardId);
             });
           } else { // build
             s = produce(s, draft => {
@@ -329,7 +369,7 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
               const ee = draft.factions.eyrie!;
               cl.buildings.push({ faction: 'eyrie', kind: 'roost' });
               ee.roosts.push(target as ClearingId);
-              ee.resolutionLeft!.build -= 1;
+              consumeDecreeCard(ee, 'build', cardId);
             });
           }
           e = s.factions.eyrie!;
@@ -344,6 +384,8 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
     case 'eyrie.craft':
       return produce(state, draft => {
         if (draft.phase !== 'daylight') return;
+        if (draft.factions.eyrie!.turmoilStep) return;
+        if (draft.factions.eyrie!.craftingDone) return;
         const card = getCard(a.cardId);
         if (card.category !== 'item' && card.category !== 'persistent' && card.category !== 'favor') return;
         const e = draft.factions.eyrie!;
@@ -355,20 +397,26 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
         }
         // Subtract power already consumed this turn.
         for (const craftedId of e.craftedThisTurn) {
-          for (const [s, n] of Object.entries(getCard(craftedId).craftCost)) {
-            power[s as CardSuit] = Math.max(0, (power[s as CardSuit] ?? 0) - (n ?? 0));
-          }
+          if (!spendCraftCost(power, getCard(craftedId).craftCost)) return;
         }
         if (!canMeetCraftCost(power, card.craftCost)) return;
         const idx = draft.hands.eyrie.indexOf(a.cardId);
         if (idx < 0) return;
         draft.hands.eyrie.splice(idx, 1);
         e.craftedThisTurn.push(a.cardId);
-        if (card.craftVp) draft.scores.eyrie += card.craftVp;
+        if (card.craftVp) awardVictoryPoints(draft, 'eyrie', card.craftVp, `crafting ${card.name}`);
         if (card.item) { draft.itemSupply.push(card.item); draft.craftedItemLog.push({ faction: 'eyrie', item: card.item }); }
         if (card.category === 'persistent') draft.craftedPersistents.push({ faction: 'eyrie', cardId: a.cardId });
         if (card.category === 'favor') applyFavor(draft, card.suit, 'eyrie');
         draft.log.push({ turn: draft.turn, faction: 'eyrie', message: `Crafted ${card.name} (+${card.craftVp ?? 0} VP).` });
+      });
+
+    case 'eyrie.endCrafting':
+      return produce(state, draft => {
+        if (draft.phase !== 'daylight') return;
+        if (draft.factions.eyrie!.turmoilStep) return;
+        draft.factions.eyrie!.craftingDone = true;
+        draft.log.push({ turn: draft.turn, faction: 'eyrie', message: 'Finished crafting; resolving the Decree.' });
       });
 
     case 'eyrie.evening':
@@ -377,7 +425,7 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
         const e = draft.factions.eyrie!;
         if (e.pendingDiscard > 0) return;
         const vp = ROOST_VP_TRACK[Math.min(e.roosts.length, ROOST_VP_TRACK.length - 1)] ?? 0;
-        draft.scores.eyrie += vp;
+        awardVictoryPoints(draft, 'eyrie', vp, `scoring ${e.roosts.length} roosts at evening`);
         const draws = 1 + Math.floor(e.roosts.length / 3);
         for (let i = 0; i < draws; i++) {
           const c = draft.deck.pop();
@@ -400,7 +448,7 @@ export function eyrieReducer(state: GameState, action: Action): GameState {
         const idx = draft.hands.eyrie.indexOf(a.cardId);
         if (idx < 0) return;
         draft.hands.eyrie.splice(idx, 1);
-        draft.discard.push(a.cardId);
+        discardCard(draft, a.cardId);
         e.pendingDiscard -= 1;
         if (e.pendingDiscard === 0) finishEyrieTurn(draft, 0, 0);
       });
@@ -416,9 +464,13 @@ function finishEyrieTurn(draft: GameState, _vp: number, _draws: number): void {
   e.decreeResolved = false;
   e.eveningDone = true;
   e.cardsAddedThisBirdsong = 0;
+  e.birdCardsAddedThisBirdsong = 0;
   e.resolutionLeft = undefined;
+  e.resolutionDone = undefined;
+  e.resolutionDone = undefined;
   e.pendingDiscard = 0;
   e.craftedThisTurn = [];
+  e.craftingDone = false;
   draft.activeIndex = (draft.activeIndex + 1) % draft.factionOrder.length;
   if (draft.activeIndex === 0) draft.turn += 1;
   draft.phase = 'birdsong';
@@ -457,10 +509,22 @@ export function eyrieLegalActions(state: GameState): Action[] {
     return out;
   }
 
-  if (state.phase === 'birdsong') {
+  if (state.phase === 'daylight' && e.turmoilStep === 'purge') {
+    out.push({ kind: 'eyrie.resolveTurmoilStep' });
+  }
+  if (state.phase === 'daylight' && e.turmoilStep === 'depose' && !e.needsLeaderChoice) {
+    out.push({ kind: 'eyrie.resolveTurmoilStep' });
+  }
+  if (state.phase === 'daylight' && e.turmoilStep === 'rest') {
+    out.push({ kind: 'eyrie.resolveTurmoilStep' });
+  }
+  if (state.phase === 'birdsong' || (state.phase === 'evening' && e.needsLeaderChoice) || (state.phase === 'daylight' && e.turmoilStep === 'depose' && e.needsLeaderChoice)) {
     // Official rule in this ruleset: add one or two cards to the Decree each birdsong.
     if (!e.needsLeaderChoice && e.cardsAddedThisBirdsong < 2) {
+      const birdAdds = e.birdCardsAddedThisBirdsong ?? 0;
       for (const cardId of state.hands.eyrie) {
+        const card = getCard(cardId);
+        if (card.suit === 'bird' && birdAdds >= 1) continue;
         for (const slot of ['recruit', 'move', 'battle', 'build'] as const) {
           out.push({ kind: 'eyrie.addToDecree', slot, cardId });
         }
@@ -468,9 +532,10 @@ export function eyrieLegalActions(state: GameState): Action[] {
     }
     // Leader pick — see task for timing; conditional handled in legals below.
     if (e.needsLeaderChoice) {
-      // Show ALL four leaders so the player can confirm the current default
-      // (Despot on turn 1) or switch to any other.
-      for (const leader of ['despot', 'commander', 'charismatic', 'builder'] as const) {
+      const used = new Set(e.usedLeaders);
+      const allLeaders = ['despot', 'commander', 'charismatic', 'builder'] as const;
+      const eligible = allLeaders.filter(leader => !used.has(leader) || (used.size >= 4 && leader !== e.leader));
+      for (const leader of eligible) {
         out.push({ kind: 'eyrie.chooseLeader', leader });
       }
     }
@@ -479,7 +544,7 @@ export function eyrieLegalActions(state: GameState): Action[] {
       out.push({ kind: 'eyrie.endBirdsong' });
     }
   }
-  if (state.phase === 'daylight' && e.roosts.length > 0) {
+  if (state.phase === 'daylight' && !e.turmoilStep && !e.craftingDone && e.roosts.length > 0) {
     // Craft using roost power — available throughout daylight, independent of Decree.
     const power: Partial<Record<CardSuit, number>> = {};
     for (const roostClearing of e.roosts) {
@@ -487,9 +552,7 @@ export function eyrieLegalActions(state: GameState): Action[] {
       if (cm) power[cm.suit] = (power[cm.suit] ?? 0) + 1;
     }
     for (const craftedId of e.craftedThisTurn) {
-      for (const [s, n] of Object.entries(getCard(craftedId).craftCost)) {
-        power[s as CardSuit] = Math.max(0, (power[s as CardSuit] ?? 0) - (n ?? 0));
-      }
+      if (!spendCraftCost(power, getCard(craftedId).craftCost)) return out;
     }
     for (const cardId of state.hands.eyrie) {
       const card = getCard(cardId);
@@ -499,7 +562,13 @@ export function eyrieLegalActions(state: GameState): Action[] {
       if (canMeetCraftCost(power, cost)) out.push({ kind: 'eyrie.craft', cardId });
     }
   }
-  if (state.phase === 'daylight' && !e.decreeResolved) {
+  if (state.phase === 'daylight' && !e.turmoilStep && !e.craftingDone && e.roosts.length === 0) {
+    out.push({ kind: 'eyrie.endCrafting' });
+  }
+  if (state.phase === 'daylight' && !e.turmoilStep && !e.craftingDone && e.roosts.length > 0) {
+    out.push({ kind: 'eyrie.endCrafting' });
+  }
+  if (state.phase === 'daylight' && !e.turmoilStep && e.craftingDone && !e.decreeResolved) {
     // eyrie.resolveDecree is always offered so the bot and the player have an
     // escape hatch. The ActionBar hides it when execute actions are available
     // (it only makes sense when turmoil is the only option).
@@ -507,23 +576,24 @@ export function eyrieLegalActions(state: GameState): Action[] {
     // What slot is the player currently draining? Generate every legal
     // execute-step for that slot so the UI can highlight clearings.
     const slot = currentSlot(e);
-    const cardId = slot ? nextCardForSlot(e, slot) : null;
-    if (slot && cardId) {
-      const cardSuit = getCard(cardId).suit;
-      for (const cm of AUTUMN_MAP.clearings) {
-        if (!suitMatches(cardSuit, cm.suit)) continue;
+    const cardIds = slot ? unresolvedCardsForSlot(e, slot) : [];
+    if (slot && cardIds.length > 0) {
+      for (const cardId of cardIds) {
+        const cardSuit = getCard(cardId).suit;
+        for (const cm of AUTUMN_MAP.clearings) {
+          if (!suitMatches(cardSuit, cm.suit)) continue;
         const cl = state.map.clearings[cm.id]!;
         if (slot === 'recruit') {
           const hasRoost = cl.buildings.some(b => b.faction === 'eyrie' && b.kind === 'roost');
           if (hasRoost && e.warriorSupply > 0) {
-            out.push({ kind: 'eyrie.executeRecruit', clearing: cm.id });
+            out.push({ kind: 'eyrie.executeRecruit', clearing: cm.id, cardId });
           }
         } else if (slot === 'move') {
           const warriors = cl.warriors.eyrie ?? 0;
           if (warriors <= 0) continue;
           for (const nb of getAdjacent(AUTUMN_MAP, cm.id)) {
             if (eyrieRules(state, cm.id) || eyrieRules(state, nb)) {
-              out.push({ kind: 'eyrie.executeMove', from: cm.id, to: nb, count: warriors });
+              out.push({ kind: 'eyrie.executeMove', from: cm.id, to: nb, count: warriors, cardId });
             }
           }
         } else if (slot === 'battle') {
@@ -532,7 +602,7 @@ export function eyrieLegalActions(state: GameState): Action[] {
             if ((cl.warriors[f] ?? 0) > 0
                 || cl.buildings.some(b => b.faction === f)
                 || cl.tokens.some(t => t.faction === f)) {
-              out.push({ kind: 'eyrie.executeBattle', clearing: cm.id, defender: f });
+              out.push({ kind: 'eyrie.executeBattle', clearing: cm.id, defender: f, cardId });
             }
           }
         } else if (slot === 'build') {
@@ -542,13 +612,14 @@ export function eyrieLegalActions(state: GameState): Action[] {
             + cl.tokens.filter(t => t.kind === 'keep').length
             + (cm.hasRuin && !cl.ruinExplored ? 1 : 0);
           if (used < cm.buildingSlots && e.roosts.length < 7) {
-            out.push({ kind: 'eyrie.executeBuild', clearing: cm.id });
+            out.push({ kind: 'eyrie.executeBuild', clearing: cm.id, cardId });
           }
+        }
         }
       }
     }
   }
-  if (state.phase === 'evening') {
+  if (state.phase === 'evening' && !e.needsLeaderChoice) {
     if (e.pendingDiscard > 0) {
       for (const cardId of state.hands.eyrie) {
         out.push({ kind: 'eyrie.discardCard', cardId });

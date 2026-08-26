@@ -2,6 +2,8 @@ import type { CardId } from '../../cards';
 import type { ClearingId, Faction, ItemKind, ForestId } from '../../types';
 
 export type VagabondAction =
+  | { kind: 'vagabond.setupChooseCharacter'; character: 'thief' | 'tinker' | 'ranger' }
+  | { kind: 'vagabond.setupChooseRuin'; clearing: ClearingId }
   | { kind: 'vagabond.slip'; to: ClearingId }
   | { kind: 'vagabond.slipToForest'; forestId: ForestId }
   | { kind: 'vagabond.slipToHideout' }

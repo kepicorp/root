@@ -18,20 +18,23 @@ interface Props {
 }
 
 export function AmbushPrompt({ state, playerFaction, dispatch }: Props) {
-  const prompt = state.pendingPrompts.find(p => p.kind === 'combat.defenderAmbush');
+  const prompt = state.pendingPrompts.find(
+    p => p.kind === 'combat.defenderAmbush' || p.kind === 'combat.attackerCounterAmbush',
+  );
   if (!prompt) return null;
   if (prompt.faction !== playerFaction) return null;
 
   const payload = prompt.payload as { clearing: number; attacker: Faction; defender: Faction };
   const options = defenderAmbushOptions(state, payload.clearing, prompt.faction);
+  const isCounter = prompt.kind === 'combat.attackerCounterAmbush';
+  const title = isCounter
+    ? <>Defender played an Ambush in clearing <strong>{payload.clearing}</strong>. Play a matching Ambush to cancel it?</>
+    : <><strong>{payload.attacker}</strong> is attacking your forces in clearing <strong>{payload.clearing}</strong>. Play an Ambush?</>;
 
   return (
-    <div className="discard-picker-backdrop" role="dialog" aria-label="Defender ambush prompt">
+    <div className="ambush-prompt-backdrop" role="dialog" aria-label="Defender ambush prompt">
       <div className="discard-picker" style={{ maxWidth: 520 }}>
-        <div className="discard-picker-title">
-          <strong>{payload.attacker}</strong> is attacking your forces in clearing{' '}
-          <strong>{payload.clearing}</strong>. Play an Ambush?
-        </div>
+        <div className="discard-picker-title">{title}</div>
         <div className="discard-picker-cards" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
           {options.map(id => {
             const c = getCard(id);
@@ -54,7 +57,7 @@ export function AmbushPrompt({ state, playerFaction, dispatch }: Props) {
             style={{ marginTop: 8 }}
             onClick={() => dispatch({ kind: 'combat.skipAmbush', faction: prompt.faction })}
           >
-            Skip — take the hits
+            {isCounter ? 'Skip — let the ambush resolve' : 'Skip — take the hits'}
           </button>
         </div>
       </div>

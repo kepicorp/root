@@ -23,20 +23,47 @@ export function startGame(state: GameState): GameState {
   });
 }
 
+export function hasUnresolvedFactionChoice(state: GameState): boolean {
+  if (state.phase === 'setup' || state.phase === 'gameOver') return false;
+  if (state.pendingOutrage || state.pendingPrompts.length > 0) return true;
+
+  const active = activeFaction(state);
+  const m = state.factions.marquise;
+  const e = state.factions.eyrie;
+  const al = state.factions.alliance;
+  const v = state.factions.vagabond;
+
+  if (active === 'marquise' && m) {
+    if (m.pendingDiscard > 0 || m.marchMovesLeft > 0) return true;
+  }
+  if (active === 'eyrie' && e) {
+    if (e.pendingDiscard > 0 || e.needsLeaderChoice) return true;
+    if (e.turmoilStep) return true;
+    if (state.phase === 'daylight' && e.birdsongDone && e.craftingDone !== undefined && (!e.craftingDone || !e.decreeResolved)) return true;
+  }
+  if (active === 'alliance' && al) {
+    if (al.pendingDiscard > 0) return true;
+  }
+  if (active === 'vagabond' && v) {
+    if (
+      v.pendingDiscard > 0 ||
+      v.pendingItemRemoval > 0 ||
+      v.pendingRelationshipCost ||
+      v.pendingAllyMove ||
+      v.pendingQuestReward ||
+      v.pendingAidItemTake ||
+      v.pendingRefresh > 0
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function advancePhase(state: GameState): GameState {
   return produce(state, draft => {
     if (draft.phase === 'setup' || draft.phase === 'gameOver') return;
-    // Block advance if the active faction has unresolved pending state.
-    if (draft.pendingOutrage) return;
-    const active = draft.factionOrder[draft.activeIndex];
-    const m = draft.factions.marquise;
-    const e = draft.factions.eyrie;
-    const al = draft.factions.alliance;
-    const v = draft.factions.vagabond;
-    if (active === 'marquise' && m && m.pendingDiscard > 0) return;
-    if (active === 'eyrie' && e && e.pendingDiscard > 0) return;
-    if (active === 'alliance' && al && al.pendingDiscard > 0) return;
-    if (active === 'vagabond' && v && (v.pendingDiscard > 0 || v.pendingItemRemoval > 0 || v.pendingRelationshipCost || v.pendingAllyMove)) return;
+    if (hasUnresolvedFactionChoice(draft)) return;
     const i = PHASE_SEQUENCE.indexOf(draft.phase);
     if (i < 0) return;
     if (i < PHASE_SEQUENCE.length - 1) {
@@ -66,6 +93,7 @@ export function advancePhase(state: GameState): GameState {
 export function endTurn(state: GameState): GameState {
   return produce(state, draft => {
     if (draft.phase === 'setup' || draft.phase === 'gameOver') return;
+    if (hasUnresolvedFactionChoice(draft)) return;
     draft.activeIndex = (draft.activeIndex + 1) % draft.factionOrder.length;
     if (draft.activeIndex === 0) draft.turn += 1;
     draft.phase = 'birdsong';
@@ -154,7 +182,7 @@ function factionMeetsDominance(state: GameState, faction: Faction, suit: CardSui
     if (factionRules(state, faction, id)) ruled.add(id);
   }
   if (suit === 'bird') {
-    return (ruled.has(1) && ruled.has(12)) || (ruled.has(4) && ruled.has(9));
+    return (ruled.has(1) && ruled.has(12)) || (ruled.has(3) && ruled.has(10));
   }
   const matching = AUTUMN_MAP.clearings.filter(c => c.suit === suit).map(c => c.id);
   return matching.filter(id => ruled.has(id)).length >= 3;

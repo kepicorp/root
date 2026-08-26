@@ -2,7 +2,7 @@
 
 import { produce } from 'immer';
 import { AUTUMN_MAP } from './map';
-import { BASE_SHARED_DECK, SD_SHARED_DECK, DOMINANCE_CARDS, getCard, type CardId } from './cards';
+import { BASE_SHARED_DECK, SD_SHARED_DECK, DOMINANCE_CARDS, discardCard, getCard, type CardId } from './cards';
 import { mulberry32, shuffle } from './rng';
 import type {
   GameState, Faction, ClearingState, ItemKind, Action, DeckVariant, ALL_FACTIONS as _F,
@@ -12,8 +12,9 @@ import { INITIAL_MARQUISE_STATE } from './factions/marquise/state';
 import { INITIAL_EYRIE_STATE } from './factions/eyrie/state';
 import { INITIAL_ALLIANCE_STATE } from './factions/alliance/state';
 import { INITIAL_VAGABOND_STATE } from './factions/vagabond/state';
-import { declareBattle, defenderAmbushOptions, resolveAmbushPrompt, resolveMiceCancelPrompt } from './combat';
+import { declareBattle, defenderAmbushOptions, resolveAmbushPrompt, resolveCounterAmbushPrompt, resolveMiceCancelPrompt, resolveOptionalEffectPrompt, resolveRemovalPiecesPrompt, resolveFieldHospitalsPrompt } from './combat';
 import { advancePhase, endTurn } from './loop';
+import { initializeSetupState, reduceSetupAction } from './setup';
 
 export interface NewGameOptions {
   seed?: number;
@@ -89,10 +90,11 @@ export function newGame(opts: NewGameOptions = {}): GameState {
     pendingPrompts: [],
     dominanceAvailable: [],
     craftedItemLog: [],
+    battleOverlay: undefined,
     log: [{ turn: 1, faction: 'system', message: `New game (seed ${seed})` }],
   };
 
-  return state;
+  return initializeSetupState(state);
 }
 
 // ─── Reducer ────────────────────────────────────────────────────────────────
@@ -127,6 +129,19 @@ function migrateState(state: GameState): GameState {
   if (m && !(m as any).daylightCraftState) {
     s = { ...s, factions: { ...s.factions, marquise: { ...m, daylightCraftState: 'prompt' } } };
   }
+  const e = s.factions.eyrie;
+  if (e && (e as any).birdCardsAddedThisBirdsong === undefined) {
+    s = { ...s, factions: { ...s.factions, eyrie: { ...e, birdCardsAddedThisBirdsong: 0 } } };
+  }
+  const misplacedDominance = s.discard.filter(id => getCard(id).category === 'dominance');
+  if (misplacedDominance.length > 0) {
+    const available = [...s.dominanceAvailable];
+    for (const id of misplacedDominance) if (!available.includes(id)) available.push(id);
+    s = { ...s, discard: s.discard.filter(id => getCard(id).category !== 'dominance'), dominanceAvailable: available };
+  }
+  if (s.phase === 'setup' && !s.setup) {
+    s = initializeSetupState(s);
+  }
   return s;
 }
 
@@ -134,14 +149,42 @@ export function reduce(state: GameState, action: Action): GameState {
   state = migrateState(state);
   if (state.winner) return state;
 
+  if (state.phase === 'setup') {
+    const setupNext = reduceSetupAction(state, action);
+    if (setupNext !== state) return setupNext;
+  }
+
   switch (action.kind) {
     case 'system.advancePhase':
       return advancePhase(state);
     case 'system.endTurn':
       return endTurn(state);
+    case 'system.takeDominance':
+      return produce(state, draft => {
+        if (draft.phase !== 'birdsong' || draft.factionOrder[draft.activeIndex] !== action.faction) return;
+        const availableIdx = draft.dominanceAvailable.indexOf(action.cardId);
+        const handIdx = draft.hands[action.faction].indexOf(action.spendCard);
+        if (availableIdx < 0 || handIdx < 0) return;
+        const dominance = getCard(action.cardId);
+        const payment = getCard(action.spendCard);
+        if (dominance.category !== 'dominance') return;
+        if (payment.category !== 'dominance' && payment.suit !== dominance.suit && payment.suit !== 'bird') return;
+        draft.dominanceAvailable.splice(availableIdx, 1);
+        draft.hands[action.faction].splice(handIdx, 1);
+        if (payment.category === 'dominance') {
+          if (!draft.dominanceAvailable.includes(action.spendCard)) {
+            draft.dominanceAvailable.push(action.spendCard);
+          }
+        } else {
+          discardCard(draft, action.spendCard);
+        }
+        draft.hands[action.faction].push(action.cardId);
+        draft.log.push({ turn: draft.turn, faction: action.faction, message: `Took ${dominance.name} from the available dominance cards.` });
+      });
     case 'system.playDominance':
       return produce(state, draft => {
         if (draft.dominance) return; // already claimed
+        if (draft.phase !== 'daylight' || draft.factionOrder[draft.activeIndex] !== action.faction) return;
         if ((draft.scores[action.faction] ?? 0) < 10) return;
         const card = getCard(action.cardId);
         if (card.category !== 'dominance') return;
@@ -149,7 +192,7 @@ export function reduce(state: GameState, action: Action): GameState {
         const handIdx = draft.hands[action.faction].indexOf(action.cardId);
         if (handIdx < 0) return;
         draft.hands[action.faction].splice(handIdx, 1);
-        draft.discard.push(action.cardId);
+        // Activated cards remain face-up in the dominance area.
         draft.dominance = { faction: action.faction, suit: card.suit };
         // The faction abandons their VP track when chasing dominance.
         draft.scores[action.faction] = 0;
@@ -163,14 +206,19 @@ export function reduce(state: GameState, action: Action): GameState {
       });
     case 'combat.playAmbush': {
       const prompt = state.pendingPrompts.find(p => p.kind === 'combat.defenderAmbush');
-      if (!prompt || prompt.faction !== action.faction) return state;
+      const counterPrompt = state.pendingPrompts.find(p => p.kind === 'combat.attackerCounterAmbush');
+      const activePrompt = prompt ?? counterPrompt;
+      if (!activePrompt || activePrompt.faction !== action.faction) return state;
       const card = getCard(action.cardId);
       if (card.category !== 'ambush') return state;
       if (!(state.hands[action.faction] ?? []).includes(action.cardId)) return state;
       // The ambush card must match the clearing's suit (or be a bird).
-      const params = prompt.payload as { clearing: number };
+      const params = activePrompt.payload as { clearing: number };
       const validIds = defenderAmbushOptions(state, params.clearing, action.faction);
       if (!validIds.includes(action.cardId)) return state;
+      if (activePrompt.kind === 'combat.attackerCounterAmbush') {
+        return resolveCounterAmbushPrompt(state, { playedCard: action.cardId });
+      }
       return resolveAmbushPrompt(state, { playedCard: action.cardId });
     }
     case 'combat.skipAmbush': {
@@ -178,32 +226,69 @@ export function reduce(state: GameState, action: Action): GameState {
       if (micePrompt && micePrompt.faction === action.faction) {
         return resolveMiceCancelPrompt(state, { cancel: false });
       }
+      const counterPrompt = state.pendingPrompts.find(p => p.kind === 'combat.attackerCounterAmbush');
+      if (counterPrompt && counterPrompt.faction === action.faction) {
+        return resolveCounterAmbushPrompt(state, {});
+      }
       const prompt = state.pendingPrompts.find(p => p.kind === 'combat.defenderAmbush');
       if (!prompt || prompt.faction !== action.faction) return state;
       return resolveAmbushPrompt(state, {});
+    }
+    case 'combat.chooseOptional': {
+      return resolveOptionalEffectPrompt(state, {
+        faction: action.faction,
+        effect: action.effect,
+        use: action.use,
+      });
+    }
+    case 'combat.chooseRemovalPieces': {
+      return resolveRemovalPiecesPrompt(state, {
+        faction: action.faction,
+        side: action.side,
+        pieceIds: action.pieceIds,
+      });
+    }
+    case 'combat.resolveFieldHospitals': {
+      return resolveFieldHospitalsPrompt(state, {
+        faction: action.faction,
+        cardId: action.cardId,
+      });
     }
     case 'system.resolveOutrage':
       return produce(state, draft => {
         const o = draft.pendingOutrage;
         if (!o) return;
         const al = draft.factions.alliance;
+        const triggerLabel = o.trigger === 'sympathyRemoved'
+          ? 'sympathy was removed'
+          : 'warriors entered sympathy';
         if (action.cardId) {
           // Moving faction pays a matching card to Alliance supporters
           const idx = draft.hands[o.faction].indexOf(action.cardId);
           if (idx < 0) return;
           draft.hands[o.faction].splice(idx, 1);
           if (al) al.supporters.push(action.cardId);
-          else draft.discard.push(action.cardId);
-          draft.log.push({ turn: draft.turn, faction: o.faction, message: `Outrage: gave ${getCard(action.cardId).name} to Alliance supporters.` });
+          else discardCard(draft, action.cardId);
+          draft.log.push({ turn: draft.turn, faction: o.faction, message: `Outrage (${triggerLabel}): gave ${getCard(action.cardId).name} to Alliance supporters.` });
         } else {
-          // No matching card — Alliance draws from deck
+          // No matching card — reveal hand to Alliance, then Alliance draws
+          const reveal = draft.hands[o.faction].map((id) => getCard(id).name);
+          draft.log.push({
+            turn: draft.turn,
+            faction: o.faction,
+            message: reveal.length > 0
+              ? `Outrage (${triggerLabel}): revealed hand to Alliance (${reveal.join(', ')}).`
+              : `Outrage (${triggerLabel}): revealed an empty hand to Alliance.`,
+          });
           if (al && draft.deck.length > 0) {
             const drawn = draft.deck.pop()!;
             al.supporters.push(drawn);
             draft.log.push({ turn: draft.turn, faction: o.faction, message: `Outrage: no matching card — Alliance drew a supporter from the deck.` });
           }
         }
-        draft.pendingOutrage = undefined;
+        const queued = draft.pendingOutrageQueue ?? [];
+        draft.pendingOutrage = queued.shift();
+        draft.pendingOutrageQueue = queued.length > 0 ? queued : undefined;
       });
     case 'prompt.respond':
       // Generic prompt response — faction reducers handle their own.

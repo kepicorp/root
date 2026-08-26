@@ -3,6 +3,8 @@
 
 import type { GameState, Faction, ClearingId, CardSuit } from './types';
 import { AUTUMN_MAP } from './map';
+import { enqueueOutrage } from './outrage';
+import { awardVictoryPoints } from './victory';
 
 /** Return N warriors of `faction` from `clearing` back to their supply. */
 export function returnWarriorsToSupply(draft: GameState, clearing: ClearingId, faction: Faction, n: number): void {
@@ -37,8 +39,15 @@ export function applyFavor(draft: GameState, suit: CardSuit, crafter: Faction): 
     cl.buildings = cl.buildings.filter(b => b.faction === crafter);
     removed += oldB - cl.buildings.length;
     const oldT = cl.tokens.length;
+    const removedAllianceSympathy = crafter !== 'alliance'
+      && cl.tokens.some((t) => t.faction === 'alliance' && t.kind === 'sympathy');
     cl.tokens = cl.tokens.filter(t => t.faction === crafter);
     removed += oldT - cl.tokens.length;
+    if (removedAllianceSympathy) {
+      const idx = draft.factions.alliance?.sympathy.indexOf(clMeta.id) ?? -1;
+      if (idx >= 0) draft.factions.alliance!.sympathy.splice(idx, 1);
+      enqueueOutrage(draft, crafter, clMeta.id, 'sympathyRemoved');
+    }
   }
-  draft.scores[crafter] += removed;
+  awardVictoryPoints(draft, crafter, removed, `Favor of the ${suit} removed enemy pieces`);
 }

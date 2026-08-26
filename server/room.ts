@@ -6,17 +6,18 @@ import { metrics } from './telemetry';
 import { ALL_FACTIONS } from '../src/engine/types';
 import { newGame, reduce } from '../src/engine/state';
 import { buildStateSnapshot, serializeStateSnapshot } from '../src/engine/stateSnapshot';
-import { startGame, checkVictory } from '../src/engine/loop';
-import { performSetup } from '../src/engine/setup';
+import { checkVictory } from '../src/engine/loop';
+import { getLegalActions } from '../src/engine/legal';
 import { checkCoalitionVictory } from '../src/engine/factions/vagabond/reducer';
 import type { VagabondCharacter } from '../src/engine/factions/vagabond/state';
 import { pickAction } from '../src/bots/bot';
 import { produce } from 'immer';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
-import type { ClientId, LobbyState } from './protocol';
+import type { ClientId, LobbyState, SeatAssignment } from './protocol';
 import { filterStateForRecipient } from './viewFilter';
 
 const BOT_TICK_MS = 400;
+const MAX_HISTORY_ENTRIES = 400;
 
 interface Subscriber {
   send: () => void;
@@ -40,18 +41,36 @@ export interface SeatPersistence {
   displayName: string;
 }
 
+export interface RoomHistoryEntry {
+  id: number;
+  createdAt: number;
+  logIndex: number;
+  turn: number;
+  faction: Faction | 'system';
+  message: string;
+  state: GameState;
+}
+
+export type RoomHistorySummaryEntry = Omit<RoomHistoryEntry, 'state'>;
+
 /** Serializable snapshot of a room — used for disk persistence. */
 export interface RoomSnapshot {
   id: string;
   createdAt: number;
   lastActivityAt: number;
+  /** @deprecated kept for older snapshots/backward compat only. */
   autoFillBots: boolean;
+  seatPlans?: Record<Faction, SeatAssignment>;
   // Persisted as {token, displayName} per seat. Old snapshots used
   // `ClientId | null` and were reset to all-null on load — those still load
   // fine, they just won't restore identity.
   seats: Record<Faction, SeatPersistence | null>;
   vagabondCharacter: VagabondCharacter;
   state: GameState;
+  paused: boolean;
+  pausedSnapshot: GameState | null;
+  history?: RoomHistoryEntry[];
+  nextHistoryId?: number;
   pendingLoadedState?: GameState | null;
   started: boolean;
 }
@@ -65,14 +84,21 @@ export class Room {
   readonly id: string;
   readonly createdAt: number;
   lastActivityAt: number;
-  private autoFillBots = true;
 
   private players = new Map<ClientId, PlayerRecord>();
   private seats: Record<Faction, ClientId | null> = {
     marquise: null, eyrie: null, alliance: null, vagabond: null,
   };
+  private seatPlans: Record<Faction, SeatAssignment> = {
+    marquise: 'open', eyrie: 'open', alliance: 'open', vagabond: 'open',
+  };
+  private hostClientId: ClientId | null = null;
   private vagabondCharacter: VagabondCharacter = 'thief';
   private state: GameState;
+  private paused = false;
+  private pausedSnapshot: GameState | null = null;
+  private history: RoomHistoryEntry[] = [];
+  private nextHistoryId = 1;
   private pendingLoadedState: GameState | null;
   private started = false;
   private subscribers = new Map<ClientId, Subscriber>();
@@ -85,18 +111,54 @@ export class Room {
     opts: {
       createdAt?: number;
       state?: GameState;
+      paused?: boolean;
+      pausedSnapshot?: GameState | null;
+      history?: RoomHistoryEntry[];
+      nextHistoryId?: number;
       pendingLoadedState?: GameState | null;
       started?: boolean;
-      autoFillBots?: boolean;
+      seatPlans?: Record<Faction, SeatAssignment>;
     } = {},
   ) {
     this.id = id;
     this.createdAt = opts.createdAt ?? Date.now();
     this.lastActivityAt = Date.now();
     this.state = opts.state ?? newGame({ seed: Math.floor(Math.random() * 1e9) });
+    this.paused = opts.paused ?? false;
+    this.pausedSnapshot = opts.pausedSnapshot ?? null;
+    this.history = opts.history ? opts.history.slice(-MAX_HISTORY_ENTRIES) : [];
+    this.nextHistoryId = opts.nextHistoryId ?? (this.history.length + 1);
     this.pendingLoadedState = opts.pendingLoadedState ?? null;
     this.started = opts.started ?? false;
-    this.autoFillBots = opts.autoFillBots ?? true;
+    if (opts.seatPlans) this.seatPlans = { ...opts.seatPlans };
+  }
+
+  private static isSeatPersistence(value: unknown): value is SeatPersistence {
+    return !!value && typeof value === 'object' && 'token' in (value as Record<string, unknown>);
+  }
+
+  private static inferSeatPlans(snap: RoomSnapshot): Record<Faction, SeatAssignment> {
+    const empty: Record<Faction, SeatAssignment> = {
+      marquise: 'open', eyrie: 'open', alliance: 'open', vagabond: 'open',
+    };
+    if (snap.seatPlans) {
+      return { ...empty, ...snap.seatPlans };
+    }
+    if (snap.started) {
+      const active = new Set(snap.state?.factionOrder ?? []);
+      for (const f of ALL_FACTIONS) {
+        if (!active.has(f)) { empty[f] = 'open'; continue; }
+        empty[f] = Room.isSeatPersistence(snap.seats?.[f]) ? 'human' : 'bot';
+      }
+      return empty;
+    }
+    const legacyAutoFill = snap.autoFillBots ?? true;
+    for (const f of ALL_FACTIONS) {
+      const raw = snap.seats?.[f];
+      if (raw !== null && raw !== undefined) empty[f] = 'human';
+      else empty[f] = legacyAutoFill ? 'bot' : 'open';
+    }
+    return empty;
   }
 
   /** Registered by the manager so every state change schedules a disk write. */
@@ -113,18 +175,41 @@ export class Room {
     const r = new Room(snap.id, {
       createdAt: snap.createdAt,
       state: snap.state,
+      paused: snap.paused ?? false,
+      pausedSnapshot: snap.pausedSnapshot ?? null,
+      history: snap.history ?? [],
+      nextHistoryId: snap.nextHistoryId,
       pendingLoadedState: snap.pendingLoadedState ?? null,
       started: snap.started,
-      autoFillBots: snap.autoFillBots ?? true,
+      seatPlans: Room.inferSeatPlans(snap),
     });
     r.lastActivityAt = snap.lastActivityAt;
     r.vagabondCharacter = snap.vagabondCharacter;
+    r.paused = snap.paused ?? false;
+    r.pausedSnapshot = snap.pausedSnapshot ?? null;
+    if ((!snap.history || snap.history.length === 0) && r.state.log.length > 0) {
+      const rebuilt: RoomHistoryEntry[] = [];
+      for (let i = 0; i < r.state.log.length; i++) {
+        const log = r.state.log[i]!;
+        rebuilt.push({
+          id: i + 1,
+          createdAt: r.lastActivityAt,
+          logIndex: i,
+          turn: log.turn,
+          faction: log.faction,
+          message: log.message,
+          state: r.cloneState(r.state),
+        });
+      }
+      r.history = rebuilt.slice(-MAX_HISTORY_ENTRIES);
+      r.nextHistoryId = rebuilt.length + 1;
+    }
     // Rehydrate offline player records from persisted seat tokens. They sit
     // in the players map under synthetic clientIds until someone reconnects
     // with the matching token and is rebound to a live clientId.
     for (const f of ALL_FACTIONS) {
       const persisted = snap.seats?.[f];
-      if (!persisted || typeof persisted !== 'object' || !persisted.token) continue;
+      if (!Room.isSeatPersistence(persisted) || !persisted.token) continue;
       const offlineId = r.synthClientId();
       r.players.set(offlineId, {
         clientId: offlineId,
@@ -135,7 +220,7 @@ export class Room {
       });
       r.seats[f] = offlineId;
     }
-    if (r.started && !r.state.winner) r.scheduleAITurn();
+    if (r.started && !r.paused && !r.state.winner) r.scheduleAITurn();
     return r;
   }
 
@@ -153,13 +238,116 @@ export class Room {
       id: this.id,
       createdAt: this.createdAt,
       lastActivityAt: this.lastActivityAt,
-      autoFillBots: this.autoFillBots,
+      autoFillBots: ALL_FACTIONS.some((f) => this.seatPlans[f] === 'bot'),
+      seatPlans: { ...this.seatPlans },
       seats: persistedSeats,
       vagabondCharacter: this.vagabondCharacter,
       state: this.state,
+      paused: this.paused,
+      pausedSnapshot: this.pausedSnapshot,
+      history: this.history,
+      nextHistoryId: this.nextHistoryId,
       pendingLoadedState: this.pendingLoadedState,
       started: this.started,
     };
+  }
+
+  private cloneState(state: GameState): GameState {
+    return JSON.parse(JSON.stringify(state)) as GameState;
+  }
+
+  isPaused(): boolean {
+    return this.paused;
+  }
+
+  getHistorySummary(): RoomHistorySummaryEntry[] {
+    return this.history.map(({ state, ...rest }) => rest);
+  }
+
+  restoreHistoryEntryById(entryId: number): string | null {
+    const hit = this.history.find((h) => h.id === entryId);
+    if (!hit) return 'history entry not found';
+    if (this.aiTimer) { clearTimeout(this.aiTimer); this.aiTimer = null; }
+    this.state = this.cloneState(hit.state);
+    this.paused = true;
+    this.pausedSnapshot = this.cloneState(this.state);
+    this.pendingLoadedState = null;
+    this.started = this.state.phase !== 'setup';
+    this.vagabondCharacter = this.state.factions.vagabond?.character ?? this.vagabondCharacter;
+    // Keep current pre-game seat plan settings; history restore is an in-game tool.
+    this.broadcastLobby();
+    this.broadcastState();
+    this.touched();
+    return null;
+  }
+
+  private appendHistoryFromLogs(prevState: GameState, nextState: GameState): void {
+    if (nextState.log.length <= prevState.log.length) return;
+    const now = Date.now();
+    for (let i = prevState.log.length; i < nextState.log.length; i++) {
+      const log = nextState.log[i]!;
+      this.history.push({
+        id: this.nextHistoryId++,
+        createdAt: now,
+        logIndex: i,
+        turn: log.turn,
+        faction: log.faction,
+        message: log.message,
+        state: this.cloneState(nextState),
+      });
+    }
+    if (this.history.length > MAX_HISTORY_ENTRIES) {
+      this.history = this.history.slice(-MAX_HISTORY_ENTRIES);
+    }
+  }
+
+  pauseByAdmin(): string | null {
+    if (!this.started) return 'game not started';
+    if (this.paused) return null;
+    this.paused = true;
+    this.pausedSnapshot = this.cloneState(this.state);
+    if (this.aiTimer) { clearTimeout(this.aiTimer); this.aiTimer = null; }
+    const prev = this.state;
+    this.state = produce(this.state, draft => {
+      draft.log.push({ turn: draft.turn, faction: 'system', message: 'Admin paused the room.' });
+    });
+    this.appendHistoryFromLogs(prev, this.state);
+    this.broadcastLobby();
+    this.broadcastState();
+    this.touched();
+    return null;
+  }
+
+  resumeByAdmin(): string | null {
+    if (!this.started) return 'game not started';
+    if (!this.paused) return null;
+    this.paused = false;
+    this.pausedSnapshot = null;
+    const prev = this.state;
+    this.state = produce(this.state, draft => {
+      draft.log.push({ turn: draft.turn, faction: 'system', message: 'Admin resumed the room.' });
+    });
+    this.appendHistoryFromLogs(prev, this.state);
+    this.broadcastLobby();
+    this.broadcastState();
+    this.scheduleAITurn();
+    this.touched();
+    return null;
+  }
+
+  refreshFromPauseSnapshotByAdmin(): string | null {
+    if (!this.started) return 'game not started';
+    if (!this.paused) return 'room is not paused';
+    if (!this.pausedSnapshot) return 'no paused snapshot available';
+    const prev = this.state;
+    this.state = this.cloneState(this.pausedSnapshot);
+    this.state = produce(this.state, draft => {
+      draft.log.push({ turn: draft.turn, faction: 'system', message: 'Admin refreshed room from paused snapshot.' });
+    });
+    this.appendHistoryFromLogs(prev, this.state);
+    this.broadcastState();
+    this.touched();
+    return null;
   }
 
   private synthClientId(): string { return `offline-${++this.syntheticIdCounter}`; }
@@ -171,6 +359,25 @@ export class Room {
       if (p.token && tokensEqual(p.token, token)) return p;
     }
     return null;
+  }
+
+  private isHost(clientId: ClientId): boolean {
+    return this.hostClientId === clientId;
+  }
+
+  private assignHostIfNeeded(preferred?: ClientId): void {
+    if (!this.hostClientId && preferred && this.players.get(preferred)?.online) {
+      this.hostClientId = preferred;
+      return;
+    }
+    if (this.hostClientId && this.players.get(this.hostClientId)?.online) return;
+    for (const p of this.players.values()) {
+      if (p.online) {
+        this.hostClientId = p.clientId;
+        return;
+      }
+    }
+    this.hostClientId = null;
   }
 
   // ─── Connection lifecycle ────────────────────────────────────────────────
@@ -194,11 +401,13 @@ export class Room {
           if (existing.faction && this.seats[existing.faction] === oldId) {
             this.seats[existing.faction] = clientId;
           }
+          if (this.hostClientId === oldId) this.hostClientId = clientId;
         }
         existing.clientId = clientId;
         existing.online = true;
         this.players.set(clientId, existing);
         this.subscribers.set(clientId, sub);
+        this.assignHostIfNeeded(clientId);
         this.broadcastLobby();
         if (this.started) this.sendStateTo(clientId);
         this.touched();
@@ -213,6 +422,7 @@ export class Room {
       p.online = true;
     }
     this.subscribers.set(clientId, sub);
+    this.assignHostIfNeeded(clientId);
     this.broadcastLobby();
     if (this.started) this.sendStateTo(clientId);
     this.touched();
@@ -221,8 +431,7 @@ export class Room {
   /** A WS closed. In lobby, this is symmetric with the old behavior: the
    *  player record is removed and any held seat is freed. Once the game has
    *  started, seat holders stick around as offline records so they can
-   *  reclaim their seat via the rejoin token. The bot covers their seat
-   *  while they're away. */
+   *  reclaim their seat via the rejoin token. */
   disconnect(clientId: ClientId): void {
     this.subscribers.delete(clientId);
     const player = this.players.get(clientId);
@@ -233,6 +442,7 @@ export class Room {
       if (player.faction) this.seats[player.faction] = null;
       this.players.delete(clientId);
     }
+    if (this.hostClientId === clientId) this.assignHostIfNeeded();
     this.broadcastLobby();
     if (this.started) this.scheduleAITurn();
     this.touched();
@@ -246,6 +456,8 @@ export class Room {
     if (this.started) return 'game already started';
     const player = this.players.get(clientId);
     if (!player) return 'not connected';
+    if (this.seatPlans[faction] === 'bot') return 'seat is assigned to AI';
+    if (this.seatPlans[faction] === 'open') this.seatPlans[faction] = 'human';
     if (this.seats[faction] && this.seats[faction] !== clientId) return 'seat already taken';
     if (player.faction && player.faction !== faction) {
       this.seats[player.faction] = null;
@@ -261,10 +473,51 @@ export class Room {
     return null;
   }
 
-  setAutoFillBots(clientId: ClientId, autoFillBots: boolean): string | null {
+  setSeatPlan(clientId: ClientId, faction: Faction, assignment: SeatAssignment): string | null {
     if (this.started) return 'game already started';
     if (!this.players.has(clientId)) return 'not connected';
-    this.autoFillBots = autoFillBots;
+    if (!this.isHost(clientId)) return 'only host can configure seats';
+    this.seatPlans[faction] = assignment;
+    if (assignment !== 'human') {
+      const seatClientId = this.seats[faction];
+      if (seatClientId) {
+        const occupant = this.players.get(seatClientId);
+        if (occupant?.faction === faction) occupant.faction = null;
+      }
+      this.seats[faction] = null;
+    }
+    this.broadcastLobby();
+    this.touched();
+    return null;
+  }
+
+  assignSeat(clientId: ClientId, faction: Faction, targetClientId: ClientId | null): string | null {
+    if (this.started) return 'game already started';
+    if (!this.players.has(clientId)) return 'not connected';
+    if (!this.isHost(clientId)) return 'only host can assign seats';
+    if (this.seatPlans[faction] !== 'human') return 'seat is not configured for human assignment';
+
+    const prevSeatHolderId = this.seats[faction];
+    if (prevSeatHolderId && prevSeatHolderId !== targetClientId) {
+      const prevSeatHolder = this.players.get(prevSeatHolderId);
+      if (prevSeatHolder?.faction === faction) prevSeatHolder.faction = null;
+    }
+
+    if (targetClientId === null) {
+      this.seats[faction] = null;
+      this.broadcastLobby();
+      this.touched();
+      return null;
+    }
+
+    const target = this.players.get(targetClientId);
+    if (!target || !target.online) return 'target player not connected';
+    if (target.faction && target.faction !== faction) {
+      this.seats[target.faction] = null;
+    }
+    target.faction = faction;
+    if (!target.token) target.token = this.newToken();
+    this.seats[faction] = targetClientId;
     this.broadcastLobby();
     this.touched();
     return null;
@@ -275,8 +528,8 @@ export class Room {
     if (!player || !player.faction) return;
     this.seats[player.faction] = null;
     player.faction = null;
-    // Releasing the seat invalidates the token — the user is no longer
-    // associated with this room. A future claim re-issues a fresh token.
+    // Releasing the seat invalidates the token. The host may re-assign the
+    // player to a seat again, which issues a fresh token.
     player.token = null;
     this.broadcastLobby();
     this.touched();
@@ -303,24 +556,39 @@ export class Room {
 
   startGame(): string | null {
     if (this.started) return 'already started';
-    const claimedFactions = ALL_FACTIONS.filter((f) => this.seats[f] !== null);
-    if (claimedFactions.length === 0) return 'need at least one claimed seat';
+    const activeFactions = ALL_FACTIONS.filter((f) => this.seatPlans[f] !== 'open');
+    if (activeFactions.length === 0) return 'need at least one configured faction';
+    for (const faction of activeFactions) {
+      if (this.seatPlans[faction] === 'human' && this.seats[faction] === null) {
+        return `${faction} is set to human but has no assigned player`;
+      }
+    }
+    this.history = [];
+    this.nextHistoryId = 1;
+    const prevState = this.state;
     if (this.pendingLoadedState) {
       this.state = this.pendingLoadedState;
       this.pendingLoadedState = null;
     } else {
-      const factions = this.autoFillBots ? ALL_FACTIONS : claimedFactions;
+      const factions = activeFactions;
       let base = newGame({ seed: Math.floor(Math.random() * 1e9), factions });
       base = produce(base, draft => {
         if (draft.factions.vagabond) {
           // Only set the character; setupVagabond() will add the correct starting items.
           draft.factions.vagabond.character = this.vagabondCharacter;
           draft.factions.vagabond.items = [];
+          if (draft.setup) {
+            draft.setup.vagabondCharacterChosen = true;
+          }
         }
       });
-      this.state = startGame(performSetup(base));
+      this.state = base;
     }
     this.started = true;
+    this.paused = false;
+    this.pausedSnapshot = null;
+    this.state = this.autoAdvanceSystemSteps(this.state);
+    this.appendHistoryFromLogs(prevState, this.state);
     metrics.increment('root.game.started', { factions: this.state.factionOrder.join(',') });
     this.broadcastLobby();
     this.broadcastState();
@@ -332,7 +600,11 @@ export class Room {
   newGameReset(): void {
     if (this.aiTimer) { clearTimeout(this.aiTimer); this.aiTimer = null; }
     this.state = newGame({ seed: Math.floor(Math.random() * 1e9) });
+    this.history = [];
+    this.nextHistoryId = 1;
     this.pendingLoadedState = null;
+    this.paused = false;
+    this.pausedSnapshot = null;
     this.started = false;
     this.vagabondCharacter = 'thief';
     this.broadcastLobby();
@@ -345,7 +617,7 @@ export class Room {
     const snapshot = buildStateSnapshot(this.state, {
       source: 'online',
       roomId: this.id,
-      autoFillBots: this.autoFillBots,
+      autoFillBots: ALL_FACTIONS.some((f) => this.seatPlans[f] === 'bot'),
       playerFaction: player?.faction ?? null,
     });
     return serializeStateSnapshot(snapshot);
@@ -355,6 +627,7 @@ export class Room {
 
   applyAction(clientId: ClientId, action: Action): string | null {
     if (!this.started) return 'game not started';
+    if (this.paused) return 'game is paused by admin';
     const player = this.players.get(clientId);
     if (!player) return 'not connected';
     const isSystem = action.kind.startsWith('system.');
@@ -368,9 +641,11 @@ export class Room {
       const factionPrefix = action.kind.split('.')[0];
       if (player.faction !== factionPrefix) return 'not your seat';
     }
-    const next = this.reduceFull(this.state, action);
-    if (next === this.state) return 'action had no effect';
-    this.state = next;
+    const prev = this.state;
+    const next = this.reduceFull(prev, action);
+    if (next === prev) return 'action had no effect';
+    this.state = this.autoAdvanceSystemSteps(next);
+    this.appendHistoryFromLogs(prev, this.state);
     metrics.increment('root.action.applied', { kind: action.kind.replace('.', '_') });
     if (next.winner) metrics.increment('root.game.over', { winner: next.winner.faction, via: next.winner.via });
     this.broadcastState();
@@ -388,9 +663,20 @@ export class Room {
 
   private runAITurn(): void {
     this.aiTimer = null;
-    if (!this.started || this.state.winner) return;
-    if (this.state.phase === 'setup' || this.state.phase === 'gameOver') return;
-    if (!this.autoFillBots) return;
+    if (!this.started || this.paused || this.state.winner) return;
+    if (this.state.phase === 'gameOver') return;
+
+    const progressed = this.autoAdvanceSystemSteps(this.state);
+    if (progressed !== this.state) {
+      const prev = this.state;
+      this.state = progressed;
+      this.appendHistoryFromLogs(prev, this.state);
+      this.broadcastState();
+      this.touched();
+      if (!this.state.winner) this.scheduleAITurn();
+      return;
+    }
+
     // A pending prompt (e.g. defender ambush) pauses the active-faction
     // turn — the respondent is the one to act. Check their seat first.
     let actingFaction: Faction | undefined;
@@ -402,20 +688,22 @@ export class Room {
     const seatClientId = this.seats[actingFaction!];
     if (seatClientId) {
       const holder = this.players.get(seatClientId);
-      // Only block the bot if a *live* human is seated. An offline holder
-      // gets covered by the bot until they reconnect with their token.
-      if (holder?.online) return;
+      // A human seat remains paused while its owner is offline. The owner
+      // must rejoin before the turn can continue.
+      if (holder && this.seatPlans[actingFaction!] !== 'bot') return;
     }
     const action = pickAction(this.state);
     if (!action) return;
     const t0 = Date.now();
-    let next = this.reduceFull(this.state, action);
-    if (next === this.state) {
-      next = this.reduceFull(this.state, { kind: 'system.advancePhase' });
-      if (next === this.state) return;
+    const prev = this.state;
+    let next = this.reduceFull(prev, action);
+    if (next === prev) {
+      next = this.reduceFull(prev, { kind: 'system.advancePhase' });
+      if (next === prev) return;
     }
     metrics.histogram('root.bot.turn_ms', Date.now() - t0);
-    this.state = next;
+    this.state = this.autoAdvanceSystemSteps(next);
+    this.appendHistoryFromLogs(prev, this.state);
     this.broadcastState();
     this.touched();
     if (!this.state.winner) this.scheduleAITurn();
@@ -423,6 +711,29 @@ export class Room {
 
   private reduceFull(state: GameState, action: Action): GameState {
     return checkCoalitionVictory(checkVictory(reduce(state, action)));
+  }
+
+  /** Auto-progress through system-only transitions; stop at the next real choice. */
+  private autoAdvanceSystemSteps(state: GameState): GameState {
+    let cur = state;
+    for (let i = 0; i < 48; i++) {
+      if (cur.phase === 'setup' || cur.phase === 'gameOver' || cur.winner) return cur;
+      if (cur.pendingPrompts.length > 0) return cur;
+      const legal = getLegalActions(cur);
+      if (legal.length === 0) return cur;
+      const hasNonSystem = legal.some((a) => !a.kind.startsWith('system.'));
+      if (hasNonSystem) return cur;
+
+      let next = cur;
+      if (legal.some((a) => a.kind === 'system.advancePhase')) {
+        next = this.reduceFull(cur, { kind: 'system.advancePhase' });
+      } else if (legal.some((a) => a.kind === 'system.endTurn')) {
+        next = this.reduceFull(cur, { kind: 'system.endTurn' });
+      }
+      if (next === cur) return cur;
+      cur = next;
+    }
+    return cur;
   }
 
   // ─── Snapshots ───────────────────────────────────────────────────────────
@@ -436,9 +747,11 @@ export class Room {
         .filter(p => p.online)
         .map(({ clientId, displayName, faction }) => ({ clientId, displayName, faction })),
       seats: { ...this.seats },
-      autoFillBots: this.autoFillBots,
+      seatPlans: { ...this.seatPlans },
+      hostClientId: this.hostClientId,
       vagabondCharacter: this.vagabondCharacter,
       hasLoadedState: this.pendingLoadedState !== null,
+      paused: this.paused,
       started: this.started,
     };
   }
@@ -477,7 +790,7 @@ export class Room {
   }
 
   hasAnyClaimedSeat(): boolean {
-    return ALL_FACTIONS.some(f => this.seats[f] !== null);
+    return ALL_FACTIONS.some(f => this.seatPlans[f] !== 'open');
   }
 
   onlinePlayerCount(): number {

@@ -16,17 +16,22 @@
 // are added by their respective phases by composing this resolver.
 
 import { produce } from "immer";
+import { awardVictoryPoints } from './victory';
+import { discardCard } from './cards';
 import type {
   GameState,
   ClearingState,
   ClearingId,
   Faction,
+  CombatOverlayParty,
+  CombatOverlayState,
   BuildingInstance,
   TokenInstance,
 } from "./types";
 import { mulberry32, rollDie, mixSeed } from "./rng";
 import { getCard, type CardId } from "./cards";
 import { AUTUMN_MAP } from "./map";
+import { enqueueOutrage } from './outrage';
 
 export interface CombatModifiers {
   extraAttackerHits?: number; // Brutal Tactics, Bold Leadership: +1 uncapped hit to attacker
@@ -44,6 +49,46 @@ export interface CombatParams {
   defender: Faction;
   attackerAmbush?: CardId;
   defenderAmbush?: CardId;
+}
+
+type CombatEffectKey =
+  | "useBrutalTactics"
+  | "useBoldLeadership"
+  | "useLookouts"
+  | "useSappers"
+  | "useAttackerArmorers"
+  | "useDefenderArmorers";
+
+interface CombatChoiceState {
+  useBrutalTactics: boolean;
+  useBoldLeadership: boolean;
+  useLookouts: boolean;
+  useSappers: boolean;
+  useAttackerArmorers: boolean;
+  useDefenderArmorers: boolean;
+  asked: CombatEffectKey[];
+}
+
+interface CombatOptionalPromptPayload {
+  params: CombatParams;
+  choices: CombatChoiceState;
+  effect: CombatEffectKey;
+  label: string;
+}
+
+interface CombatRemovalOrderPromptPayload {
+  params: CombatParams;
+  choices: CombatChoiceState;
+  removalSelections: Partial<Record<"attacker" | "defender", string[]>>;
+  side: "attacker" | "defender";
+  required: number;
+  available: Array<{ id: string; kind: string; category: "building" | "token" }>;
+}
+
+interface CombatFieldHospitalsPromptPayload {
+  clearing: ClearingId;
+  suit: "fox" | "mouse" | "rabbit";
+  warriorsLost: number;
 }
 
 export interface CombatOutcome {
@@ -70,6 +115,204 @@ export interface CombatOutcome {
   ambushedByAttacker: boolean;
   brutalTacticsUsed?: boolean;
   guerrillaWarUsed?: boolean;
+}
+
+function snapshotParty(
+  clearing: ClearingState,
+  faction: Faction,
+): CombatOverlayParty {
+  return {
+    faction,
+    warriors: clearing.warriors[faction] ?? 0,
+    buildings: clearing.buildings.filter((b) => b.faction === faction).length,
+    tokens: clearing.tokens.filter((t) => t.faction === faction).length,
+    buildingKinds: clearing.buildings
+      .filter((b) => b.faction === faction)
+      .map((b) => b.kind),
+    tokenKinds: clearing.tokens
+      .filter((t) => t.faction === faction)
+      .map((t) => t.kind),
+  };
+}
+
+function buildCombatOverlay(
+  state: GameState,
+  params: CombatParams,
+  status: CombatOverlayState["status"],
+): CombatOverlayState | undefined {
+  const clearing = state.map.clearings[params.clearing];
+  const meta = AUTUMN_MAP.clearings.find((c) => c.id === params.clearing);
+  if (!clearing || !meta) return undefined;
+  const seq = state.log.length + (state.battleOverlay ? 1 : 0);
+  const id = `${state.turn}-${seq}-${params.clearing}-${params.attacker}-${params.defender}`;
+  return {
+    id,
+    turn: state.turn,
+    clearing: params.clearing,
+    suit: meta.suit,
+    attacker: snapshotParty(clearing, params.attacker),
+    defender: snapshotParty(clearing, params.defender),
+    status,
+    modifiers: [],
+  };
+}
+
+function defenderAmbushWipesAttacker(
+  state: GameState,
+  params: CombatParams,
+): boolean {
+  if (!params.defenderAmbush || params.attackerAmbush) return false;
+  const clearing = state.map.clearings[params.clearing];
+  if (!clearing) return false;
+  const attackerWarriors = clearing.warriors[params.attacker] ?? 0;
+  return attackerWarriors > 0 && attackerWarriors <= 2;
+}
+
+function casualtiesNeedOrderChoice(
+  warriorsBefore: number,
+  hitsTaken: number,
+  buildingCount: number,
+  tokenCount: number,
+): boolean {
+  const remainingAfterWarriors = Math.max(0, hitsTaken - warriorsBefore);
+  return remainingAfterWarriors > 0 && (buildingCount + tokenCount) > remainingAfterWarriors;
+}
+
+function computePieceLossByOrder(
+  warriorsBefore: number,
+  buildingsBefore: number,
+  tokensBefore: number,
+  hitsTaken: number,
+  order: "buildings-first" | "tokens-first",
+): { warriorsRemoved: number; buildingsRemoved: number; tokensRemoved: number } {
+  let remaining = hitsTaken;
+  const warriorsRemoved = Math.min(warriorsBefore, remaining);
+  remaining -= warriorsRemoved;
+
+  let buildingsRemoved = 0;
+  let tokensRemoved = 0;
+  if (order === "buildings-first") {
+    buildingsRemoved = Math.min(buildingsBefore, remaining);
+    remaining -= buildingsRemoved;
+    tokensRemoved = Math.min(tokensBefore, remaining);
+  } else {
+    tokensRemoved = Math.min(tokensBefore, remaining);
+    remaining -= tokensRemoved;
+    buildingsRemoved = Math.min(buildingsBefore, remaining);
+  }
+  return { warriorsRemoved, buildingsRemoved, tokensRemoved };
+}
+
+function sidePieceOptions(
+  clearing: ClearingState,
+  faction: Faction,
+): Array<{ id: string; kind: string; category: "building" | "token" }> {
+  const out: Array<{ id: string; kind: string; category: "building" | "token" }> = [];
+  for (let i = 0; i < clearing.buildings.length; i++) {
+    const b = clearing.buildings[i]!;
+    if (b.faction !== faction) continue;
+    out.push({ id: `b:${i}`, kind: b.kind, category: "building" });
+  }
+  for (let i = 0; i < clearing.tokens.length; i++) {
+    const t = clearing.tokens[i]!;
+    if (t.faction !== faction) continue;
+    out.push({ id: `t:${i}`, kind: t.kind, category: "token" });
+  }
+  return out;
+}
+
+function emptyChoices(): CombatChoiceState {
+  return {
+    useBrutalTactics: false,
+    useBoldLeadership: false,
+    useLookouts: false,
+    useSappers: false,
+    useAttackerArmorers: false,
+    useDefenderArmorers: false,
+    asked: [],
+  };
+}
+
+function canUseLookouts(state: GameState, defender: Faction): boolean {
+  if (!hasCraftedPersistent(state, defender, "Lookouts")) return false;
+  if (defender === "marquise") return (state.factions.marquise?.warriorSupply ?? 0) > 0;
+  if (defender === "eyrie") return (state.factions.eyrie?.warriorSupply ?? 0) > 0;
+  if (defender === "alliance") return (state.factions.alliance?.warriorSupply ?? 0) > 0;
+  return false;
+}
+
+function lookoutsWarriorsFor(state: GameState, defender: Faction): number {
+  if (!canUseLookouts(state, defender)) return 0;
+  if (defender === "marquise") return Math.min(3, state.factions.marquise?.warriorSupply ?? 0);
+  if (defender === "eyrie") return Math.min(3, state.factions.eyrie?.warriorSupply ?? 0);
+  if (defender === "alliance") return Math.min(3, state.factions.alliance?.warriorSupply ?? 0);
+  return 0;
+}
+
+function beginOptionalEffectsOrResolve(
+  state: GameState,
+  params: CombatParams,
+): GameState {
+  return continueOptionalEffectsOrResolve(state, params, emptyChoices());
+}
+
+function continueOptionalEffectsOrResolve(
+  state: GameState,
+  params: CombatParams,
+  choices: CombatChoiceState,
+): GameState {
+  const prompt = nextOptionalPrompt(state, params, choices);
+  if (!prompt) return resolveCombat(state, params, choices);
+  return produce(state, (draft) => {
+    draft.pendingPrompts.push({
+      id: `opt-${draft.turn}-${params.clearing}-${prompt.effect}`,
+      kind: "combat.optionalEffect",
+      faction: prompt.faction,
+      payload: {
+        params,
+        choices,
+        effect: prompt.effect,
+        label: prompt.label,
+      } as CombatOptionalPromptPayload,
+    });
+    if (draft.battleOverlay) {
+      draft.battleOverlay = {
+        ...draft.battleOverlay,
+        status: "optional-effect-prompt",
+      };
+    }
+    draft.log.push({
+      turn: draft.turn,
+      faction: "system",
+      message: `${prompt.faction} may use ${prompt.label}.`,
+    });
+  });
+}
+
+function nextOptionalPrompt(
+  state: GameState,
+  params: CombatParams,
+  choices: CombatChoiceState,
+): { faction: Faction; effect: CombatEffectKey; label: string } | null {
+  if (!choices.asked.includes("useLookouts") && canUseLookouts(state, params.defender)) {
+    return { faction: params.defender, effect: "useLookouts", label: "Lookouts" };
+  }
+  if (!choices.asked.includes("useBrutalTactics") && hasCraftedPersistent(state, params.attacker, "Brutal Tactics")) {
+    return { faction: params.attacker, effect: "useBrutalTactics", label: "Brutal Tactics" };
+  }
+  if (!choices.asked.includes("useBoldLeadership") && hasCraftedPersistent(state, params.attacker, "Bold Leadership")) {
+    return { faction: params.attacker, effect: "useBoldLeadership", label: "Bold Leadership" };
+  }
+  if (!choices.asked.includes("useSappers") && hasCraftedPersistent(state, params.defender, "Sappers")) {
+    return { faction: params.defender, effect: "useSappers", label: "Sappers" };
+  }
+  if (!choices.asked.includes("useAttackerArmorers") && hasCraftedPersistent(state, params.attacker, "Armorers")) {
+    return { faction: params.attacker, effect: "useAttackerArmorers", label: "Armorers" };
+  }
+  if (!choices.asked.includes("useDefenderArmorers") && hasCraftedPersistent(state, params.defender, "Armorers")) {
+    return { faction: params.defender, effect: "useDefenderArmorers", label: "Armorers" };
+  }
+  return null;
 }
 
 /** Compute the outcome from a *snapshot* clearing — no state mutation. */
@@ -250,7 +493,7 @@ function discardCraftedPersistentById(draft: GameState, cardId: string): void {
   const idx = draft.craftedPersistents.findIndex((e) => e.cardId === cardId);
   if (idx >= 0) {
     draft.craftedPersistents.splice(idx, 1);
-    draft.discard.push(cardId);
+    discardCard(draft, cardId);
   }
 }
 
@@ -258,12 +501,28 @@ function discardCraftedPersistentById(draft: GameState, cardId: string): void {
 export function resolveCombat(
   state: GameState,
   params: CombatParams,
+  choices: CombatChoiceState = emptyChoices(),
+  removalSelections: Partial<Record<"attacker" | "defender", string[]>> = {},
 ): GameState {
-  const rng = mulberry32(mixSeed(state.seed, state.rngStep + 1));
-  const dice: [number, number] = [rollDie(rng), rollDie(rng)];
+  const fallbackOverlay = buildCombatOverlay(state, params, "resolved");
+  const carryOverlay = state.battleOverlay
+    && state.battleOverlay.clearing === params.clearing
+    && state.battleOverlay.attacker.faction === params.attacker
+    && state.battleOverlay.defender.faction === params.defender
+    && state.battleOverlay.status !== "resolved"
+    && state.battleOverlay.status !== "cancelled"
+    ? state.battleOverlay
+    : undefined;
 
   const clearing = state.map.clearings[params.clearing];
   if (!clearing) throw new Error(`Bad clearing: ${params.clearing}`);
+  const endedByAmbush = defenderAmbushWipesAttacker(state, params);
+  const dice: [number, number] = endedByAmbush
+    ? [0, 0]
+    : (() => {
+        const rng = mulberry32(mixSeed(state.seed, state.rngStep + 1));
+        return [rollDie(rng), rollDie(rng)];
+      })();
 
   // ── Detect crafted persistents that affect this combat ────────────────────
   const brutalTacticsId = hasCraftedPersistent(
@@ -292,28 +551,17 @@ export function resolveCombat(
     "Armorers",
   );
 
-  // Lookouts: auto-place up to 3 warriors from the defender's supply before rolling.
-  let lookoutsWarriors = 0;
-  if (lookoutsId) {
-    if (params.defender === "marquise")
-      lookoutsWarriors = Math.min(
-        3,
-        state.factions.marquise?.warriorSupply ?? 0,
-      );
-    else if (params.defender === "eyrie")
-      lookoutsWarriors = Math.min(3, state.factions.eyrie?.warriorSupply ?? 0);
-    else if (params.defender === "alliance")
-      lookoutsWarriors = Math.min(
-        3,
-        state.factions.alliance?.warriorSupply ?? 0,
-      );
-  }
+  const useBrutal = choices.useBrutalTactics && !!brutalTacticsId;
+  const useBold = choices.useBoldLeadership && !!boldLeadershipId;
+  const useSappers = choices.useSappers && !!sappersId;
+  const useLookouts = choices.useLookouts && !!lookoutsId;
+  const lookoutsWarriors = useLookouts ? lookoutsWarriorsFor(state, params.defender) : 0;
 
   const baseModifiers: CombatModifiers = {
-    extraAttackerHits: (brutalTacticsId ? 1 : 0) + (boldLeadershipId ? 1 : 0),
-    extraDefenderHits: sappersId ? 1 : 0,
+    extraAttackerHits: (useBrutal ? 1 : 0) + (useBold ? 1 : 0),
+    extraDefenderHits: useSappers ? 1 : 0,
     guerrillaWar,
-    brutalTacticsActive: !!brutalTacticsId,
+    brutalTacticsActive: useBrutal,
     defenderBonusWarriors: lookoutsWarriors,
   };
 
@@ -329,22 +577,8 @@ export function resolveCombat(
     baseModifiers,
   );
 
-  // Armorers: only spend if the faction actually takes rolled hits
-  // (ambush hits are not rolled hits, so subtract them when checking).
-  const attAmbushHits =
-    !!params.defenderAmbush &&
-    !(!!params.attackerAmbush && !!params.defenderAmbush)
-      ? 2
-      : 0;
-  const defAmbushHits =
-    !!params.attackerAmbush &&
-    !(!!params.attackerAmbush && !!params.defenderAmbush)
-      ? 2
-      : 0;
-  const useAttackerArmorers =
-    !!attackerArmorersId && prelim.defenderHits > attAmbushHits;
-  const useDefenderArmorers =
-    !!defenderArmorersId && prelim.attackerHits > defAmbushHits;
+  const useAttackerArmorers = choices.useAttackerArmorers && !!attackerArmorersId;
+  const useDefenderArmorers = choices.useDefenderArmorers && !!defenderArmorersId;
 
   const outcome =
     useAttackerArmorers || useDefenderArmorers
@@ -363,8 +597,83 @@ export function resolveCombat(
         )
       : prelim;
 
+  const attackerBuildings = clearing.buildings.filter((b) => b.faction === params.attacker).length;
+  const attackerTokens = clearing.tokens.filter((t) => t.faction === params.attacker).length;
+  const defenderBuildings = clearing.buildings.filter((b) => b.faction === params.defender).length;
+  const defenderTokens = clearing.tokens.filter((t) => t.faction === params.defender).length;
+  const attackerWarriors = clearing.warriors[params.attacker] ?? 0;
+  const defenderWarriors = (clearing.warriors[params.defender] ?? 0) + lookoutsWarriors;
+  const attackerCardboardHits = Math.max(0, outcome.defenderHits - attackerWarriors);
+  const defenderCardboardHits = Math.max(0, outcome.attackerHits - defenderWarriors);
+  const attackerOptions = sidePieceOptions(clearing, params.attacker);
+  const defenderOptions = sidePieceOptions(clearing, params.defender);
+
+  if (!endedByAmbush) {
+    const askAttacker = removalSelections.attacker === undefined
+      && casualtiesNeedOrderChoice(attackerWarriors, outcome.defenderHits, attackerBuildings, attackerTokens);
+    if (askAttacker) {
+      return produce(state, (draft) => {
+        draft.pendingPrompts.push({
+          id: `rm-pieces-${draft.turn}-${params.clearing}-attacker`,
+          kind: "combat.removalPieces",
+          faction: params.attacker,
+          payload: {
+            params,
+            choices,
+            removalSelections,
+            side: "attacker",
+            required: attackerCardboardHits,
+            available: attackerOptions,
+          } as CombatRemovalOrderPromptPayload,
+        });
+      });
+    }
+    const askDefender = removalSelections.defender === undefined
+      && casualtiesNeedOrderChoice(defenderWarriors, outcome.attackerHits, defenderBuildings, defenderTokens);
+    if (askDefender) {
+      return produce(state, (draft) => {
+        draft.pendingPrompts.push({
+          id: `rm-pieces-${draft.turn}-${params.clearing}-defender`,
+          kind: "combat.removalPieces",
+          faction: params.defender,
+          payload: {
+            params,
+            choices,
+            removalSelections,
+            side: "defender",
+            required: defenderCardboardHits,
+            available: defenderOptions,
+          } as CombatRemovalOrderPromptPayload,
+        });
+      });
+    }
+  }
+
+  const attackerOrder = "buildings-first" as const;
+  const defenderOrder = "buildings-first" as const;
+  const attackerLoss = computePieceLossByOrder(
+    attackerWarriors,
+    attackerBuildings,
+    attackerTokens,
+    outcome.defenderHits,
+    attackerOrder,
+  );
+  const defenderLoss = computePieceLossByOrder(
+    defenderWarriors,
+    defenderBuildings,
+    defenderTokens,
+    outcome.attackerHits,
+    defenderOrder,
+  );
+  const attackerSelected = removalSelections.attacker ?? attackerOptions.slice(0, attackerCardboardHits).map((p) => p.id);
+  const defenderSelected = removalSelections.defender ?? defenderOptions.slice(0, defenderCardboardHits).map((p) => p.id);
+  const attackerRemovedBuildings = attackerSelected.filter((id) => id.startsWith("b:")).length;
+  const attackerRemovedTokens = attackerSelected.filter((id) => id.startsWith("t:")).length;
+  const defenderRemovedBuildings = defenderSelected.filter((id) => id.startsWith("b:")).length;
+  const defenderRemovedTokens = defenderSelected.filter((id) => id.startsWith("t:")).length;
+
   return produce(state, (draft) => {
-    draft.rngStep += 1;
+    if (!endedByAmbush) draft.rngStep += 1;
     const cl = draft.map.clearings[params.clearing]!;
 
     // Lookouts: physically place warriors before casualties are applied.
@@ -382,28 +691,30 @@ export function resolveCombat(
     // Remove warriors.
     cl.warriors[params.attacker] =
       (cl.warriors[params.attacker] ?? 0) -
-      outcome.attackerPiecesRemoved.warriors;
+      attackerLoss.warriorsRemoved;
     cl.warriors[params.defender] =
       (cl.warriors[params.defender] ?? 0) -
-      outcome.defenderPiecesRemoved.warriors;
+      defenderLoss.warriorsRemoved;
 
     // Remove buildings (defender's, then attacker's).
-    cl.buildings = removeN(
-      cl.buildings,
-      params.defender,
-      outcome.defenderPiecesRemoved.buildings,
-    );
-    cl.buildings = removeN(
-      cl.buildings,
-      params.attacker,
-      outcome.attackerPiecesRemoved.buildings,
-    );
+    const removedBuildingIndexes = new Set<number>();
+    for (const id of defenderSelected) {
+      if (!id.startsWith("b:")) continue;
+      const idx = Number(id.slice(2));
+      if (!Number.isNaN(idx)) removedBuildingIndexes.add(idx);
+    }
+    for (const id of attackerSelected) {
+      if (!id.startsWith("b:")) continue;
+      const idx = Number(id.slice(2));
+      if (!Number.isNaN(idx)) removedBuildingIndexes.add(idx);
+    }
+    cl.buildings = cl.buildings.filter((_b, idx) => !removedBuildingIndexes.has(idx));
     // Sync faction-level building caches. `removeN` only touches the clearing
     // array; each faction also keeps an authoritative count/list that must
     // stay in sync so legal-action checks and VP tracks remain correct.
     for (const [side, n] of [
-      [params.defender, outcome.defenderPiecesRemoved.buildings],
-      [params.attacker, outcome.attackerPiecesRemoved.buildings],
+      [params.defender, defenderRemovedBuildings],
+      [params.attacker, attackerRemovedBuildings],
     ] as const) {
       if (n <= 0) continue;
       // Which buildings were removed? removeN takes the first N for the faction.
@@ -428,36 +739,62 @@ export function resolveCombat(
       }
     }
     // Remove tokens.
-    cl.tokens = removeNTokens(
-      cl.tokens,
-      params.defender,
-      outcome.defenderPiecesRemoved.tokens,
-    );
-    cl.tokens = removeNTokens(
-      cl.tokens,
-      params.attacker,
-      outcome.attackerPiecesRemoved.tokens,
-    );
+    const removedTokenIndexes = new Set<number>();
+    for (const id of defenderSelected) {
+      if (!id.startsWith("t:")) continue;
+      const idx = Number(id.slice(2));
+      if (!Number.isNaN(idx)) removedTokenIndexes.add(idx);
+    }
+    for (const id of attackerSelected) {
+      if (!id.startsWith("t:")) continue;
+      const idx = Number(id.slice(2));
+      if (!Number.isNaN(idx)) removedTokenIndexes.add(idx);
+    }
+    const defenderRemovedAllianceSympathy = defenderSelected.some((id) => {
+      if (!id.startsWith('t:')) return false;
+      const idx = Number(id.slice(2));
+      if (Number.isNaN(idx)) return false;
+      const token = clearing.tokens[idx];
+      return token?.faction === 'alliance' && token.kind === 'sympathy';
+    });
+    const attackerRemovedAllianceSympathy = attackerSelected.some((id) => {
+      if (!id.startsWith('t:')) return false;
+      const idx = Number(id.slice(2));
+      if (Number.isNaN(idx)) return false;
+      const token = clearing.tokens[idx];
+      return token?.faction === 'alliance' && token.kind === 'sympathy';
+    });
+    cl.tokens = cl.tokens.filter((_t, idx) => !removedTokenIndexes.has(idx));
     // Sync Alliance sympathy list. All Alliance tokens are sympathy tokens,
     // so any removal means this clearing's sympathy marker is gone.
     for (const [side, n] of [
-      [params.defender, outcome.defenderPiecesRemoved.tokens],
-      [params.attacker, outcome.attackerPiecesRemoved.tokens],
+      [params.defender, defenderRemovedTokens],
+      [params.attacker, attackerRemovedTokens],
     ] as const) {
       if (n <= 0 || side !== "alliance" || !draft.factions.alliance) continue;
       const idx = draft.factions.alliance.sympathy.indexOf(params.clearing);
       if (idx >= 0) draft.factions.alliance.sympathy.splice(idx, 1);
     }
+    if (defenderRemovedAllianceSympathy) {
+      enqueueOutrage(draft, params.attacker, params.clearing, 'sympathyRemoved');
+    }
+    if (attackerRemovedAllianceSympathy) {
+      enqueueOutrage(draft, params.defender, params.clearing, 'sympathyRemoved');
+    }
+    const keepClearingState = draft.factions.marquise?.keep?.clearing;
+    if (keepClearingState != null) {
+      const keepStillPresent = draft.map.clearings[keepClearingState]?.tokens
+        .some((t) => t.faction === "marquise" && t.kind === "keep");
+      if (!keepStillPresent && draft.factions.marquise) draft.factions.marquise.keep = undefined;
+    }
 
     // Score VP from removed enemy cardboard.
-    draft.scores[params.attacker] =
-      (draft.scores[params.attacker] ?? 0) + outcome.attackerVp;
-    draft.scores[params.defender] =
-      (draft.scores[params.defender] ?? 0) + outcome.defenderVp;
+    awardVictoryPoints(draft, params.attacker, defenderRemovedBuildings + defenderRemovedTokens, `removing enemy cardboard in clearing ${params.clearing}`);
+    awardVictoryPoints(draft, params.defender, attackerRemovedBuildings + attackerRemovedTokens, `removing enemy cardboard in clearing ${params.clearing}`);
 
     // Brutal Tactics: defender scores 1 extra VP (penalty for the attacker).
-    if (brutalTacticsId) {
-      draft.scores[params.defender] = (draft.scores[params.defender] ?? 0) + 1;
+    if (useBrutal) {
+      awardVictoryPoints(draft, params.defender, 1, 'Brutal Tactics');
     }
 
     // Return removed warriors to their owners' supplies. Vagabond has no
@@ -465,12 +802,12 @@ export function resolveCombat(
     returnWarriorsToSupply(
       draft,
       params.attacker,
-      outcome.attackerPiecesRemoved.warriors,
+      attackerLoss.warriorsRemoved,
     );
     returnWarriorsToSupply(
       draft,
       params.defender,
-      outcome.defenderPiecesRemoved.warriors,
+      defenderLoss.warriorsRemoved,
     );
 
     // Vagabond doesn't have warriors — incoming hits damage items instead.
@@ -510,7 +847,7 @@ export function resolveCombat(
         const idx = draft.hands[f].indexOf(id);
         if (idx >= 0) {
           draft.hands[f].splice(idx, 1);
-          draft.discard.push(id);
+          discardCard(draft, id);
           break;
         }
       }
@@ -518,15 +855,15 @@ export function resolveCombat(
 
     // Discard spent crafted persistents; return one-time-per-combat cards to hand.
     const cardNotes: string[] = [];
-    if (boldLeadershipId) {
+    if (useBold && boldLeadershipId) {
       returnCraftedToHand(draft, params.attacker, boldLeadershipId);
       cardNotes.push("Bold Leadership");
     }
-    if (lookoutsId && lookoutsWarriors > 0) {
+    if (useLookouts && lookoutsId && lookoutsWarriors > 0) {
       returnCraftedToHand(draft, params.defender, lookoutsId);
       cardNotes.push("Lookouts");
     }
-    if (sappersId) {
+    if (useSappers && sappersId) {
       discardCraftedPersistentById(draft, sappersId);
       cardNotes.push("Sappers");
     }
@@ -538,8 +875,39 @@ export function resolveCombat(
       discardCraftedPersistentById(draft, defenderArmorersId);
       cardNotes.push(`Armorers (${params.defender})`);
     }
-    if (brutalTacticsId) {
+    if (useBrutal) {
       cardNotes.push("Brutal Tactics");
+    }
+
+    // Keep a structured summary for the battle animation overlay.
+    const baseOverlay = carryOverlay ?? fallbackOverlay;
+    if (baseOverlay) {
+      const modifierNotes: string[] = [];
+      if (params.defenderAmbush) modifierNotes.push("Defender ambush dealt 2 hits before dice");
+      if (params.attackerAmbush) modifierNotes.push("Attacker counter-ambush dealt 2 hits before dice");
+      if (outcome.ambushCancelled) modifierNotes.push("Ambush cards cancelled each other");
+      if (endedByAmbush) modifierNotes.push("Defender ambush eliminated all attacker warriors; battle ended before dice");
+      if (outcome.guerrillaWarUsed) modifierNotes.push("Guerrilla War swapped high/low dice assignments");
+      if (outcome.defenderDefenseless) modifierNotes.push("Defenseless: attacker gained +1 rolled hit");
+      if (lookoutsWarriors > 0) modifierNotes.push(`Lookouts added ${lookoutsWarriors} defender warriors before roll`);
+      if (useBold) modifierNotes.push("Bold Leadership added +1 attacker hit");
+      if (useSappers) modifierNotes.push("Sappers added +1 defender hit");
+      if (useAttackerArmorers) modifierNotes.push(`Armorers (${params.attacker}) negated own rolled hits`);
+      if (useDefenderArmorers) modifierNotes.push(`Armorers (${params.defender}) negated own rolled hits`);
+      if (useBrutal) modifierNotes.push("Brutal Tactics added +1 attacker hit and gave defender +1 VP");
+
+      draft.battleOverlay = {
+        ...baseOverlay,
+        status: "resolved",
+        defenderAmbushCardId: params.defenderAmbush,
+        attackerAmbushCardId: params.attackerAmbush,
+        dice: outcome.dice,
+        attackerHits: outcome.attackerHits,
+        defenderHits: outcome.defenderHits,
+        defenderDefenseless: outcome.defenderDefenseless,
+        endedByAmbush,
+        modifiers: modifierNotes,
+      };
     }
 
     // Log.
@@ -557,17 +925,59 @@ export function resolveCombat(
       turn: draft.turn,
       faction: params.attacker,
       message:
-        `Battle in clearing ${params.clearing}${tag}${ambushNote}${gwNote}${cardNote}: ` +
-        `${params.attacker} dealt ${outcome.attackerHits} hits, ` +
-        `${params.defender} dealt ${outcome.defenderHits} hits ` +
-        `(dice ${outcome.dice[0]}/${outcome.dice[1]})`,
+        `Battle: ${params.attacker} attacked ${params.defender} in clearing ${params.clearing}${tag}${ambushNote}${gwNote}${cardNote}. ` +
+        `Dice ${endedByAmbush ? "none" : `${outcome.dice[0]}/${outcome.dice[1]}`}. ` +
+        `Final hits: ${params.attacker}→${params.defender} ${outcome.attackerHits}, ${params.defender}→${params.attacker} ${outcome.defenderHits}. ` +
+        `Removed: ${params.defender} ${defenderLoss.warriorsRemoved}W/${defenderRemovedBuildings}B/${defenderRemovedTokens}T, ` +
+        `${params.attacker} ${attackerLoss.warriorsRemoved}W/${attackerRemovedBuildings}B/${attackerRemovedTokens}T ` +
+        `${endedByAmbush ? "(no dice rolled)" : `(dice ${outcome.dice[0]}/${outcome.dice[1]})`}`,
     });
-    if (brutalTacticsId) {
+    if (endedByAmbush) {
+      draft.log.push({
+        turn: draft.turn,
+        faction: params.defender,
+        message: `Ambush eliminated all attacking warriors. ${params.defender} wins the battle immediately.`,
+      });
+    }
+    if (useBrutal) {
       draft.log.push({
         turn: draft.turn,
         faction: params.defender,
         message: `Brutal Tactics! ${params.defender} scores 1 VP.`,
       });
+    }
+
+    const battleSuit = AUTUMN_MAP.clearings.find((c) => c.id === params.clearing)?.suit;
+    const marquiseLoss = params.attacker === "marquise"
+      ? attackerLoss.warriorsRemoved
+      : params.defender === "marquise"
+        ? defenderLoss.warriorsRemoved
+        : 0;
+    const keepClearing = draft.factions.marquise?.keep?.clearing;
+    const keepExists = keepClearing != null
+      && !!draft.map.clearings[keepClearing]?.tokens.some((t) => t.faction === "marquise" && t.kind === "keep");
+    if (marquiseLoss > 0 && battleSuit && keepExists) {
+      const options = draft.hands.marquise.filter((id) => {
+        const card = getCard(id);
+        return card.suit === battleSuit || card.suit === "bird";
+      });
+      if (options.length > 0) {
+        draft.pendingPrompts.push({
+          id: `field-hospital-${draft.turn}-${params.clearing}`,
+          kind: "combat.fieldHospitals",
+          faction: "marquise",
+          payload: {
+            clearing: params.clearing,
+            suit: battleSuit,
+            warriorsLost: marquiseLoss,
+          } as CombatFieldHospitalsPromptPayload,
+        });
+        draft.log.push({
+          turn: draft.turn,
+          faction: "marquise",
+          message: `Field Hospitals: may spend ${battleSuit} or bird card to revive ${marquiseLoss} warrior(s) at the keep.`,
+        });
+      }
     }
   });
 }
@@ -586,42 +996,6 @@ function returnWarriorsToSupply(
   // Vagabond pawn does not have a warrior supply.
 }
 
-function removeN(
-  buildings: BuildingInstance[],
-  faction: Faction,
-  n: number,
-): BuildingInstance[] {
-  if (n <= 0) return buildings;
-  const out: BuildingInstance[] = [];
-  let removed = 0;
-  for (const b of buildings) {
-    if (b.faction === faction && removed < n) {
-      removed += 1;
-      continue;
-    }
-    out.push(b);
-  }
-  return out;
-}
-
-function removeNTokens(
-  tokens: TokenInstance[],
-  faction: Faction,
-  n: number,
-): TokenInstance[] {
-  if (n <= 0) return tokens;
-  const out: TokenInstance[] = [];
-  let removed = 0;
-  for (const t of tokens) {
-    if (t.faction === faction && removed < n) {
-      removed += 1;
-      continue;
-    }
-    out.push(t);
-  }
-  return out;
-}
-
 /** True if `cardId` is an ambush card. */
 export function isAmbushCard(cardId: CardId): boolean {
   return getCard(cardId).category === "ambush";
@@ -637,10 +1011,12 @@ export function defenderAmbushOptions(
   const meta = AUTUMN_MAP.clearings.find((c) => c.id === clearing);
   if (!meta) return [];
   return (state.hands[defender] ?? []).filter((id) => {
+    // Network spectators and non-owning clients receive opaque hand-card
+    // placeholders ("hidden"). They are not cards and must never reach the
+    // card registry while rendering a combat prompt.
+    if (id === "hidden") return false;
     const c = getCard(id);
-    return (
-      c.category === "ambush" && (c.suit === meta.suit || c.suit === "bird")
-    );
+    return c.category === "ambush" && (c.suit === meta.suit || c.suit === "bird");
   });
 }
 
@@ -652,9 +1028,30 @@ export function declareBattle(
   params: CombatParams,
 ): GameState {
   if (
+    !params ||
+    typeof params.clearing !== "number" ||
+    !Number.isInteger(params.clearing) ||
+    !state.map.clearings[params.clearing] ||
+    params.attacker === params.defender ||
+    !state.factions[params.attacker] ||
+    !state.factions[params.defender]
+  ) {
+    return state;
+  }
+
+  const attackerWarriors = state.map.clearings[params.clearing].warriors[params.attacker] ?? 0;
+  if (attackerWarriors <= 0) {
+    return state;
+  }
+  if (
     state.pendingPrompts.some(
       (p) =>
-        p.kind === "combat.defenderAmbush" || p.kind === "combat.miceCancel",
+        p.kind === "combat.defenderAmbush" ||
+        p.kind === "combat.miceCancel" ||
+        p.kind === "combat.attackerCounterAmbush" ||
+        p.kind === "combat.optionalEffect" ||
+        p.kind === "combat.removalPieces" ||
+        p.kind === "combat.fieldHospitals",
     )
   ) {
     return state; // Already mid-prompt.
@@ -662,6 +1059,7 @@ export function declareBattle(
   // Mice-in-a-Bush: defender may cancel this battle by discarding the card.
   const miceId = hasCraftedPersistent(state, params.defender, "Mice-in-a-Bush");
   if (miceId) {
+    const overlay = buildCombatOverlay(state, params, "mice-cancel-prompt");
     return produce(state, (draft) => {
       draft.pendingPrompts.push({
         id: `miceCancel-${draft.turn}-${params.clearing}`,
@@ -669,6 +1067,7 @@ export function declareBattle(
         faction: params.defender,
         payload: { ...params, miceId },
       });
+      draft.battleOverlay = overlay;
       draft.log.push({
         turn: draft.turn,
         faction: "system",
@@ -687,8 +1086,9 @@ export function declareBattle(
     "Scouting Party",
   );
   if (scoutingId || ambushes.length === 0) {
-    return resolveCombat(state, params);
+    return beginOptionalEffectsOrResolve(state, params);
   }
+  const overlay = buildCombatOverlay(state, params, "defender-ambush-prompt");
   return produce(state, (draft) => {
     draft.pendingPrompts.push({
       id: `defAmbush-${draft.turn}-${params.clearing}`,
@@ -696,6 +1096,7 @@ export function declareBattle(
       faction: params.defender,
       payload: params,
     });
+    draft.battleOverlay = overlay;
     draft.log.push({
       turn: draft.turn,
       faction: "system",
@@ -724,6 +1125,13 @@ export function resolveMiceCancelPrompt(
     // Discard Mice-in-a-Bush and cancel the battle.
     return produce(after, (draft) => {
       discardCraftedPersistentById(draft, payload.miceId);
+      if (draft.battleOverlay && draft.battleOverlay.clearing === payload.clearing) {
+        draft.battleOverlay = {
+          ...draft.battleOverlay,
+          status: "cancelled",
+          modifiers: [...draft.battleOverlay.modifiers, "Mice-in-a-Bush cancelled battle"],
+        };
+      }
       draft.log.push({
         turn: draft.turn,
         faction: payload.defender,
@@ -747,13 +1155,162 @@ export function resolveAmbushPrompt(
   );
   if (!prompt) return state;
   const params = prompt.payload as CombatParams;
-  const next: CombatParams = options.playedCard
-    ? { ...params, defenderAmbush: options.playedCard }
-    : params;
-  const after = resolveCombat(state, next);
-  return produce(after, (draft) => {
+  const withoutPrompt = produce(state, (draft) => {
     draft.pendingPrompts = draft.pendingPrompts.filter(
       (p) => p.id !== prompt.id,
     );
+  });
+  if (!options.playedCard) return beginOptionalEffectsOrResolve(withoutPrompt, params);
+
+  const counterOptions = defenderAmbushOptions(
+    withoutPrompt,
+    params.clearing,
+    params.attacker,
+  );
+  const next = { ...params, defenderAmbush: options.playedCard };
+  if (counterOptions.length === 0) {
+    if (defenderAmbushWipesAttacker(withoutPrompt, next)) return resolveCombat(withoutPrompt, next);
+    return beginOptionalEffectsOrResolve(withoutPrompt, next);
+  }
+
+  return produce(withoutPrompt, (draft) => {
+    draft.pendingPrompts.push({
+      id: `attCounter-${draft.turn}-${params.clearing}`,
+      kind: "combat.attackerCounterAmbush",
+      faction: params.attacker,
+      payload: next,
+    });
+    if (draft.battleOverlay) {
+      draft.battleOverlay = {
+        ...draft.battleOverlay,
+        status: "attacker-counter-ambush-prompt",
+        defenderAmbushCardId: options.playedCard,
+      };
+    }
+    draft.log.push({
+      turn: draft.turn,
+      faction: "system",
+      message: `${params.attacker} may cancel the ambush by playing a matching Ambush card.`,
+    });
+  });
+}
+
+export function resolveCounterAmbushPrompt(
+  state: GameState,
+  options: { playedCard?: CardId },
+): GameState {
+  const prompt = state.pendingPrompts.find(
+    (p) => p.kind === "combat.attackerCounterAmbush",
+  );
+  if (!prompt) return state;
+  const params = prompt.payload as CombatParams;
+  const withoutPrompt = produce(state, (draft) => {
+    draft.pendingPrompts = draft.pendingPrompts.filter(
+      (p) => p.id !== prompt.id,
+    );
+  });
+  const next = options.playedCard
+    ? { ...params, attackerAmbush: options.playedCard }
+    : params;
+  if (defenderAmbushWipesAttacker(withoutPrompt, next)) return resolveCombat(withoutPrompt, next);
+  return beginOptionalEffectsOrResolve(withoutPrompt, next);
+}
+
+export function resolveOptionalEffectPrompt(
+  state: GameState,
+  options: { use: boolean; effect: string; faction: Faction },
+): GameState {
+  const prompt = state.pendingPrompts.find(
+    (p) => p.kind === "combat.optionalEffect",
+  );
+  if (!prompt || prompt.faction !== options.faction) return state;
+  const payload = prompt.payload as CombatOptionalPromptPayload;
+  if (payload.effect !== options.effect) return state;
+  const effect = payload.effect;
+  const nextChoices: CombatChoiceState = {
+    ...payload.choices,
+    asked: payload.choices.asked.includes(effect)
+      ? payload.choices.asked
+      : [...payload.choices.asked, effect],
+    [effect]: options.use,
+  } as CombatChoiceState;
+  const after = produce(state, (draft) => {
+    draft.pendingPrompts = draft.pendingPrompts.filter((p) => p.id !== prompt.id);
+  });
+  return continueOptionalEffectsOrResolve(after, payload.params, nextChoices);
+}
+
+export function resolveRemovalPiecesPrompt(
+  state: GameState,
+  options: {
+    faction: Faction;
+    side: "attacker" | "defender";
+    pieceIds: string[];
+  },
+): GameState {
+  const prompt = state.pendingPrompts.find((p) => p.kind === "combat.removalPieces");
+  if (!prompt || prompt.faction !== options.faction) return state;
+  const payload = prompt.payload as CombatRemovalOrderPromptPayload;
+  if (payload.side !== options.side) return state;
+  const allowed = new Set(payload.available.map((p) => p.id));
+  const uniq = Array.from(new Set(options.pieceIds));
+  if (uniq.length !== payload.required) return state;
+  if (uniq.some((id) => !allowed.has(id))) return state;
+  const nextSelections = {
+    ...payload.removalSelections,
+    [options.side]: uniq,
+  };
+  const after = produce(state, (draft) => {
+    draft.pendingPrompts = draft.pendingPrompts.filter((p) => p.id !== prompt.id);
+  });
+  return resolveCombat(after, payload.params, payload.choices, nextSelections);
+}
+
+export function resolveFieldHospitalsPrompt(
+  state: GameState,
+  options: { faction: Faction; cardId?: CardId },
+): GameState {
+  const prompt = state.pendingPrompts.find((p) => p.kind === "combat.fieldHospitals");
+  if (!prompt || prompt.faction !== options.faction || options.faction !== "marquise") return state;
+  const payload = prompt.payload as CombatFieldHospitalsPromptPayload;
+  // Reject an invalid payment without consuming the prompt. This keeps the
+  // engine authoritative even if a client dispatches an action outside the UI.
+  if (options.cardId) {
+    if (!state.hands.marquise.includes(options.cardId)) return state;
+    const card = getCard(options.cardId);
+    if (card.suit !== payload.suit && card.suit !== "bird") return state;
+  }
+  const after = produce(state, (draft) => {
+    draft.pendingPrompts = draft.pendingPrompts.filter((p) => p.id !== prompt.id);
+  });
+  return produce(after, (draft) => {
+    const keepClearing = draft.factions.marquise?.keep?.clearing;
+    if (keepClearing == null) return;
+    const keepStillPresent = draft.map.clearings[keepClearing]?.tokens
+      .some((t) => t.faction === "marquise" && t.kind === "keep");
+    if (!keepStillPresent) return;
+    if (!options.cardId) {
+      draft.log.push({
+        turn: draft.turn,
+        faction: "marquise",
+        message: "Field Hospitals skipped.",
+      });
+      return;
+    }
+    const idx = draft.hands.marquise.indexOf(options.cardId);
+    if (idx < 0) return;
+    const card = getCard(options.cardId);
+    draft.hands.marquise.splice(idx, 1);
+    discardCard(draft, options.cardId);
+    const toRevive = Math.min(payload.warriorsLost, draft.factions.marquise?.warriorSupply ?? 0);
+    if (toRevive <= 0) return;
+    draft.map.clearings[keepClearing]!.warriors.marquise =
+      (draft.map.clearings[keepClearing]!.warriors.marquise ?? 0) + toRevive;
+    draft.factions.marquise!.warriorSupply -= toRevive;
+    draft.log.push({
+      turn: draft.turn,
+      faction: "marquise",
+      message: `Field Hospitals: spent ${card.name} to revive ${toRevive} warrior(s) at the keep.`,
+    });
   });
 }

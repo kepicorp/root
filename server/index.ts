@@ -3,7 +3,7 @@
 //   GET  /                     — React UI (SPA, falls back to index.html)
 //   GET  /healthz              — liveness check
 //   GET  /api/rooms/:id        — { exists: boolean }
-//   POST /api/rooms            — { id } create a new room
+//   POST /api/rooms            — { id } create a new room (human/AI seat plan)
 //   WS   /ws?room=ID           — connect to a specific room
 //
 // Persistence: every room is a JSON file in `DATA_DIR` (default ./data/rooms).
@@ -20,9 +20,10 @@ import type { Room } from './room';
 import { makeStaticHandler } from './static';
 import { handleAdmin, ADMIN_FEATURE_ENABLED } from './admin';
 import { handleSiteAuth, hasSiteAccess, requireSiteAccess } from './site-auth';
-import type { ClientMessage, ServerMessage } from './protocol';
+import type { ClientMessage, ServerMessage, SeatAssignment } from './protocol';
 import { metrics } from './telemetry';
 import { parseStateSnapshotText } from '../src/engine/stateSnapshot';
+import { ALL_FACTIONS, type Faction } from '../src/engine/types';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const DEVICE_IP = process.env.DEVICE_IP ?? ifaceIp();
@@ -36,6 +37,18 @@ const CLEANUP_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 const manager = new RoomManager({ dataDir: DATA_DIR });
 const staticHandler = makeStaticHandler(DIST_DIR);
 let nextClientId = 1;
+
+function buildSeatPlans(humanPlayers: number, aiPlayers: number): Record<Faction, SeatAssignment> {
+  const plans: Record<Faction, SeatAssignment> = {
+    marquise: 'open', eyrie: 'open', alliance: 'open', vagabond: 'open',
+  };
+  const clampedHumans = Math.max(1, Math.min(4, humanPlayers));
+  const maxAi = 4 - clampedHumans;
+  const clampedAi = Math.max(0, Math.min(maxAi, aiPlayers));
+  for (let i = 0; i < clampedHumans; i++) plans[ALL_FACTIONS[i]!] = 'human';
+  for (let i = clampedHumans; i < clampedHumans + clampedAi; i++) plans[ALL_FACTIONS[i]!] = 'bot';
+  return plans;
+}
 
 function sendJson(res: http.ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -66,7 +79,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
 
   // POST /api/rooms — create a new room
   if (req.method === 'POST' && path === '/api/rooms') {
-    let body: { autoFillBots?: boolean; loadStateText?: string } = {};
+    let body: { humanPlayers?: number; aiPlayers?: number; loadStateText?: string } = {};
     try {
       const raw = await readJsonBody(req, 2 * 1024 * 1024);
       body = (raw ?? {}) as typeof body;
@@ -83,7 +96,21 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         return;
       }
     }
-    const room = manager.create({ autoFillBots: body.autoFillBots ?? true, pendingLoadedState });
+    const humanPlayers = Number.isFinite(body.humanPlayers) ? Number(body.humanPlayers) : 1;
+    const aiPlayers = Number.isFinite(body.aiPlayers) ? Number(body.aiPlayers) : 3;
+    if (!Number.isInteger(humanPlayers) || humanPlayers < 1 || humanPlayers > 4) {
+      sendJson(res, 400, { error: 'humanPlayers must be an integer between 1 and 4' });
+      return;
+    }
+    if (!Number.isInteger(aiPlayers) || aiPlayers < 0 || aiPlayers > 3) {
+      sendJson(res, 400, { error: 'aiPlayers must be an integer between 0 and 3' });
+      return;
+    }
+    if (humanPlayers + aiPlayers > 4) {
+      sendJson(res, 400, { error: 'humanPlayers + aiPlayers must be 4 or less' });
+      return;
+    }
+    const room = manager.create({ seatPlans: buildSeatPlans(humanPlayers, aiPlayers), pendingLoadedState });
     sendJson(res, 201, { id: room.id });
     return;
   }
@@ -193,8 +220,13 @@ function attachToRoom(ws: WebSocket, room: Room): void {
       case 'chooseVagabondCharacter':
         room.chooseVagabondCharacter(msg.character);
         break;
-      case 'setAutoFillBots': {
-        const err = room.setAutoFillBots(clientId, msg.autoFillBots);
+      case 'setSeatPlan': {
+        const err = room.setSeatPlan(clientId, msg.faction, msg.assignment);
+        if (err) send(ws, { kind: 'error', message: err });
+        break;
+      }
+      case 'assignSeat': {
+        const err = room.assignSeat(clientId, msg.faction, msg.clientId);
         if (err) send(ws, { kind: 'error', message: err });
         break;
       }

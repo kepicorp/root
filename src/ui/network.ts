@@ -1,7 +1,7 @@
 // Client-side WebSocket bridge. Manages a single connection and surfaces it
 // to the store via a small subscription interface.
 
-import type { ClientMessage, ServerMessage, LobbyState } from '../../server/protocol';
+import type { ClientId, ClientMessage, ServerMessage, LobbyState, SeatAssignment } from '../../server/protocol';
 import type { GameState, Action, Faction } from '../engine/types';
 
 export type NetMode = 'off' | 'connecting' | 'lobby' | 'in-game' | 'disconnected';
@@ -227,8 +227,12 @@ class NetClient {
   chooseVagabondCharacter(character: 'thief' | 'tinker' | 'ranger'): void {
     this.send({ kind: 'chooseVagabondCharacter', character });
   }
-  setAutoFillBots(autoFillBots: boolean): void {
-    this.send({ kind: 'setAutoFillBots', autoFillBots });
+  setSeatPlan(faction: Faction, assignment: SeatAssignment): void {
+    this.send({ kind: 'setSeatPlan', faction, assignment });
+  }
+
+  assignSeat(faction: Faction, clientId: ClientId | null): void {
+    this.send({ kind: 'assignSeat', faction, clientId });
   }
 
   setDisplayName(displayName: string): void {
@@ -281,13 +285,15 @@ export function autoConnectFromUrl(): void {
 // ─── REST helpers ───────────────────────────────────────────────────────────
 
 export interface CreateRoomOptions {
-  autoFillBots?: boolean;
+  humanPlayers?: number;
+  aiPlayers?: number;
   loadStateText?: string;
 }
 
 export async function createRoom(opts: CreateRoomOptions = {}): Promise<string> {
-  const payload: { autoFillBots: boolean; loadStateText?: string } = {
-    autoFillBots: opts.autoFillBots ?? true,
+  const payload: { humanPlayers: number; aiPlayers: number; loadStateText?: string } = {
+    humanPlayers: opts.humanPlayers ?? 1,
+    aiPlayers: opts.aiPlayers ?? 3,
   };
   if (opts.loadStateText && opts.loadStateText.trim().length > 0) {
     payload.loadStateText = opts.loadStateText;

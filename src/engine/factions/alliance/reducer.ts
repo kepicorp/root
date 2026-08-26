@@ -1,13 +1,14 @@
 import { produce } from 'immer';
 import type { GameState, Action, ClearingId, Faction, CardSuit } from '../../types';
-import { getCard, type CardId } from '../../cards';
+import { discardCard, getCard, type CardId } from '../../cards';
 import { AUTUMN_MAP, getAdjacent } from '../../map';
 import { declareBattle } from '../../combat';
 import { SYMPATHY_VP_TRACK, SYMPATHY_COST } from './state';
 import { applyFavor } from '../../effects';
 import { onEnterBirdsong } from '../../loop';
-import { canMeetCraftCost } from '../../craft-utils';
+import { canMeetCraftCost, spendCraftCost } from '../../craft-utils';
 import type { AllianceAction } from './actions';
+import { awardVictoryPoints } from '../../victory';
 
 function isAllianceTurn(state: GameState): boolean {
   return state.factionOrder[state.activeIndex] === 'alliance';
@@ -70,14 +71,22 @@ export function allianceReducer(state: GameState, action: Action): GameState {
           const idx = al.supporters.indexOf(id);
           if (idx >= 0) {
             al.supporters.splice(idx, 1);
-            draft.discard.push(id);
+            discardCard(draft, id);
           }
         }
         al.sympathy.push(a.clearing);
         draft.map.clearings[a.clearing]!.tokens.push({ faction: 'alliance', kind: 'sympathy' });
         const vp = SYMPATHY_VP_TRACK[Math.min(al.sympathy.length - 1, SYMPATHY_VP_TRACK.length - 1)] ?? 0;
-        draft.scores.alliance += vp;
+        awardVictoryPoints(draft, 'alliance', vp, 'spreading sympathy');
         draft.log.push({ turn: draft.turn, faction: 'alliance', message: `Spread sympathy to ${a.clearing} (+${vp} VP).` });
+      });
+
+    case 'alliance.skipSpreadSympathy':
+      return produce(state, draft => {
+        if (draft.phase !== 'birdsong') return;
+        draft.factions.alliance!.birdsongDone = true;
+        draft.phase = 'daylight';
+        draft.log.push({ turn: draft.turn, faction: 'alliance', message: 'Passed on spreading sympathy.' });
       });
 
     case 'alliance.mobilize':
@@ -91,7 +100,7 @@ export function allianceReducer(state: GameState, action: Action): GameState {
         // board; if full, the card is discarded instead.
         const hasBase = Object.keys(al.bases).length > 0;
         if (!hasBase && al.supporters.length >= 5) {
-          draft.discard.push(a.cardId);
+          discardCard(draft, a.cardId);
           draft.log.push({ turn: draft.turn, faction: 'alliance', message: `Supporter stack full — discarded ${a.cardId}.` });
         } else {
           al.supporters.push(a.cardId);
@@ -111,8 +120,9 @@ export function allianceReducer(state: GameState, action: Action): GameState {
         al.sympathy.push(a.clearing);
         cl.tokens.push({ faction: 'alliance', kind: 'sympathy' });
         const vp = SYMPATHY_VP_TRACK[Math.min(al.sympathy.length - 1, SYMPATHY_VP_TRACK.length - 1)] ?? 0;
-        draft.scores.alliance += vp;
+        awardVictoryPoints(draft, 'alliance', vp, 'organizing sympathy');
         al.daylightActionsLeft -= 1;
+        draft.log.push({ turn: draft.turn, faction: 'alliance', message: `Organized in ${a.clearing}: placed sympathy (+${vp} VP).` });
       });
 
     case 'alliance.revolt':
@@ -127,16 +137,22 @@ export function allianceReducer(state: GameState, action: Action): GameState {
           const idx = al.supporters.indexOf(id);
           if (idx >= 0) {
             al.supporters.splice(idx, 1);
-            draft.discard.push(id);
+            discardCard(draft, id);
           }
         }
         // Remove enemy warriors/tokens.
         const cl = draft.map.clearings[a.clearing]!;
         let vp = 0;
+        const removedWarriors: string[] = [];
+        const removedBuildings: string[] = [];
+        for (const f of ['marquise', 'eyrie', 'vagabond'] as const) {
+          const count = cl.warriors[f] ?? 0;
+          if (count > 0) removedWarriors.push(`${count} ${f} warrior${count === 1 ? '' : 's'}`);
+        }
         for (const f of ['marquise', 'eyrie', 'vagabond'] as const) returnToSupply(draft, a.clearing, f);
         const remainingBuildings: typeof cl.buildings = [];
         for (const b of cl.buildings) {
-          if (b.faction !== 'alliance') vp += 1; else remainingBuildings.push(b);
+          if (b.faction !== 'alliance') { vp += 1; removedBuildings.push(`${b.faction} ${b.kind}`); } else remainingBuildings.push(b);
         }
         cl.buildings = remainingBuildings;
         // Place base + warriors per base on board.
@@ -147,8 +163,9 @@ export function allianceReducer(state: GameState, action: Action): GameState {
         cl.warriors.alliance = (cl.warriors.alliance ?? 0) + warriorsToPlace;
         al.warriorSupply = Math.max(0, al.warriorSupply - warriorsToPlace);
         al.officers += 1;
-        draft.scores.alliance += vp;
-        draft.log.push({ turn: draft.turn, faction: 'alliance', message: `Revolt in ${a.clearing}! +${vp} VP, base placed.` });
+        awardVictoryPoints(draft, 'alliance', vp, 'revolt removing enemy cardboard');
+        const removed = [...removedWarriors, ...removedBuildings].join(', ') || 'no enemy pieces';
+        draft.log.push({ turn: draft.turn, faction: 'alliance', message: `Revolt in ${a.clearing}: removed ${removed}; +${vp} VP, base placed.` });
       });
 
     case 'alliance.battle': {
@@ -210,20 +227,18 @@ export function allianceReducer(state: GameState, action: Action): GameState {
           power[suit] = (power[suit] ?? 0) + 1;
         }
         for (const craftedId of al.craftedThisTurn) {
-          for (const [s, n] of Object.entries(getCard(craftedId).craftCost)) {
-            power[s as CardSuit] = Math.max(0, (power[s as CardSuit] ?? 0) - (n as number));
-          }
+          if (!spendCraftCost(power, getCard(craftedId).craftCost)) return;
         }
         if (!canMeetCraftCost(power, card.craftCost)) return;
         const idx = draft.hands.alliance.indexOf(a.cardId);
         if (idx < 0) return;
         draft.hands.alliance.splice(idx, 1);
         al.craftedThisTurn.push(a.cardId);
-        if (card.craftVp) draft.scores.alliance += card.craftVp;
+        if (card.craftVp) awardVictoryPoints(draft, 'alliance', card.craftVp, `crafting ${card.name}`);
         if (card.item) { draft.itemSupply.push(card.item); draft.craftedItemLog.push({ faction: 'alliance', item: card.item }); }
         if (card.category === 'persistent') draft.craftedPersistents.push({ faction: 'alliance', cardId: a.cardId });
         if (card.category === 'favor') applyFavor(draft, card.suit, 'alliance');
-        draft.discard.push(a.cardId);
+        discardCard(draft, a.cardId);
         draft.log.push({ turn: draft.turn, faction: 'alliance', message: `Crafted ${card.name} (+${card.craftVp ?? 0} VP).` });
       });
 
@@ -240,7 +255,7 @@ export function allianceReducer(state: GameState, action: Action): GameState {
         const matchesBase = baseSuits.some(s => card.suit === s || card.suit === 'bird');
         if (!matchesBase) return;
         draft.hands.alliance.splice(idx, 1);
-        draft.discard.push(a.cardId);
+        discardCard(draft, a.cardId);
         al.officers += 1;
         al.daylightActionsLeft += 1;
         draft.log.push({ turn: draft.turn, faction: 'alliance', message: `Trained an officer with ${card.name} (now ${al.officers}).` });
@@ -280,7 +295,7 @@ export function allianceReducer(state: GameState, action: Action): GameState {
         const idx = draft.hands.alliance.indexOf(a.cardId);
         if (idx < 0) return;
         draft.hands.alliance.splice(idx, 1);
-        draft.discard.push(a.cardId);
+        discardCard(draft, a.cardId);
         al.pendingDiscard -= 1;
         if (al.pendingDiscard === 0) finishAllianceTurn(draft, 0);
       });
@@ -333,6 +348,7 @@ export function allianceLegalActions(state: GameState): Action[] {
         out.push({ kind: 'alliance.spreadSympathy', clearing: c.id, supporterCards: matching.slice(0, need) });
       }
     }
+    out.push({ kind: 'alliance.skipSpreadSympathy' });
     // Revolt
     for (const cid of al.sympathy) {
       const suit = clearingSuit(cid);
@@ -374,9 +390,7 @@ export function allianceLegalActions(state: GameState): Action[] {
         power[suit] = (power[suit] ?? 0) + 1;
       }
       for (const craftedId of al.craftedThisTurn) {
-        for (const [s, n] of Object.entries(getCard(craftedId).craftCost)) {
-          power[s as CardSuit] = Math.max(0, (power[s as CardSuit] ?? 0) - (n as number));
-        }
+        if (!spendCraftCost(power, getCard(craftedId).craftCost)) return out;
       }
       for (const id of state.hands.alliance) {
         const card = getCard(id);

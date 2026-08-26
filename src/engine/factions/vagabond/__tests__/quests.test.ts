@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { produce } from 'immer';
 import { newGame, reduce } from '../../../state';
-import { startGame } from '../../../loop';
+import { startGame, advancePhase, endTurn } from '../../../loop';
+import { getLegalActions } from '../../../legal';
 import { performSetup } from '../../../setup';
-import { checkCoalitionVictory } from '../reducer';
+import { checkCoalitionVictory, vagabondLegalActions } from '../reducer';
 import { AUTUMN_MAP } from '../../../map';
 import { QUEST_DECK, getQuest } from '../quests';
 import { DOMINANCE_CARDS } from '../../../cards';
@@ -112,6 +113,55 @@ describe('Vagabond quest deck', () => {
     });
     const result = reduce(setup, { kind: 'vagabond.completeQuest', questId: targetQuest.id });
     expect(result).toBe(setup); // unchanged
+  });
+
+  it('forces quest-reward choice before other daylight actions', () => {
+    const baseline = fixture();
+    const targetQuest = getQuest('q-fox-1');
+    const foxClearing = AUTUMN_MAP.clearings.find(c => c.suit === 'fox')!;
+    const setup = produce(baseline, draft => {
+      draft.phase = 'daylight';
+      draft.activeIndex = draft.factionOrder.indexOf('vagabond');
+      const v = draft.factions.vagabond!;
+      v.clearing = foxClearing.id;
+      v.pendingQuestReward = targetQuest.id;
+    });
+
+    const legal = vagabondLegalActions(setup);
+    expect(legal).toEqual(expect.arrayContaining([
+      { kind: 'vagabond.completeQuestReward', questId: targetQuest.id, choice: 'cards' },
+      { kind: 'vagabond.completeQuestReward', questId: targetQuest.id, choice: 'vp' },
+    ]));
+    expect(legal.some(a => a.kind === 'vagabond.move')).toBe(false);
+    expect(getLegalActions(setup).some(a => a.kind === 'system.advancePhase')).toBe(false);
+    expect(advancePhase(setup)).toBe(setup);
+    expect(endTurn(setup)).toBe(setup);
+  });
+
+  it('offers coalition only when the Vagabond is last and has a dominance card', () => {
+    const baseline = fixture();
+    const dom = DOMINANCE_CARDS[0]!;
+    const setup = produce(baseline, draft => {
+      draft.phase = 'daylight';
+      draft.activeIndex = draft.factionOrder.indexOf('vagabond');
+      draft.hands.vagabond = [dom.id];
+      draft.scores.vagabond = 12;
+      draft.scores.marquise = 15;
+      draft.scores.eyrie = 14;
+      draft.scores.alliance = 13;
+      draft.factions.vagabond!.coalitionPartner = undefined;
+    });
+
+    const legal = vagabondLegalActions(setup);
+    expect(legal.some(a => a.kind === 'vagabond.formCoalition' && a.faction === 'alliance')).toBe(false);
+    const lastPlace = produce(setup, draft => {
+      draft.scores.marquise = 20;
+      draft.scores.eyrie = 19;
+      draft.scores.alliance = 8;
+      draft.scores.vagabond = 12;
+    });
+    const lastPlaceLegal = vagabondLegalActions(lastPlace);
+    expect(lastPlaceLegal.some(a => a.kind === 'vagabond.formCoalition' && a.faction === 'alliance')).toBe(true);
   });
 
   it('exploring a ruin opens the existing slot instead of adding a new one', () => {

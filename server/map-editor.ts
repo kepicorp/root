@@ -72,7 +72,7 @@ function renderMapFile(map: EditorMap): string {
   return `// Static autumn map data.
 //
 // Standard 12-clearing autumn map. Suit distribution is 4 fox / 4 mouse / 4 rabbit.
-// Corner clearings (1, 4, 9, 12) are the board corners for setup and dominance.
+// Corner clearings (1, 3, 10, 12) are the board corners for setup and dominance.
 // Ruins sit on the four middle-band clearings.
 //
 // Coordinates are in a 1000 x 800 board-space and get scaled by the renderer.
@@ -135,7 +135,7 @@ export function adjacentForests(map: RootMap, id: ForestId): ForestId[] {
     .map(g => g.id);
 }
 
-export const CORNER_CLEARINGS: readonly ClearingId[] = [1, 4, 9, 12];
+export const CORNER_CLEARINGS: readonly ClearingId[] = [1, 3, 10, 12];
 `;
 }
 
@@ -173,7 +173,7 @@ describe('autumn map', () => {
   });
 
   it('matches the autumn board corner and ruin layout', () => {
-    expect(CORNER_CLEARINGS).toEqual([1, 4, 9, 12]);
+    expect(CORNER_CLEARINGS).toEqual([1, 3, 10, 12]);
     expect(AUTUMN_MAP.clearings.map(c => ({
       id: c.id,
       suit: c.suit,

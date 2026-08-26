@@ -68,9 +68,9 @@ const favors: Card[] = [
 
 const items: Card[] = [
   // Swords
-  card('Foxfolk Steel',        'fox',    'item', { fox:    2 }, { item: 'sword',    craftVp: 2 }),
+  card('Foxfolk Steel',        'fox',    'item', { fox: 1, mouse: 1 }, { item: 'sword',    craftVp: 2 }),
   card('Arms Trader',          'bird',   'item', { fox:    2 }, { item: 'sword',    craftVp: 2 }),
-  card('Sword',                'mouse',  'item', { mouse:  2 }, { item: 'sword',    craftVp: 2 }),
+  card('Sword',                'mouse',  'item', { fox:    2 }, { item: 'sword',    craftVp: 2 }),
   // Crossbows (both cost fox×1 — confirmed from card images)
   card('Crossbow',             'bird',   'item', { fox:    1 }, { item: 'crossbow', craftVp: 1 }),
   card('Crossbow',             'mouse',  'item', { fox:    1 }, { item: 'crossbow', craftVp: 1 }),
@@ -79,23 +79,22 @@ const items: Card[] = [
   // Boots
   card('A Visit to Friends',   'rabbit', 'item', { rabbit: 1 }, { item: 'boots',    craftVp: 1 }),
   card('A Visit to Friends',   'rabbit', 'item', { rabbit: 1 }, { item: 'boots',    craftVp: 1 }),
-  card('Travel Gear',          'fox',    'item', { fox:    1 }, { item: 'boots',    craftVp: 1 }),
-  card('Travel Gear',          'mouse',  'item', { mouse:  1 }, { item: 'boots',    craftVp: 1 }),
+  card('Travel Gear',          'fox',    'item', { rabbit: 1 }, { item: 'boots',    craftVp: 1 }),
+  card('Travel Gear',          'mouse',  'item', { rabbit: 1 }, { item: 'boots',    craftVp: 1 }),
   card('Woodland Runners',     'bird',   'item', { rabbit: 1 }, { item: 'boots',    craftVp: 1 }),
   // Bags
-  card('Gently Used Knapsack', 'fox',    'item', { fox:    1 }, { item: 'bag',      craftVp: 1 }),
+  card('Gently Used Knapsack', 'fox',    'item', { mouse:  1 }, { item: 'bag',      craftVp: 1 }),
   card('Mouse-in-a-Sack',      'mouse',  'item', { mouse:  1 }, { item: 'bag',      craftVp: 1 }),
   card('Birdy Bindle',         'bird',   'item', { mouse:  1 }, { item: 'bag',      craftVp: 1 }),
   card("Smuggler's Trail",     'rabbit', 'item', { mouse:  1 }, { item: 'bag',      craftVp: 1 }),
   // Tea
-  card('Root Tea',             'rabbit', 'item', { rabbit: 1 }, { item: 'tea',      craftVp: 2 }),
-  card('Root Tea',             'fox',    'item', { fox:    1 }, { item: 'tea',      craftVp: 2 }),
+  card('Root Tea',             'rabbit', 'item', { mouse:  1 }, { item: 'tea',      craftVp: 2 }),
+  card('Root Tea',             'fox',    'item', { mouse:  1 }, { item: 'tea',      craftVp: 2 }),
   card('Root Tea',             'mouse',  'item', { mouse:  1 }, { item: 'tea',      craftVp: 2 }),
-  // Torch
-  card('Investments',          'mouse',  'item', { mouse:  1 }, { item: 'torch',    craftVp: 1 }),
-  // Coins (craft a coin token for +3 VP)
-  card('Bake Sale',            'rabbit', 'item', { rabbit: 2 }, { item: 'coin',     craftVp: 3 }),
-  card('Protection Racket',    'fox',    'item', { rabbit: 2 }, { item: 'coin',     craftVp: 3 }),
+  // Coins
+  card('Investments',          'mouse',  'item', { mouse:  2 }, { item: 'coin',     craftVp: 2 }),
+  card('Bake Sale',            'rabbit', 'item', { mouse:  2 }, { item: 'coin',     craftVp: 2 }),
+  card('Protection Racket',    'fox',    'item', { mouse:  2 }, { item: 'coin',     craftVp: 2 }),
 ];
 
 // ─── Persistent effect cards — Base game ──────────────────────────────────────
@@ -103,25 +102,25 @@ const items: Card[] = [
 
 const basePersistents: Card[] = [
   // ── Combat modifiers ──────────────────────────────────────────────────────
-  card('Armorers',           'bird',   'persistent', { rabbit: 1 }),   // ×1
+  card('Armorers',           'fox',    'persistent', { fox:    1 }),   // ×1
   card('Sappers',            'bird',   'persistent', { rabbit: 1 }),   // ×1
   card('Brutal Tactics',     'bird',   'persistent', { fox:    2 }),   // ×2
   card('Brutal Tactics',     'bird',   'persistent', { fox:    2 }),
-  card('Scouting Party',     'mouse',  'persistent', { rabbit: 2 }),   // ×1
+  card('Scouting Party',     'mouse',  'persistent', { mouse: 1, rabbit: 1 }),   // ×1
 
   // ── Birdsong actions ──────────────────────────────────────────────────────
-  card('Royal Claim',        'bird',   'persistent', { bird:   4 }),   // ×3
+  card('Royal Claim',        'bird',   'persistent', { bird:   4 }),
   card('Royal Claim',        'bird',   'persistent', { bird:   4 }),
   card('Royal Claim',        'bird',   'persistent', { bird:   4 }),
   card('Better Burrow Bank', 'rabbit', 'persistent', { rabbit: 2 }),   // ×2
   card('Better Burrow Bank', 'rabbit', 'persistent', { rabbit: 2 }),
-  card('Stand and Deliver!', 'fox',    'persistent', { mouse:  3 }),   // ×2
-  card('Stand and Deliver!', 'fox',    'persistent', { mouse:  3 }),
+  card('Stand and Deliver!', 'mouse',  'persistent', { mouse:  3 }),   // ×2
+  card('Stand and Deliver!', 'mouse',  'persistent', { mouse:  3 }),
 
   // ── Daylight actions ──────────────────────────────────────────────────────
-  card('Tax Collector',      'fox',    'persistent', { fox: 1, mouse: 1, rabbit: 1 }), // ×2
   card('Tax Collector',      'fox',    'persistent', { fox: 1, mouse: 1, rabbit: 1 }),
-  card('Command Warren',     'rabbit', 'persistent', { rabbit: 2 }),   // ×1
+  card('Tax Collector',      'fox',    'persistent', { fox: 1, mouse: 1, rabbit: 1 }),
+  card('Command Warren',     'fox',    'persistent', { fox:    2 }),
   card('Codebreakers',       'mouse',  'persistent', { mouse:  1 }),   // ×1
 
   // ── Evening action ────────────────────────────────────────────────────────
@@ -236,3 +235,17 @@ export function getCard(id: CardId): Card {
 }
 
 export function cardSuit(id: CardId): CardSuit { return getCard(id).suit; }
+
+export function discardCard(
+  state: { hands: Record<string, CardId[]>; discard: CardId[] },
+  cardId: CardId,
+): void {
+  for (const hand of Object.values(state.hands)) {
+    const idx = hand.indexOf(cardId);
+    if (idx >= 0) {
+      hand.splice(idx, 1);
+      break;
+    }
+  }
+  state.discard.push(cardId);
+}

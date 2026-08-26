@@ -2,7 +2,9 @@ import type { CardId } from '../../cards';
 import type { ClearingId, Faction } from '../../types';
 
 export type AllianceAction =
+  | { kind: 'alliance.setupReady' }
   | { kind: 'alliance.spreadSympathy'; clearing: ClearingId; supporterCards: CardId[] }
+  | { kind: 'alliance.skipSpreadSympathy' }
   | { kind: 'alliance.mobilize'; cardId: CardId }
   | { kind: 'alliance.organize'; clearing: ClearingId }
   | { kind: 'alliance.revolt'; clearing: ClearingId; supporterCards: CardId[] }

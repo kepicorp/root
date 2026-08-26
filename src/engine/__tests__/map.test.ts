@@ -23,7 +23,7 @@ describe('autumn map', () => {
   });
 
   it('matches the autumn board corner and ruin layout', () => {
-    expect(CORNER_CLEARINGS).toEqual([1, 4, 9, 12]);
+    expect(CORNER_CLEARINGS).toEqual([1, 3, 10, 12]);
     expect(AUTUMN_MAP.clearings.map(c => ({
       id: c.id,
       suit: c.suit,
